@@ -1,0 +1,1521 @@
+---
+alwaysApply: false
+---
+
+# ETL Pipeline Engine - Source of Truth Documentation
+## Extraction, Transformation, and Loading (Batch & Streaming)
+
+> **Core Philosophy:** "Idempotency is not optional. At-least-once delivery is the reality. Design for it from day one."
+
+This document defines the complete architecture for building production-grade ETL pipelines that handle extraction from multiple sources, transformation via ELT patterns, and loading into data warehouses with proper error handling, schema evolution, and backpressure management.
+
+---
+
+## Table of Contents
+
+1. [Critical Architecture Principles](#critical-architecture-principles)
+2. [Phase 1: Extraction (The Source)](#phase-1-extraction-the-source)
+3. [Phase 2: Transformation (ELT DAGs)](#phase-2-transformation-elt-dags)
+4. [Phase 3: Loading (The Destination)](#phase-3-loading-the-destination)
+5. [Error Handling & Dead Letter Lake](#error-handling--dead-letter-lake)
+6. [Backpressure & Flow Control](#backpressure--flow-control)
+7. [Monitoring & Observability](#monitoring--observability)
+8. [Implementation Patterns](#implementation-patterns)
+
+---
+
+## Critical Architecture Principles
+
+### The "Idempotency" Rule
+
+**⚠️ AT-LEAST-ONCE DELIVERY IS GUARANTEED**
+
+Your pipeline will receive duplicate events. Every loader must handle UPSERTs based on Primary Key.
+
+**Requirements:**
+- **Primary Key Strategy:** Every destination table MUST have a primary key (composite keys allowed)
+- **UPSERT Logic:** Use `INSERT ... ON CONFLICT (pk) DO UPDATE` or `MERGE` statements
+- **Deduplication Window:** Track processed event IDs in Redis/Postgres for configurable deduplication window (e.g., 24 hours)
+- **Idempotent Transformations:** Transformations must be deterministic (same input = same output)
+
+**Implementation Pattern:**
+```typescript
+// Loader must always UPSERT
+async function upsertBatch(records: Record[], table: string, primaryKey: string[]) {
+  const conflictClause = primaryKey.map(k => k).join(', ');
+  
+  const query = `
+    INSERT INTO ${table} (${columns})
+    VALUES ${placeholders}
+    ON CONFLICT (${conflictClause}) 
+    DO UPDATE SET
+      ${updateColumns.map(c => `${c} = EXCLUDED.${c}`).join(', ')},
+      updated_at = NOW()
+  `;
+  
+  await db.query(query, values);
+}
+```
+
+### Schema Evolution
+
+**⚠️ PIPELINES MUST NOT CRASH ON SCHEMA CHANGES**
+
+If the source adds a column `phone_number`, the pipeline must handle it gracefully.
+
+**Requirements:**
+- **Schema Registry:** Maintain a schema registry (Confluent Schema Registry, AWS Glue, or custom Postgres table)
+- **Auto-Migration:** Detect new columns and auto-add to destination (with alerting)
+- **Backward Compatibility:** Handle missing columns gracefully (default to NULL)
+- **Version Tracking:** Track schema versions per table/connector
+
+**Implementation Pattern:**
+```typescript
+// Schema evolution handler
+async function handleSchemaChange(
+  event: ChangeEvent,
+  currentSchema: TableSchema,
+  destination: string
+) {
+  const newFields = detectNewFields(event.after, currentSchema);
+  
+  if (newFields.length > 0) {
+    // Alert engineering team
+    await alert({
+      severity: 'info',
+      message: `New fields detected: ${newFields.join(', ')}`,
+      table: destination,
+      fields: newFields
+    });
+    
+    // Auto-migrate (or queue for manual review)
+    await migrateSchema(destination, newFields);
+  }
+  
+  // Transform with schema-aware mapping
+  return transformWithSchema(event.after, currentSchema);
+}
+```
+
+### The WAL (Write Ahead Log) Rule
+
+**⚠️ NEVER POLL WITH SELECT * FROM table**
+
+Read from Postgres WAL (logical replication) for real-time sync. Polling is inefficient and misses deletes.
+
+**Requirements:**
+- **Logical Replication Slots:** Create replication slots per source database
+- **Binary Event Streaming:** Stream INSERT, UPDATE, DELETE events as they occur
+- **LSN Tracking:** Track Log Sequence Number (LSN) for resume capability
+- **No Polling:** Eliminate `SELECT * FROM table WHERE updated_at > ?` patterns
+
+**Why WAL over Polling:**
+- **Real-time:** Sub-second latency vs minutes/hours
+- **Deletes:** Captures DELETE operations (polling misses these)
+- **Efficiency:** No full table scans
+- **Consistency:** Guaranteed ordering via LSN
+
+---
+
+## Phase 1: Extraction (The Source)
+
+### 1. CDC (Change Data Capture)
+
+**Tool Options:**
+- **Debezium** (Java-based, Kafka Connect compatible)
+- **pg-logical-replication** (Node.js native wrapper)
+- **AWS DMS** (Managed service for AWS workloads)
+
+#### Debezium Architecture
+
+**Components:**
+- Debezium Connector (Postgres, MySQL, MongoDB, etc.)
+- Kafka (or Kafka Connect) as message broker
+- Schema Registry for schema management
+
+**Setup:**
+```bash
+# Postgres configuration (postgresql.conf)
+wal_level = logical
+max_replication_slots = 10
+max_wal_senders = 10
+
+# Create replication slot
+SELECT * FROM pg_create_logical_replication_slot('debezium_slot', 'pgoutput');
+```
+
+**Event Format:**
+```json
+{
+  "op": "u",  // "c" = create, "u" = update, "d" = delete
+  "ts_ms": 1699123456789,
+  "source": {
+    "connector": "postgresql",
+    "db": "production",
+    "schema": "public",
+    "table": "users"
+  },
+  "before": {
+    "id": 123,
+    "email": "old@example.com",
+    "name": "Old Name"
+  },
+  "after": {
+    "id": 123,
+    "email": "new@example.com",
+    "name": "New Name"
+  }
+}
+```
+
+#### Custom Node.js WAL Reader
+
+**Implementation:**
+```typescript
+// wal-reader.ts
+import { Client } from 'pg';
+import { LogicalReplicationService } from 'pg-logical-replication';
+
+class WALReader {
+  private client: Client;
+  private replicationService: LogicalReplicationService;
+  private slotName: string;
+  
+  constructor(config: {
+    host: string;
+    port: number;
+    database: string;
+    slotName: string;
+  }) {
+    this.client = new Client(config);
+    this.slotName = config.slotName;
+    this.replicationService = new LogicalReplicationService(config);
+  }
+  
+  async start() {
+    await this.client.connect();
+    
+    // Ensure replication slot exists
+    await this.ensureReplicationSlot();
+    
+    // Start streaming
+    await this.replicationService.subscribe({
+      slot: this.slotName,
+      callback: (lsn: string, log: any) => {
+        this.handleWALEvent(log);
+      }
+    });
+  }
+  
+  private async ensureReplicationSlot() {
+    const result = await this.client.query(`
+      SELECT * FROM pg_replication_slots 
+      WHERE slot_name = $1
+    `, [this.slotName]);
+    
+    if (result.rows.length === 0) {
+      await this.client.query(`
+        SELECT * FROM pg_create_logical_replication_slot(
+          $1, 
+          'pgoutput'
+        )
+      `, [this.slotName]);
+    }
+  }
+  
+  private handleWALEvent(log: any) {
+    // Transform WAL log to JSON event
+    const event = this.transformWALToEvent(log);
+    
+    // Emit to pipeline
+    this.emit('change', event);
+  }
+  
+  private transformWALToEvent(log: any): ChangeEvent {
+    return {
+      op: log.operation, // 'INSERT', 'UPDATE', 'DELETE'
+      ts_ms: Date.now(),
+      source: {
+        db: this.client.database,
+        schema: log.schema,
+        table: log.table
+      },
+      before: log.oldRow || null,
+      after: log.newRow || null
+    };
+  }
+}
+```
+
+### 2. API Polling (Pagination Strategy)
+
+**⚠️ NEVER USE OFFSET-BASED PAGINATION**
+
+Use cursor-based pagination for consistency and performance.
+
+#### Cursor-Based Pagination
+
+**Pattern:**
+```typescript
+// api-extractor.ts
+class APIExtractor {
+  private rateLimiter: TokenBucket;
+  private cursor: string | null = null;
+  
+  async extractAll(endpoint: string) {
+    const records: any[] = [];
+    let hasMore = true;
+    
+    while (hasMore) {
+      // Rate limit check
+      await this.rateLimiter.waitForToken();
+      
+      // Fetch with cursor
+      const url = this.cursor 
+        ? `${endpoint}?cursor=${this.cursor}`
+        : endpoint;
+      
+      const response = await fetch(url, {
+        headers: this.getAuthHeaders()
+      });
+      
+      if (!response.ok) {
+        if (response.status === 429) {
+          // Rate limited - exponential backoff
+          await this.handleRateLimit(response);
+          continue;
+        }
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Extract records
+      records.push(...data.items);
+      
+      // Update cursor
+      this.cursor = data.next_cursor;
+      hasMore = !!this.cursor && data.items.length > 0;
+      
+      // Check for pagination limits
+      if (records.length >= this.maxRecords) {
+        break;
+      }
+    }
+    
+    return records;
+  }
+}
+```
+
+#### Token Bucket Rate Limiting
+
+**Implementation:**
+```typescript
+// token-bucket.ts
+class TokenBucket {
+  private tokens: number;
+  private capacity: number;
+  private refillRate: number; // tokens per second
+  private lastRefill: number;
+  
+  constructor(capacity: number, refillRate: number) {
+    this.capacity = capacity;
+    this.refillRate = refillRate;
+    this.tokens = capacity;
+    this.lastRefill = Date.now();
+  }
+  
+  async waitForToken(): Promise<void> {
+    this.refill();
+    
+    if (this.tokens >= 1) {
+      this.tokens -= 1;
+      return;
+    }
+    
+    // Calculate wait time
+    const waitTime = (1 - this.tokens) / this.refillRate * 1000;
+    await this.sleep(waitTime);
+    
+    this.refill();
+    this.tokens -= 1;
+  }
+  
+  private refill() {
+    const now = Date.now();
+    const elapsed = (now - this.lastRefill) / 1000; // seconds
+    const tokensToAdd = elapsed * this.refillRate;
+    
+    this.tokens = Math.min(
+      this.capacity,
+      this.tokens + tokensToAdd
+    );
+    
+    this.lastRefill = now;
+  }
+  
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+// Usage per connector
+const salesforceLimiter = new TokenBucket(
+  15000,  // 15k requests per day
+  15000 / (24 * 60 * 60) // tokens per second
+);
+```
+
+#### Incremental Extraction (Timestamp-Based)
+
+**For APIs without cursor support:**
+```typescript
+class IncrementalExtractor {
+  private lastSyncTime: Date;
+  private stateStore: StateStore;
+  
+  async extractIncremental(endpoint: string, table: string) {
+    // Load last sync time
+    const state = await this.stateStore.get(`sync:${table}`);
+    this.lastSyncTime = state?.lastSyncTime || new Date(0);
+    
+    // Extract with timestamp filter
+    const records = await this.fetchSince(
+      endpoint,
+      this.lastSyncTime
+    );
+    
+    // Update state
+    await this.stateStore.set(`sync:${table}`, {
+      lastSyncTime: new Date(),
+      recordCount: records.length
+    });
+    
+    return records;
+  }
+  
+  private async fetchSince(endpoint: string, since: Date) {
+    const url = `${endpoint}?updated_since=${since.toISOString()}`;
+    // ... fetch logic
+  }
+}
+```
+
+---
+
+## Phase 2: Transformation (ELT DAGs)
+
+### ELT vs ETL Philosophy
+
+**⚠️ EXTRACT, LOAD, THEN TRANSFORM**
+
+Load raw data first, then transform in SQL. This is faster and more flexible than transforming in application code.
+
+**Why ELT:**
+- **Performance:** SQL engines (Snowflake, BigQuery) are optimized for transformations
+- **Flexibility:** Change transformations without re-extracting
+- **Debugging:** Raw data preserved for troubleshooting
+- **Reprocessing:** Re-run transformations on historical data
+
+### Transformation DAG Structure
+
+```
+Raw Layer (Bronze)
+  ↓
+Staging Layer (Silver) - Cleaned, validated
+  ↓
+Analytics Layer (Gold) - Business logic, aggregations
+```
+
+### 1. Raw Layer (Bronze)
+
+**Purpose:** Store raw JSON/CSV exactly as extracted.
+
+**Schema:**
+```sql
+CREATE TABLE raw_users (
+  id BIGSERIAL PRIMARY KEY,
+  source_connector VARCHAR(100) NOT NULL,
+  extracted_at TIMESTAMP NOT NULL,
+  event_type VARCHAR(20), -- 'insert', 'update', 'delete'
+  raw_data JSONB NOT NULL,
+  metadata JSONB -- source metadata, LSN, etc.
+);
+
+CREATE INDEX idx_raw_users_extracted_at ON raw_users(extracted_at);
+CREATE INDEX idx_raw_users_connector ON raw_users(source_connector);
+```
+
+### 2. Staging Layer (Silver)
+
+**Purpose:** Clean, validate, and flatten raw data.
+
+**Transformation SQL (dbt-style):**
+```sql
+-- models/staging/stg_users.sql
+{{ config(
+    materialized='incremental',
+    unique_key='id',
+    on_schema_change='append_new_columns'
+) }}
+
+WITH raw AS (
+    SELECT
+        raw_data,
+        extracted_at,
+        source_connector
+    FROM {{ ref('raw_users') }}
+    {% if is_incremental() %}
+        WHERE extracted_at > (SELECT MAX(extracted_at) FROM {{ this }})
+    {% endif %}
+)
+
+SELECT
+    -- Extract fields from JSON
+    (raw_data->>'id')::BIGINT AS id,
+    raw_data->>'email' AS email,
+    raw_data->>'name' AS name,
+    raw_data->>'phone_number' AS phone_number, -- New field handled gracefully
+    (raw_data->>'created_at')::TIMESTAMP AS created_at,
+    (raw_data->>'updated_at')::TIMESTAMP AS updated_at,
+    
+    -- Metadata
+    source_connector,
+    extracted_at,
+    CURRENT_TIMESTAMP AS transformed_at
+    
+FROM raw
+WHERE raw_data->>'id' IS NOT NULL -- Validation: reject null IDs
+```
+
+### 3. Analytics Layer (Gold)
+
+**Purpose:** Business logic, aggregations, final reporting tables.
+
+**Example:**
+```sql
+-- models/marts/users/user_daily_stats.sql
+{{ config(materialized='table') }}
+
+SELECT
+    DATE(created_at) AS date,
+    COUNT(*) AS new_users,
+    COUNT(DISTINCT source_connector) AS sources,
+    SUM(CASE WHEN phone_number IS NOT NULL THEN 1 ELSE 0 END) AS users_with_phone
+FROM {{ ref('stg_users') }}
+GROUP BY DATE(created_at)
+```
+
+### dbt Configuration
+
+**`dbt_project.yml`:**
+```yaml
+name: 'etl_pipeline'
+version: '1.0.0'
+
+profile: 'warehouse'
+
+models:
+  etl_pipeline:
+    staging:
+      materialized: incremental
+      unique_key: id
+      on_schema_change: append_new_columns
+    marts:
+      materialized: table
+```
+
+### Transformation Orchestration
+
+**Airflow/Dagster DAG:**
+```python
+# dags/transform_dag.py
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from datetime import datetime
+
+dag = DAG(
+    'transform_pipeline',
+    schedule_interval='@hourly',
+    start_date=datetime(2024, 1, 1)
+)
+
+# Run dbt transformations
+transform_staging = BashOperator(
+    task_id='transform_staging',
+    bash_command='cd /dbt && dbt run --models staging',
+    dag=dag
+)
+
+transform_marts = BashOperator(
+    task_id='transform_marts',
+    bash_command='cd /dbt && dbt run --models marts',
+    dag=dag
+)
+
+transform_staging >> transform_marts
+```
+
+---
+
+## Phase 3: Loading (The Destination)
+
+### 1. Batch Loading (Snowflake/BigQuery)
+
+**⚠️ NEVER INSERT ONE ROW AT A TIME**
+
+Buffer records and use bulk load operations. This is 1000x faster.
+
+#### Buffering Strategy
+
+**Implementation:**
+```typescript
+// batch-loader.ts
+class BatchLoader {
+  private buffer: any[] = [];
+  private bufferSize: number = 10000;
+  private bufferSizeBytes: number = 50 * 1024 * 1024; // 50MB
+  private currentSizeBytes: number = 0;
+  private flushInterval: number = 60000; // 1 minute
+  private timer: NodeJS.Timeout;
+  
+  constructor(
+    private destination: 'snowflake' | 'bigquery',
+    private table: string
+  ) {
+    this.startFlushTimer();
+  }
+  
+  async load(record: any) {
+    const recordSize = JSON.stringify(record).length;
+    
+    // Check if buffer is full
+    if (
+      this.buffer.length >= this.bufferSize ||
+      this.currentSizeBytes + recordSize >= this.bufferSizeBytes
+    ) {
+      await this.flush();
+    }
+    
+    this.buffer.push(record);
+    this.currentSizeBytes += recordSize;
+  }
+  
+  private async flush() {
+    if (this.buffer.length === 0) return;
+    
+    const records = this.buffer.splice(0);
+    this.currentSizeBytes = 0;
+    
+    // Write to S3/GCS as CSV
+    const s3Key = await this.writeToS3(records);
+    
+    // Bulk load into warehouse
+    await this.bulkLoadFromS3(s3Key);
+  }
+  
+  private async writeToS3(records: any[]): Promise<string> {
+    const csv = this.convertToCSV(records);
+    const key = `etl/${this.table}/${Date.now()}.csv`;
+    
+    await s3.putObject({
+      Bucket: process.env.S3_BUCKET,
+      Key: key,
+      Body: csv,
+      ContentType: 'text/csv'
+    });
+    
+    return key;
+  }
+  
+  private async bulkLoadFromS3(s3Key: string) {
+    if (this.destination === 'snowflake') {
+      await this.loadToSnowflake(s3Key);
+    } else {
+      await this.loadToBigQuery(s3Key);
+    }
+  }
+  
+  private async loadToSnowflake(s3Key: string) {
+    const query = `
+      COPY INTO ${this.table}
+      FROM 's3://${process.env.S3_BUCKET}/${s3Key}'
+      CREDENTIALS = (AWS_KEY_ID='${process.env.AWS_KEY_ID}' AWS_SECRET_KEY='${process.env.AWS_SECRET_KEY}')
+      FILE_FORMAT = (TYPE = 'CSV' SKIP_HEADER = 1)
+      ON_ERROR = 'CONTINUE'
+    `;
+    
+    await snowflake.execute(query);
+  }
+  
+  private async loadToBigQuery(s3Key: string) {
+    // Load from GCS (BigQuery prefers GCS)
+    const gcsKey = await this.copyS3ToGCS(s3Key);
+    
+    await bigquery
+      .dataset('staging')
+      .table(this.table)
+      .load(gcsKey, {
+        sourceFormat: 'CSV',
+        skipLeadingRows: 1,
+        writeDisposition: 'WRITE_APPEND'
+      });
+  }
+  
+  private startFlushTimer() {
+    this.timer = setInterval(() => {
+      this.flush().catch(console.error);
+    }, this.flushInterval);
+  }
+}
+```
+
+#### UPSERT Pattern for Batch Loads
+
+**Snowflake MERGE:**
+```sql
+MERGE INTO users AS target
+USING (
+    SELECT * FROM staging.users_staging
+) AS source
+ON target.id = source.id
+WHEN MATCHED THEN
+    UPDATE SET
+        email = source.email,
+        name = source.name,
+        updated_at = source.updated_at
+WHEN NOT MATCHED THEN
+    INSERT (id, email, name, created_at, updated_at)
+    VALUES (source.id, source.email, source.name, source.created_at, source.updated_at);
+```
+
+**BigQuery MERGE:**
+```sql
+MERGE `project.dataset.users` AS target
+USING `project.dataset.users_staging` AS source
+ON target.id = source.id
+WHEN MATCHED THEN
+    UPDATE SET
+        email = source.email,
+        name = source.name,
+        updated_at = source.updated_at
+WHEN NOT MATCHED THEN
+    INSERT (id, email, name, created_at, updated_at)
+    VALUES (source.id, source.email, source.name, source.created_at, source.updated_at);
+```
+
+### 2. Streaming Load (Real-time)
+
+**For sub-second latency requirements:**
+
+#### Kafka → Warehouse Streaming
+
+**Tool:** Kafka Connect with Snowflake/BigQuery connectors
+
+**Configuration:**
+```json
+{
+  "name": "snowflake-sink",
+  "config": {
+    "connector.class": "com.snowflake.kafka.connector.SnowflakeSinkConnector",
+    "tasks.max": "1",
+    "topics": "users,orders,products",
+    "snowflake.topic2table.map": "users:users,orders:orders,products:products",
+    "snowflake.url.name": "account.snowflakecomputing.com",
+    "snowflake.user.name": "etl_user",
+    "snowflake.private.key": "...",
+    "snowflake.database.name": "analytics",
+    "snowflake.schema.name": "public",
+    "buffer.count.records": "10000",
+    "buffer.flush.time": "60",
+    "buffer.size.bytes": "50000000"
+  }
+}
+```
+
+#### Redis Streams → Warehouse
+
+**For lightweight streaming:**
+```typescript
+// redis-stream-loader.ts
+import { Redis } from 'ioredis';
+
+class RedisStreamLoader {
+  private redis: Redis;
+  private consumerGroup: string;
+  private consumerName: string;
+  
+  async start() {
+    // Create consumer group
+    await this.redis.xgroup(
+      'CREATE',
+      'stream:users',
+      this.consumerGroup,
+      '0',
+      'MKSTREAM'
+    ).catch(() => {}); // Ignore if exists
+    
+    // Start consuming
+    while (true) {
+      const messages = await this.redis.xreadgroup(
+        'GROUP',
+        this.consumerGroup,
+        this.consumerName,
+        'COUNT',
+        '100',
+        'BLOCK',
+        '1000',
+        'STREAMS',
+        'stream:users',
+        '>'
+      );
+      
+      if (messages && messages.length > 0) {
+        await this.processMessages(messages);
+      }
+    }
+  }
+  
+  private async processMessages(messages: any[]) {
+    const records = messages.map(msg => JSON.parse(msg[1][1]));
+    
+    // Batch load to warehouse
+    await this.batchLoader.loadBatch(records);
+    
+    // Acknowledge processing
+    const ids = messages.map(msg => msg[1][0]);
+    await this.redis.xack('stream:users', this.consumerGroup, ...ids);
+  }
+}
+```
+
+---
+
+## Error Handling & Dead Letter Lake
+
+### The Dead Letter Lake Pattern
+
+**⚠️ FAILED RECORDS MUST NOT STOP THE PIPELINE**
+
+All failed records go to S3 (Dead Letter Lake) for later replay and analysis.
+
+**Architecture:**
+```
+Pipeline → Error → Dead Letter Lake (S3) → Replay Queue → Retry
+```
+
+### Implementation
+
+```typescript
+// error-handler.ts
+class ErrorHandler {
+  private s3: AWS.S3;
+  private deadLetterBucket: string;
+  
+  async handleError(
+    record: any,
+    error: Error,
+    context: {
+      connector: string;
+      table: string;
+      stage: 'extract' | 'transform' | 'load';
+    }
+  ) {
+    // Log error
+    console.error(`Error in ${context.stage}:`, error);
+    
+    // Write to Dead Letter Lake
+    const dlqKey = await this.writeToDLQ(record, error, context);
+    
+    // Alert (but don't stop pipeline)
+    await this.alert({
+      severity: 'error',
+      message: `Record failed in ${context.stage}`,
+      dlqKey,
+      error: error.message,
+      context
+    });
+    
+    // Continue processing (don't throw)
+  }
+  
+  private async writeToDLQ(
+    record: any,
+    error: Error,
+    context: any
+  ): Promise<string> {
+    const timestamp = new Date().toISOString();
+    const key = `dlq/${context.connector}/${context.table}/${timestamp}-${uuid()}.json`;
+    
+    const dlqRecord = {
+      record,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      },
+      context,
+      timestamp,
+      retry_count: 0
+    };
+    
+    await this.s3.putObject({
+      Bucket: this.deadLetterBucket,
+      Key: key,
+      Body: JSON.stringify(dlqRecord, null, 2),
+      ContentType: 'application/json',
+      Metadata: {
+        connector: context.connector,
+        table: context.table,
+        stage: context.stage
+      }
+    });
+    
+    return key;
+  }
+}
+
+// Usage in loader
+try {
+  await loader.load(record);
+} catch (error) {
+  await errorHandler.handleError(record, error, {
+    connector: 'salesforce',
+    table: 'users',
+    stage: 'load'
+  });
+  // Continue to next record
+}
+```
+
+### Dead Letter Lake Structure
+
+**S3 Bucket Organization:**
+```
+s3://dead-letter-lake/
+├── salesforce/
+│   ├── users/
+│   │   ├── 2024-01-15T10:30:00Z-abc123.json
+│   │   └── 2024-01-15T10:31:00Z-def456.json
+│   └── orders/
+├── postgres/
+│   └── customers/
+└── api-stripe/
+    └── payments/
+```
+
+### Replay Mechanism
+
+**Replay failed records:**
+```typescript
+// dlq-replay.ts
+class DLQReplay {
+  async replayDLQ(
+    connector: string,
+    table: string,
+    since?: Date
+  ) {
+    // List failed records from S3
+    const records = await this.listDLQRecords(connector, table, since);
+    
+    for (const record of records) {
+      try {
+        // Retry loading
+        await this.loader.load(record.record);
+        
+        // Move to processed (or delete)
+        await this.markAsProcessed(record.key);
+      } catch (error) {
+        // Increment retry count
+        record.retry_count += 1;
+        
+        if (record.retry_count < 3) {
+          // Re-queue for retry
+          await this.requeue(record);
+        } else {
+          // Move to manual review
+          await this.moveToManualReview(record);
+        }
+      }
+    }
+  }
+}
+```
+
+### Error Classification
+
+**Categorize errors for different handling:**
+```typescript
+enum ErrorType {
+  TRANSIENT = 'transient', // Network error, retry
+  SCHEMA = 'schema', // Schema mismatch, alert
+  VALIDATION = 'validation', // Data validation failed, DLQ
+  PERMANENT = 'permanent' // Cannot be fixed, manual review
+}
+
+function classifyError(error: Error): ErrorType {
+  if (error.message.includes('timeout') || error.message.includes('ECONNREFUSED')) {
+    return ErrorType.TRANSIENT;
+  }
+  
+  if (error.message.includes('column') || error.message.includes('schema')) {
+    return ErrorType.SCHEMA;
+  }
+  
+  if (error.message.includes('validation') || error.message.includes('constraint')) {
+    return ErrorType.VALIDATION;
+  }
+  
+  return ErrorType.PERMANENT;
+}
+```
+
+---
+
+## Backpressure & Flow Control
+
+### The Problem
+
+**If the Loader is slower than the Extractor, memory will fill up and the system will crash.**
+
+### Solution: Consumer Groups with Backpressure
+
+**Using Redis Streams:**
+```typescript
+// backpressure-handler.ts
+class BackpressureHandler {
+  private redis: Redis;
+  private maxPendingMessages: number = 1000;
+  private pauseThreshold: number = 800;
+  private resumeThreshold: number = 200;
+  
+  async checkBackpressure(stream: string, consumerGroup: string) {
+    // Check pending messages
+    const pending = await this.redis.xpending(
+      stream,
+      consumerGroup
+    );
+    
+    const pendingCount = parseInt(pending[0] as string);
+    
+    if (pendingCount > this.pauseThreshold) {
+      // Pause extractor
+      await this.pauseExtractor();
+      
+      // Alert
+      await this.alert({
+        severity: 'warning',
+        message: `Backpressure detected: ${pendingCount} pending messages`,
+        stream,
+        action: 'extractor_paused'
+      });
+    } else if (pendingCount < this.resumeThreshold) {
+      // Resume extractor
+      await this.resumeExtractor();
+    }
+    
+    return {
+      pendingCount,
+      status: pendingCount > this.pauseThreshold ? 'paused' : 'active'
+    };
+  }
+  
+  private async pauseExtractor() {
+    // Set flag in Redis
+    await this.redis.set('extractor:paused', 'true', 'EX', 3600);
+  }
+  
+  private async resumeExtractor() {
+    await this.redis.del('extractor:paused');
+  }
+}
+
+// Extractor checks pause flag
+class Extractor {
+  async extract() {
+    const isPaused = await redis.get('extractor:paused');
+    
+    if (isPaused === 'true') {
+      console.log('Extractor paused due to backpressure');
+      await this.sleep(5000); // Wait 5 seconds
+      return; // Skip this cycle
+    }
+    
+    // Continue extraction
+    // ...
+  }
+}
+```
+
+### Kafka Consumer Lag Monitoring
+
+**Monitor consumer lag:**
+```typescript
+// kafka-lag-monitor.ts
+class KafkaLagMonitor {
+  async checkLag(topic: string, consumerGroup: string) {
+    const admin = kafka.admin();
+    
+    const lag = await admin.fetchOffsets({
+      groupId: consumerGroup,
+      topics: [{ topic }]
+    });
+    
+    // Calculate lag per partition
+    const lagDetails = lag.map(partition => ({
+      partition: partition.partition,
+      lag: partition.high - partition.offset
+    }));
+    
+    const totalLag = lagDetails.reduce((sum, p) => sum + p.lag, 0);
+    
+    if (totalLag > 10000) {
+      // Alert and potentially pause
+      await this.handleHighLag(totalLag);
+    }
+    
+    return { totalLag, lagDetails };
+  }
+}
+```
+
+### Adaptive Batching
+
+**Adjust batch size based on processing speed:**
+```typescript
+class AdaptiveBatcher {
+  private currentBatchSize: number = 1000;
+  private minBatchSize: number = 100;
+  private maxBatchSize: number = 10000;
+  private processingTimes: number[] = [];
+  
+  async processBatch(records: any[]) {
+    const start = Date.now();
+    
+    try {
+      await this.loader.loadBatch(records);
+      
+      const duration = Date.now() - start;
+      this.recordProcessingTime(duration, records.length);
+      
+      // Adjust batch size
+      this.adjustBatchSize();
+    } catch (error) {
+      // Reduce batch size on error
+      this.currentBatchSize = Math.max(
+        this.minBatchSize,
+        this.currentBatchSize * 0.5
+      );
+    }
+  }
+  
+  private recordProcessingTime(duration: number, count: number) {
+    const recordsPerSecond = count / (duration / 1000);
+    this.processingTimes.push(recordsPerSecond);
+    
+    // Keep last 10 measurements
+    if (this.processingTimes.length > 10) {
+      this.processingTimes.shift();
+    }
+  }
+  
+  private adjustBatchSize() {
+    const avgThroughput = this.processingTimes.reduce((a, b) => a + b) / this.processingTimes.length;
+    
+    if (avgThroughput > 1000) {
+      // Increase batch size
+      this.currentBatchSize = Math.min(
+        this.maxBatchSize,
+        this.currentBatchSize * 1.2
+      );
+    } else if (avgThroughput < 100) {
+      // Decrease batch size
+      this.currentBatchSize = Math.max(
+        this.minBatchSize,
+        this.currentBatchSize * 0.8
+      );
+    }
+  }
+  
+  getBatchSize(): number {
+    return Math.floor(this.currentBatchSize);
+  }
+}
+```
+
+---
+
+## Monitoring & Observability
+
+### Metrics to Track
+
+**Critical Metrics:**
+1. **Throughput:** Records per second (extract, transform, load)
+2. **Latency:** End-to-end latency (source change → destination)
+3. **Error Rate:** Failed records per hour
+4. **DLQ Size:** Number of records in Dead Letter Lake
+5. **Consumer Lag:** Messages pending processing
+6. **Schema Changes:** New fields detected
+7. **Backpressure Events:** Pause/resume events
+
+### Prometheus Metrics
+
+```typescript
+// metrics.ts
+import { Registry, Counter, Gauge, Histogram } from 'prom-client';
+
+const registry = new Registry();
+
+const recordsExtracted = new Counter({
+  name: 'etl_records_extracted_total',
+  help: 'Total records extracted',
+  labelNames: ['connector', 'table']
+});
+
+const recordsLoaded = new Counter({
+  name: 'etl_records_loaded_total',
+  help: 'Total records loaded',
+  labelNames: ['connector', 'table', 'status']
+});
+
+const loadLatency = new Histogram({
+  name: 'etl_load_latency_seconds',
+  help: 'Load operation latency',
+  labelNames: ['connector', 'table'],
+  buckets: [0.1, 0.5, 1, 5, 10, 30, 60]
+});
+
+const dlqSize = new Gauge({
+  name: 'etl_dlq_size',
+  help: 'Number of records in Dead Letter Lake',
+  labelNames: ['connector', 'table']
+});
+
+const consumerLag = new Gauge({
+  name: 'etl_consumer_lag',
+  help: 'Consumer lag in messages',
+  labelNames: ['stream', 'consumer_group']
+});
+
+registry.registerMetric(recordsExtracted);
+registry.registerMetric(recordsLoaded);
+registry.registerMetric(loadLatency);
+registry.registerMetric(dlqSize);
+registry.registerMetric(consumerLag);
+```
+
+### Logging Strategy
+
+**Structured Logging:**
+```typescript
+// logger.ts
+import winston from 'winston';
+
+const logger = winston.createLogger({
+  format: winston.format.json(),
+  defaultMeta: {
+    service: 'etl-pipeline',
+    environment: process.env.NODE_ENV
+  },
+  transports: [
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: 'etl-error.log', level: 'error' })
+  ]
+});
+
+// Usage
+logger.info('Record extracted', {
+  connector: 'salesforce',
+  table: 'users',
+  recordId: '123',
+  timestamp: new Date().toISOString()
+});
+
+logger.error('Load failed', {
+  connector: 'salesforce',
+  table: 'users',
+  recordId: '123',
+  error: error.message,
+  dlqKey: 's3://...'
+});
+```
+
+### Alerting Rules
+
+**Alert Conditions:**
+```yaml
+# alerting-rules.yml
+groups:
+  - name: etl_alerts
+    rules:
+      - alert: HighErrorRate
+        expr: rate(etl_records_loaded_total{status="error"}[5m]) > 0.1
+        for: 5m
+        annotations:
+          summary: "High error rate in ETL pipeline"
+          
+      - alert: DLQSizeHigh
+        expr: etl_dlq_size > 1000
+        for: 10m
+        annotations:
+          summary: "Dead Letter Queue size is high"
+          
+      - alert: ConsumerLagHigh
+        expr: etl_consumer_lag > 10000
+        for: 5m
+        annotations:
+          summary: "Consumer lag is high - backpressure may be needed"
+          
+      - alert: SchemaChangeDetected
+        expr: increase(etl_schema_changes_total[1h]) > 0
+        annotations:
+          summary: "Schema change detected - review required"
+```
+
+---
+
+## Implementation Patterns
+
+### Complete Pipeline Example
+
+**End-to-end pipeline:**
+```typescript
+// pipeline.ts
+class ETLPipeline {
+  private extractor: WALReader | APIExtractor;
+  private transformer: Transformer;
+  private loader: BatchLoader;
+  private errorHandler: ErrorHandler;
+  private backpressureHandler: BackpressureHandler;
+  
+  async run() {
+    // Start monitoring
+    this.startMonitoring();
+    
+    // Start backpressure checks
+    this.startBackpressureMonitoring();
+    
+    // Main loop
+    while (true) {
+      try {
+        // Check backpressure
+        const backpressure = await this.backpressureHandler.checkBackpressure(
+          'stream:users',
+          'etl-consumers'
+        );
+        
+        if (backpressure.status === 'paused') {
+          await this.sleep(5000);
+          continue;
+        }
+        
+        // Extract
+        const records = await this.extractor.extract();
+        
+        if (records.length === 0) {
+          await this.sleep(1000);
+          continue;
+        }
+        
+        // Transform
+        const transformed = await Promise.all(
+          records.map(r => this.transformer.transform(r))
+        );
+        
+        // Load (with error handling)
+        for (const record of transformed) {
+          try {
+            await this.loader.load(record);
+            metrics.recordsLoaded.inc({ connector: 'postgres', table: 'users', status: 'success' });
+          } catch (error) {
+            await this.errorHandler.handleError(record, error, {
+              connector: 'postgres',
+              table: 'users',
+              stage: 'load'
+            });
+            metrics.recordsLoaded.inc({ connector: 'postgres', table: 'users', status: 'error' });
+          }
+        }
+        
+      } catch (error) {
+        logger.error('Pipeline error', { error: error.message });
+        await this.sleep(5000); // Back off on critical errors
+      }
+    }
+  }
+}
+```
+
+### Connector Pattern
+
+**Reusable connector interface:**
+```typescript
+// connector-interface.ts
+interface Connector {
+  name: string;
+  type: 'cdc' | 'api' | 'file';
+  
+  extract(): Promise<Record[]>;
+  validate(record: Record): boolean;
+  transform(record: Record): Promise<Record>;
+}
+
+// Postgres CDC Connector
+class PostgresCDCConnector implements Connector {
+  name = 'postgres';
+  type = 'cdc' as const;
+  
+  private walReader: WALReader;
+  
+  async extract(): Promise<Record[]> {
+    return this.walReader.readChanges();
+  }
+  
+  validate(record: Record): boolean {
+    return !!record.id && !!record.table;
+  }
+  
+  async transform(record: Record): Promise<Record> {
+    // Transform WAL event to standard format
+    return {
+      id: record.after.id,
+      table: record.source.table,
+      data: record.after,
+      operation: record.op,
+      timestamp: record.ts_ms
+    };
+  }
+}
+
+// Salesforce API Connector
+class SalesforceConnector implements Connector {
+  name = 'salesforce';
+  type = 'api' as const;
+  
+  private apiExtractor: APIExtractor;
+  private rateLimiter: TokenBucket;
+  
+  async extract(): Promise<Record[]> {
+    await this.rateLimiter.waitForToken();
+    return this.apiExtractor.extractAll('/services/data/v52.0/sobjects/User');
+  }
+  
+  validate(record: Record): boolean {
+    return !!record.Id;
+  }
+  
+  async transform(record: Record): Promise<Record> {
+    // Map Salesforce fields to standard format
+    return {
+      id: record.Id,
+      email: record.Email,
+      name: record.Name,
+      // ...
+    };
+  }
+}
+```
+
+### State Management
+
+**Track pipeline state:**
+```typescript
+// state-store.ts
+class StateStore {
+  private redis: Redis;
+  
+  async getLastLSN(connector: string, slot: string): Promise<string | null> {
+    const key = `state:${connector}:${slot}:lsn`;
+    return await this.redis.get(key);
+  }
+  
+  async setLastLSN(connector: string, slot: string, lsn: string) {
+    const key = `state:${connector}:${slot}:lsn`;
+    await this.redis.set(key, lsn);
+  }
+  
+  async getLastSyncTime(connector: string, table: string): Promise<Date | null> {
+    const key = `state:${connector}:${table}:last_sync`;
+    const timestamp = await this.redis.get(key);
+    return timestamp ? new Date(timestamp) : null;
+  }
+  
+  async setLastSyncTime(connector: string, table: string, time: Date) {
+    const key = `state:${connector}:${table}:last_sync`;
+    await this.redis.set(key, time.toISOString());
+  }
+  
+  async getProcessedEventIds(
+    connector: string,
+    windowHours: number = 24
+  ): Promise<Set<string>> {
+    const key = `processed:${connector}:${windowHours}h`;
+    const ids = await this.redis.smembers(key);
+    return new Set(ids);
+  }
+  
+  async markEventProcessed(connector: string, eventId: string, windowHours: number = 24) {
+    const key = `processed:${connector}:${windowHours}h`;
+    await this.redis.sadd(key, eventId);
+    await this.redis.expire(key, windowHours * 60 * 60);
+  }
+}
+```
+
+---
+
+## Summary Checklist
+
+### Extraction
+- [ ] CDC implemented via WAL (not polling)
+- [ ] Replication slots created and managed
+- [ ] API polling uses cursor-based pagination
+- [ ] Rate limiting implemented (Token Bucket)
+- [ ] State tracking (LSN, last sync time)
+
+### Transformation
+- [ ] ELT pattern (Extract → Load → Transform)
+- [ ] Raw layer (Bronze) stores unmodified data
+- [ ] Staging layer (Silver) with validation
+- [ ] Analytics layer (Gold) with business logic
+- [ ] dbt or equivalent SQL transformation tool
+
+### Loading
+- [ ] Batch loading with buffering (10k rows or 50MB)
+- [ ] Bulk load via S3 → COPY INTO (not row-by-row INSERT)
+- [ ] UPSERT logic based on primary key
+- [ ] Streaming option for real-time requirements
+
+### Error Handling
+- [ ] Dead Letter Lake (S3) for failed records
+- [ ] Error classification (transient, schema, validation, permanent)
+- [ ] Replay mechanism for DLQ records
+- [ ] Alerts on errors (but pipeline continues)
+
+### Backpressure
+- [ ] Consumer lag monitoring
+- [ ] Pause extractor when loader is slow
+- [ ] Resume when lag decreases
+- [ ] Adaptive batching based on throughput
+
+### Observability
+- [ ] Metrics (throughput, latency, error rate, DLQ size, lag)
+- [ ] Structured logging
+- [ ] Alerting rules configured
+- [ ] Schema change detection and alerting
+
+### Idempotency
+- [ ] UPSERT on primary key for all loads
+- [ ] Deduplication window (24 hours)
+- [ ] Deterministic transformations
+
+### Schema Evolution
+- [ ] Schema registry or tracking
+- [ ] Auto-migration with alerting
+- [ ] Backward compatibility (NULL for missing fields)
+
+---
+
+**Last Updated:** 2024-01-15
+**Version:** 1.0.0

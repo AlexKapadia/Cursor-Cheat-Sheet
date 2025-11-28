@@ -1,0 +1,1194 @@
+---
+alwaysApply: false
+---
+
+# Google Maps Platform: Source of Truth
+## High-Performance Geospatial Integration Architecture
+
+> **Mission:** Build a production-grade Google Maps integration using the modern stack with cost optimization, GPU-accelerated rendering, and enterprise-level performance.
+
+---
+
+## ⚠️ CRITICAL ARCHITECTURE (THE "MODERN STACK" RULE)
+
+### The "No Legacy" Mandate
+
+**❌ NEVER USE:**
+- `react-google-maps` (abandoned, deprecated)
+- `google-map-react` (community fork, not officially supported)
+- Legacy `Marker` class (CPU-rendered, limited customization)
+
+**✅ ALWAYS USE:**
+- **`@vis.gl/react-google-maps`** - Official Google library for React
+- **`AdvancedMarker`** with `PinElement` - GPU-accelerated, HTML/Tailwind support
+- **Session Tokens** for Places API - Prevents 10x cost multiplier
+
+### The Cost Control Rule
+
+**⚠️ CRITICAL:** Without Session Tokens, a user typing "New Y... New Yo... New York" generates 10+ API calls. With Session Tokens, it's **1 call total**.
+
+**The Pattern:**
+1. Generate `sessionToken` once per search session
+2. Pass it to **every** `getPlacePredictions` call
+3. Pass the **same** token to the final `getDetails` call
+4. **Result:** Google charges for 1 request, not 11
+
+---
+
+## PHASE 1: THE FOUNDATION (`APIProvider`)
+
+### Loading the Script Without Blocking
+
+The Google Maps script must load asynchronously and not block the main thread. The `APIProvider` component handles this.
+
+### 1. The Provider Configuration
+
+**Component Structure:**
+
+```tsx
+// app/layout.tsx or _app.tsx
+import { APIProvider } from '@vis.gl/react-google-maps';
+
+export default function RootLayout({ children }) {
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+
+  if (!apiKey) {
+    throw new Error('NEXT_PUBLIC_GOOGLE_MAPS_KEY is not set');
+  }
+
+  return (
+    <APIProvider
+      apiKey={apiKey}
+      libraries={['places', 'geometry', 'drawing']}
+      onLoad={() => console.log('Google Maps API loaded')}
+      onError={(error) => console.error('Google Maps API error:', error)}
+    >
+      {children}
+    </APIProvider>
+  );
+}
+```
+
+**Key Points:**
+- **Libraries:** Only load what you need. Common: `['places', 'geometry', 'drawing']`
+- **Async Loading:** The script loads in the background, non-blocking
+- **Error Handling:** Always provide `onError` callback
+
+### 2. Environment Variables
+
+**.env.local:**
+
+```bash
+NEXT_PUBLIC_GOOGLE_MAPS_KEY=your_api_key_here
+```
+
+**Security Configuration (Google Cloud Console):**
+
+1. Go to **APIs & Services > Credentials**
+2. Click your API key
+3. Under **Application restrictions**, select **HTTP referrers (web sites)**
+4. Add your domains:
+   - `localhost:3000/*` (development)
+   - `yourdomain.com/*` (production)
+   - `*.yourdomain.com/*` (subdomains)
+
+**⚠️ NEVER commit API keys to version control. Use environment variables only.**
+
+---
+
+## PHASE 2: THE MAP COMPONENT (INTERACTION)
+
+### Controlling the Viewport
+
+The map component must manage camera state (center, zoom, heading, tilt) and sync with URL state for shareable links.
+
+### 1. The `ControlledMap` Component
+
+**State Management Pattern:**
+
+```tsx
+'use client';
+
+import { Map, useMap } from '@vis.gl/react-google-maps';
+import { useState, useCallback, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+
+interface CameraProps {
+  center: { lat: number; lng: number };
+  zoom: number;
+  heading?: number;
+  tilt?: number;
+}
+
+export function ControlledMap({ initialCenter, initialZoom }) {
+  const [cameraProps, setCameraProps] = useState<CameraProps>({
+    center: initialCenter || { lat: 40.7128, lng: -74.0060 },
+    zoom: initialZoom || 12,
+  });
+
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // Debounce URL updates - only update on camera idle
+  const handleCameraIdle = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('lat', cameraProps.center.lat.toString());
+    params.set('lng', cameraProps.center.lng.toString());
+    params.set('zoom', cameraProps.zoom.toString());
+    
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }, [cameraProps, searchParams, router]);
+
+  // Sync URL params on mount
+  useEffect(() => {
+    const lat = searchParams.get('lat');
+    const lng = searchParams.get('lng');
+    const zoom = searchParams.get('zoom');
+
+    if (lat && lng && zoom) {
+      setCameraProps({
+        center: { lat: parseFloat(lat), lng: parseFloat(lng) },
+        zoom: parseFloat(zoom),
+      });
+    }
+  }, []);
+
+  return (
+    <Map
+      mapId="your-vector-map-id"
+      defaultCenter={cameraProps.center}
+      defaultZoom={cameraProps.zoom}
+      onCameraChanged={(ev) => {
+        if (ev.detail) {
+          setCameraProps({
+            center: {
+              lat: ev.detail.center.lat,
+              lng: ev.detail.center.lng,
+            },
+            zoom: ev.detail.zoom,
+            heading: ev.detail.heading,
+            tilt: ev.detail.tilt,
+          });
+        }
+      }}
+      onIdle={handleCameraIdle}
+      style={{ width: '100%', height: '100%' }}
+      gestureHandling="greedy"
+      disableDefaultUI={false}
+      mapTypeControl={false}
+      fullscreenControl={true}
+      zoomControl={true}
+      streetViewControl={false}
+    />
+  );
+}
+```
+
+**Key Features:**
+- **Debounced Updates:** URL state only updates `onCameraIdle`, not on every pixel drag
+- **Shareable Links:** URL params allow users to share specific map views
+- **Gesture Handling:** `greedy` allows one-finger pan on mobile
+
+### 2. Map Styling (The "SaaS" Look)
+
+**Vector Map ID Setup:**
+
+1. Go to **Google Cloud Console > Maps > Map Styles**
+2. Create a new **Vector Map Style**
+3. Copy the **Map ID** (format: `xxxxxxxxxxxxxxxx`)
+4. Use this ID in the `mapId` prop
+
+**JSON Styling (Dark Mode - Cyber UI Theme):**
+
+This style matches the `data-driven-cyber-ui.mdc` color palette:
+
+```json
+[
+  {
+    "featureType": "all",
+    "elementType": "geometry",
+    "stylers": [
+      { "color": "#0A0A0A" }
+    ]
+  },
+  {
+    "featureType": "all",
+    "elementType": "labels.text.fill",
+    "stylers": [
+      { "color": "#FFFFFF" },
+      { "opacity": 0.7 }
+    ]
+  },
+  {
+    "featureType": "all",
+    "elementType": "labels.text.stroke",
+    "stylers": [
+      { "color": "#050505" },
+      { "opacity": 0.8 }
+    ]
+  },
+  {
+    "featureType": "water",
+    "elementType": "geometry",
+    "stylers": [
+      { "color": "#0F0F0F" }
+    ]
+  },
+  {
+    "featureType": "road",
+    "elementType": "geometry",
+    "stylers": [
+      { "color": "#1A1A1A" }
+    ]
+  },
+  {
+    "featureType": "road",
+    "elementType": "labels.text.fill",
+    "stylers": [
+      { "color": "#FFFFFF" },
+      { "opacity": 0.5 }
+    ]
+  },
+  {
+    "featureType": "poi",
+    "stylers": [
+      { "visibility": "off" }
+    ]
+  },
+  {
+    "featureType": "poi.business",
+    "stylers": [
+      { "visibility": "off" }
+    ]
+  },
+  {
+    "featureType": "poi.school",
+    "stylers": [
+      { "visibility": "off" }
+    ]
+  },
+  {
+    "featureType": "poi.place_of_worship",
+    "stylers": [
+      { "visibility": "off" }
+    ]
+  },
+  {
+    "featureType": "transit",
+    "elementType": "geometry",
+    "stylers": [
+      { "color": "#1A1A1A" }
+    ]
+  }
+]
+```
+
+**Applying JSON Styles:**
+
+```tsx
+import { Map } from '@vis.gl/react-google-maps';
+import darkModeStyles from './map-styles.json';
+
+<Map
+  mapId="your-vector-map-id"
+  defaultCenter={{ lat: 40.7128, lng: -74.0060 }}
+  defaultZoom={12}
+  styles={darkModeStyles}
+/>
+```
+
+**Why Remove POIs:**
+- **Cleaner UI:** Removes visual clutter (businesses, schools, etc.)
+- **Performance:** Fewer elements to render
+- **Professional Look:** Matches SaaS application aesthetics
+
+### 3. Hooks Access
+
+**The `useMap()` Hook:**
+
+Access the imperative `google.maps.Map` instance for advanced operations:
+
+```tsx
+import { useMap } from '@vis.gl/react-google-maps';
+
+function FitBoundsButton({ markers }) {
+  const map = useMap();
+
+  const handleFitBounds = () => {
+    if (!map || !markers.length) return;
+
+    const bounds = getBoundsFromMarkers(markers);
+    map.fitBounds(bounds, {
+      padding: 100, // pixels
+    });
+  };
+
+  return (
+    <button
+      onClick={handleFitBounds}
+      className="px-4 py-2 bg-console border border-border-dim text-white"
+    >
+      Fit to Markers
+    </button>
+  );
+}
+```
+
+---
+
+## PHASE 3: DATA VISUALIZATION (MARKERS & CLUSTERS)
+
+### Rendering 10,000 Points Without Crashing
+
+The `AdvancedMarker` API enables GPU-accelerated rendering and custom HTML content.
+
+### 1. The `AdvancedMarker` Component
+
+**Basic Usage:**
+
+```tsx
+import { AdvancedMarker, PinElement } from '@vis.gl/react-google-maps';
+
+interface MarkerData {
+  id: string;
+  position: { lat: number; lng: number };
+  price?: number;
+  status?: 'active' | 'pending' | 'sold';
+}
+
+export function CustomMarker({ marker }: { marker: MarkerData }) {
+  return (
+    <AdvancedMarker
+      position={marker.position}
+      onClick={() => console.log('Marker clicked:', marker.id)}
+      zIndex={marker.status === 'active' ? 1000 : 100}
+    >
+      <PinElement
+        background="#00FF94"
+        borderColor="#00D4FF"
+        glyphColor="#050505"
+        scale={1.2}
+      />
+    </AdvancedMarker>
+  );
+}
+```
+
+**Tailwind Markers (Custom HTML Content):**
+
+Instead of using `PinElement`, render custom React components with Tailwind:
+
+```tsx
+import { AdvancedMarker } from '@vis.gl/react-google-maps';
+
+export function PricePillMarker({ marker }: { marker: MarkerData }) {
+  const [isSelected, setIsSelected] = useState(false);
+
+  return (
+    <AdvancedMarker
+      position={marker.position}
+      onClick={() => setIsSelected(!isSelected)}
+      zIndex={isSelected ? 1000 : 100}
+      collisionBehavior="REQUIRED"
+    >
+      <div
+        className={`
+          bg-console border border-border-bright rounded-full px-3 py-1.5
+          shadow-lg transition-all duration-200
+          ${isSelected ? 'scale-110 border-accent-success glow-success' : ''}
+        `}
+      >
+        <span className="text-white text-sm font-mono font-mono-weight-bold">
+          ${(marker.price / 1000).toFixed(0)}k
+        </span>
+      </div>
+    </AdvancedMarker>
+  );
+}
+```
+
+**Event Handling:**
+
+```tsx
+<AdvancedMarker
+  position={marker.position}
+  onClick={(e) => {
+    // e.gmp-click event
+    console.log('Marker clicked:', marker.id);
+    onMarkerClick(marker);
+  }}
+  onMouseEnter={(e) => {
+    // Hover effect
+    setHoveredMarker(marker.id);
+  }}
+  onMouseLeave={() => {
+    setHoveredMarker(null);
+  }}
+>
+  {/* Marker content */}
+</AdvancedMarker>
+```
+
+**The "Ghost" Fix (Collision Behavior):**
+
+Prevent overlapping labels with `collisionBehavior`:
+
+```tsx
+<AdvancedMarker
+  position={marker.position}
+  collisionBehavior="REQUIRED_AND_HIDES_OPTIONAL"
+  // Options:
+  // - "REQUIRED" - Always show, hide others if needed
+  // - "REQUIRED_AND_HIDES_OPTIONAL" - Show this, hide optional markers
+  // - "OPTIONAL_AND_HIDES_LOWER_PRIORITY" - Hide if conflicts with higher priority
+>
+  <div className="bg-console border border-border-dim px-2 py-1">
+    {marker.label}
+  </div>
+</AdvancedMarker>
+```
+
+**Priority System:**
+
+```tsx
+// High-priority markers (always visible)
+<AdvancedMarker
+  collisionBehavior="REQUIRED"
+  zIndex={1000}
+>
+  {/* Important marker */}
+</AdvancedMarker>
+
+// Low-priority markers (hide if conflicts)
+<AdvancedMarker
+  collisionBehavior="OPTIONAL_AND_HIDES_LOWER_PRIORITY"
+  zIndex={100}
+>
+  {/* Less important marker */}
+</AdvancedMarker>
+```
+
+### 2. Clustering (`supercluster`)
+
+**Problem:** Google's default clustering is limited and doesn't match modern UI designs.
+
+**Solution:** Use `supercluster` (algorithm) + `useGoogleMapMarkerClusterer` (hook).
+
+**Installation:**
+
+```bash
+npm install supercluster
+```
+
+**Implementation:**
+
+```tsx
+'use client';
+
+import { useMemo } from 'react';
+import { useMap, AdvancedMarker } from '@vis.gl/react-google-maps';
+import { useGoogleMapMarkerClusterer } from '@vis.gl/react-google-maps/hooks';
+import Supercluster from 'supercluster';
+
+interface MarkerPoint {
+  id: string;
+  position: { lat: number; lng: number };
+  data: any;
+}
+
+export function ClusteredMarkers({ markers }: { markers: MarkerPoint[] }) {
+  const map = useMap();
+
+  // Convert markers to GeoJSON format
+  const points = useMemo(() => {
+    return markers.map((marker) => ({
+      type: 'Feature' as const,
+      geometry: {
+        type: 'Point' as const,
+        coordinates: [marker.position.lng, marker.position.lat],
+      },
+      properties: {
+        id: marker.id,
+        data: marker.data,
+      },
+    }));
+  }, [markers]);
+
+  // Initialize supercluster
+  const clusterer = useMemo(() => {
+    return new Supercluster({
+      radius: 60, // pixels
+      maxZoom: 15,
+      minZoom: 0,
+      minPoints: 2, // Minimum points to form a cluster
+    });
+  }, []);
+
+  // Load points into clusterer
+  useMemo(() => {
+    if (map) {
+      const bounds = map.getBounds();
+      if (bounds) {
+        const bbox: [number, number, number, number] = [
+          bounds.getSouthWest().lng(),
+          bounds.getSouthWest().lat(),
+          bounds.getNorthEast().lng(),
+          bounds.getNorthEast().lat(),
+        ];
+        clusterer.load(points);
+        return clusterer.getClusters(bbox, Math.floor(map.getZoom() || 12));
+      }
+    }
+    return [];
+  }, [points, map, clusterer]);
+
+  // Use the hook to render clusters
+  const { clusters } = useGoogleMapMarkerClusterer({
+    map,
+    algorithm: clusterer,
+    onClusterClick: (cluster) => {
+      const expansionZoom = Math.min(
+        clusterer.getClusterExpansionZoom(cluster.id),
+        20
+      );
+      map.setZoom(expansionZoom);
+      map.setCenter({
+        lat: cluster.geometry.coordinates[1],
+        lng: cluster.geometry.coordinates[0],
+      });
+    },
+  });
+
+  return (
+    <>
+      {clusters.map((cluster) => {
+        const [lng, lat] = cluster.geometry.coordinates;
+        const isCluster = cluster.properties?.cluster;
+
+        if (isCluster) {
+          // Render cluster marker
+          const pointCount = cluster.properties.point_count;
+          return (
+            <AdvancedMarker
+              key={cluster.id}
+              position={{ lat, lng }}
+              zIndex={Number(cluster.properties.point_count)}
+            >
+              <div className="bg-accent-success border border-border-bright rounded-full w-12 h-12 flex items-center justify-center shadow-lg glow-success">
+                <span className="text-console font-mono font-mono-weight-bold text-sm">
+                  {pointCount}
+                </span>
+              </div>
+            </AdvancedMarker>
+          );
+        }
+
+        // Render individual marker
+        const markerData = cluster.properties.data;
+        return (
+          <AdvancedMarker
+            key={cluster.id}
+            position={{ lat, lng }}
+            zIndex={100}
+          >
+            {/* Your custom marker component */}
+            <PricePillMarker marker={markerData} />
+          </AdvancedMarker>
+        );
+      })}
+    </>
+  );
+}
+```
+
+**Custom Cluster Styling (Brand Colors):**
+
+```tsx
+// Cluster marker with brand colors
+<div className={`
+  rounded-full w-14 h-14 flex items-center justify-center
+  border-2 border-border-bright shadow-lg
+  ${
+    pointCount > 50
+      ? 'bg-accent-alert glow-alert'
+      : pointCount > 20
+      ? 'bg-accent-warning glow-warning'
+      : 'bg-accent-info glow-info'
+  }
+`}>
+  <span className="text-console font-mono font-mono-weight-bold text-base">
+    {pointCount}
+  </span>
+</div>
+```
+
+---
+
+## PHASE 4: PLACES API (SEARCH & AUTOCOMPLETE)
+
+### The Search Bar with Session Tokens
+
+**⚠️ CRITICAL:** Without Session Tokens, costs are 10x higher.
+
+### 1. The Session Token Pattern
+
+**How It Works:**
+
+1. User starts typing → Generate `sessionToken`
+2. Each keystroke → Call `getPlacePredictions` with **same** token
+3. User selects result → Call `getDetails` with **same** token
+4. **Result:** Google charges for 1 request, not N requests
+
+**Implementation:**
+
+```tsx
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { usePlacesLibrary } from '@vis.gl/react-google-maps';
+import { useDebounce } from '@/hooks/useDebounce';
+
+interface PlacePrediction {
+  place_id: string;
+  description: string;
+  structured_formatting: {
+    main_text: string;
+    secondary_text: string;
+  };
+}
+
+export function PlacesAutocomplete() {
+  const placesLibrary = usePlacesLibrary();
+  const [inputValue, setInputValue] = useState('');
+  const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const sessionTokenRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
+
+  // Generate session token once per search session
+  const getSessionToken = useCallback(() => {
+    if (!sessionTokenRef.current && placesLibrary) {
+      sessionTokenRef.current = new placesLibrary.AutocompleteSessionToken();
+    }
+    return sessionTokenRef.current;
+  }, [placesLibrary]);
+
+  // Reset session token after place selection
+  const resetSessionToken = useCallback(() => {
+    sessionTokenRef.current = null;
+  }, []);
+
+  // Debounce input (300ms)
+  const debouncedInput = useDebounce(inputValue, 300);
+
+  // Fetch predictions
+  useEffect(() => {
+    if (!placesLibrary || !debouncedInput.trim()) {
+      setPredictions([]);
+      return;
+    }
+
+    const autocompleteService = new placesLibrary.AutocompleteService();
+    const token = getSessionToken();
+
+    setIsLoading(true);
+
+    autocompleteService.getPlacePredictions(
+      {
+        input: debouncedInput,
+        sessionToken: token, // ⚠️ CRITICAL: Pass session token
+        types: ['(cities)'], // Optional: restrict to cities
+        componentRestrictions: { country: 'us' }, // Optional: restrict to country
+      },
+      (results, status) => {
+        setIsLoading(false);
+
+        if (status === placesLibrary.PlacesServiceStatus.OK && results) {
+          setPredictions(results);
+        } else {
+          setPredictions([]);
+        }
+      }
+    );
+  }, [debouncedInput, placesLibrary, getSessionToken]);
+
+  // Handle place selection
+  const handlePlaceSelect = useCallback(
+    async (prediction: PlacePrediction) => {
+      if (!placesLibrary) return;
+
+      const placesService = new placesLibrary.PlacesService(
+        document.createElement('div') // Dummy element (not used)
+      );
+
+      const token = getSessionToken(); // ⚠️ CRITICAL: Use same token
+
+      placesService.getDetails(
+        {
+          placeId: prediction.place_id,
+          sessionToken: token, // ⚠️ CRITICAL: Pass same token
+          fields: [
+            'geometry',
+            'name',
+            'formatted_address',
+            'place_id',
+            'types',
+          ],
+        },
+        (place, status) => {
+          if (status === placesLibrary.PlacesServiceStatus.OK && place) {
+            // Handle selected place
+            console.log('Selected place:', place);
+            
+            // Reset session token after selection
+            resetSessionToken();
+            setInputValue('');
+            setPredictions([]);
+          }
+        }
+      );
+    },
+    [placesLibrary, getSessionToken, resetSessionToken]
+  );
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        placeholder="Search places..."
+        className="w-full px-4 py-2 bg-panel border border-border-dim text-white placeholder:text-text-muted"
+      />
+
+      {isLoading && (
+        <div className="absolute top-full left-0 right-0 bg-panel border border-border-dim p-2">
+          <span className="text-text-secondary text-sm">Loading...</span>
+        </div>
+      )}
+
+      {predictions.length > 0 && (
+        <ul className="absolute top-full left-0 right-0 bg-panel border border-border-dim mt-1 max-h-60 overflow-y-auto">
+          {predictions.map((prediction) => (
+            <li
+              key={prediction.place_id}
+              onClick={() => handlePlaceSelect(prediction)}
+              className="px-4 py-2 hover:bg-overlay cursor-pointer border-b border-border-dim last:border-b-0"
+            >
+              <div className="text-white font-weight-heading">
+                {prediction.structured_formatting.main_text}
+              </div>
+              <div className="text-text-secondary text-sm">
+                {prediction.structured_formatting.secondary_text}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+```
+
+**Custom Hook: `usePlacesAutocomplete`**
+
+```tsx
+// hooks/usePlacesAutocomplete.ts
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { usePlacesLibrary } from '@vis.gl/react-google-maps';
+
+interface UsePlacesAutocompleteOptions {
+  debounceMs?: number;
+  types?: string[];
+  componentRestrictions?: { country?: string };
+}
+
+export function usePlacesAutocomplete(
+  input: string,
+  options: UsePlacesAutocompleteOptions = {}
+) {
+  const {
+    debounceMs = 300,
+    types,
+    componentRestrictions,
+  } = options;
+
+  const placesLibrary = usePlacesLibrary();
+  const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const sessionTokenRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout>();
+
+  const getSessionToken = useCallback(() => {
+    if (!sessionTokenRef.current && placesLibrary) {
+      sessionTokenRef.current = new placesLibrary.AutocompleteSessionToken();
+    }
+    return sessionTokenRef.current;
+  }, [placesLibrary]);
+
+  const resetSessionToken = useCallback(() => {
+    sessionTokenRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    if (!placesLibrary || !input.trim()) {
+      setPredictions([]);
+      setIsLoading(false);
+      return;
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      const autocompleteService = new placesLibrary.AutocompleteService();
+      const token = getSessionToken();
+
+      setIsLoading(true);
+
+      autocompleteService.getPlacePredictions(
+        {
+          input,
+          sessionToken: token,
+          types,
+          componentRestrictions,
+        },
+        (results, status) => {
+          setIsLoading(false);
+
+          if (status === placesLibrary.PlacesServiceStatus.OK && results) {
+            setPredictions(results);
+          } else {
+            setPredictions([]);
+          }
+        }
+      );
+    }, debounceMs);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [input, placesLibrary, debounceMs, types, componentRestrictions, getSessionToken]);
+
+  const getPlaceDetails = useCallback(
+    async (
+      placeId: string,
+      fields: string[] = ['geometry', 'name', 'formatted_address']
+    ): Promise<google.maps.places.PlaceResult | null> => {
+      if (!placesLibrary) return null;
+
+      return new Promise((resolve) => {
+        const placesService = new placesLibrary.PlacesService(
+          document.createElement('div')
+        );
+
+        const token = getSessionToken();
+
+        placesService.getDetails(
+          {
+            placeId,
+            sessionToken: token,
+            fields,
+          },
+          (place, status) => {
+            if (status === placesLibrary.PlacesServiceStatus.OK && place) {
+              resetSessionToken();
+              resolve(place);
+            } else {
+              resolve(null);
+            }
+          }
+        );
+      });
+    },
+    [placesLibrary, getSessionToken, resetSessionToken]
+  );
+
+  return {
+    predictions,
+    isLoading,
+    getPlaceDetails,
+    resetSessionToken,
+  };
+}
+```
+
+**Usage:**
+
+```tsx
+function SearchBar() {
+  const [input, setInput] = useState('');
+  const { predictions, isLoading, getPlaceDetails } = usePlacesAutocomplete(input, {
+    debounceMs: 300,
+    types: ['(cities)'],
+  });
+
+  const handleSelect = async (prediction: PlacePrediction) => {
+    const place = await getPlaceDetails(prediction.place_id);
+    if (place) {
+      // Handle place selection
+      console.log('Selected:', place);
+    }
+  };
+
+  return (
+    // ... JSX
+  );
+}
+```
+
+---
+
+## PHASE 5: UTILITY FUNCTIONS & BEST PRACTICES
+
+### 1. The "Bounds" Utility
+
+Calculate `LatLngBounds` from an array of markers to auto-zoom the map:
+
+```tsx
+// utils/map-utils.ts
+import { LatLngBounds } from '@vis.gl/react-google-maps';
+
+interface MarkerPosition {
+  lat: number;
+  lng: number;
+}
+
+/**
+ * Calculate bounds from an array of marker positions
+ * @param markers Array of marker positions
+ * @param padding Optional padding in degrees (default: 0.01)
+ * @returns LatLngBounds object
+ */
+export function getBoundsFromMarkers(
+  markers: MarkerPosition[],
+  padding: number = 0.01
+): google.maps.LatLngBounds {
+  if (!markers || markers.length === 0) {
+    // Default bounds (New York City)
+    return new google.maps.LatLngBounds(
+      { lat: 40.4774, lng: -74.2591 },
+      { lat: 40.9176, lng: -73.7004 }
+    );
+  }
+
+  if (markers.length === 1) {
+    // Single marker: create bounds with padding
+    const { lat, lng } = markers[0];
+    return new google.maps.LatLngBounds(
+      { lat: lat - padding, lng: lng - padding },
+      { lat: lat + padding, lng: lng + padding }
+    );
+  }
+
+  // Multiple markers: find min/max
+  let minLat = markers[0].lat;
+  let maxLat = markers[0].lat;
+  let minLng = markers[0].lng;
+  let maxLng = markers[0].lng;
+
+  markers.forEach((marker) => {
+    minLat = Math.min(minLat, marker.lat);
+    maxLat = Math.max(maxLat, marker.lat);
+    minLng = Math.min(minLng, marker.lng);
+    maxLng = Math.max(maxLng, marker.lng);
+  });
+
+  // Add padding
+  const latPadding = (maxLat - minLat) * padding + padding;
+  const lngPadding = (maxLng - minLng) * padding + padding;
+
+  return new google.maps.LatLngBounds(
+    { lat: minLat - latPadding, lng: minLng - lngPadding },
+    { lat: maxLat + latPadding, lng: maxLng + lngPadding }
+  );
+}
+
+/**
+ * Fit map to markers with optional padding
+ */
+export function fitMapToMarkers(
+  map: google.maps.Map,
+  markers: MarkerPosition[],
+  paddingPixels: number = 100
+): void {
+  if (!map || !markers.length) return;
+
+  const bounds = getBoundsFromMarkers(markers);
+  map.fitBounds(bounds, { padding: paddingPixels });
+}
+```
+
+**Usage:**
+
+```tsx
+import { useMap } from '@vis.gl/react-google-maps';
+import { fitMapToMarkers } from '@/utils/map-utils';
+
+function MapContainer({ markers }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (map && markers.length > 0) {
+      fitMapToMarkers(map, markers, 100);
+    }
+  }, [map, markers]);
+
+  return (
+    // ... map JSX
+  );
+}
+```
+
+### 2. Performance Optimization
+
+**Marker Rendering Optimization:**
+
+```tsx
+// Only render markers in viewport
+import { useMap } from '@vis.gl/react-google-maps';
+import { useMemo } from 'react';
+
+function OptimizedMarkers({ allMarkers }) {
+  const map = useMap();
+  const [bounds, setBounds] = useState<google.maps.LatLngBounds | null>(null);
+
+  useEffect(() => {
+    if (!map) return;
+
+    const updateBounds = () => {
+      const mapBounds = map.getBounds();
+      if (mapBounds) {
+        setBounds(mapBounds);
+      }
+    };
+
+    updateBounds();
+    map.addListener('bounds_changed', updateBounds);
+
+    return () => {
+      google.maps.event.clearListeners(map, 'bounds_changed');
+    };
+  }, [map]);
+
+  // Filter markers to only those in viewport
+  const visibleMarkers = useMemo(() => {
+    if (!bounds) return allMarkers;
+
+    return allMarkers.filter((marker) => {
+      return bounds.contains({
+        lat: marker.position.lat,
+        lng: marker.position.lng,
+      });
+    });
+  }, [allMarkers, bounds]);
+
+  return (
+    <>
+      {visibleMarkers.map((marker) => (
+        <AdvancedMarker key={marker.id} position={marker.position}>
+          {/* Marker content */}
+        </AdvancedMarker>
+      ))}
+    </>
+  );
+}
+```
+
+### 3. Error Handling
+
+```tsx
+// Error boundary for map components
+'use client';
+
+import { Component, ReactNode } from 'react';
+
+interface Props {
+  children: ReactNode;
+}
+
+interface State {
+  hasError: boolean;
+  error?: Error;
+}
+
+export class MapErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error('Map error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center h-full bg-console border border-border-dim">
+          <div className="text-center">
+            <div className="text-accent-alert text-lg mb-2">Map Error</div>
+            <div className="text-text-secondary text-sm">
+              {this.state.error?.message || 'Failed to load map'}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+```
+
+---
+
+## SUMMARY: THE COMPLETE STACK
+
+### Installation
+
+```bash
+npm install @vis.gl/react-google-maps supercluster
+```
+
+### File Structure
+
+```
+app/
+  layout.tsx              # APIProvider wrapper
+  map/
+    page.tsx              # Map page
+    components/
+      ControlledMap.tsx   # Main map component
+      ClusteredMarkers.tsx # Marker clustering
+      PlacesAutocomplete.tsx # Search bar
+    hooks/
+      usePlacesAutocomplete.ts # Places API hook
+  utils/
+    map-utils.ts          # Bounds, utilities
+```
+
+### Key Takeaways
+
+1. **Always use `@vis.gl/react-google-maps`** - Official, modern library
+2. **Always use `AdvancedMarker`** - GPU-accelerated, HTML/Tailwind support
+3. **Always use Session Tokens** - Prevents 10x cost multiplier
+4. **Debounce camera updates** - Only update URL state `onCameraIdle`
+5. **Use Vector Map IDs** - Enable tilt/rotation and custom styling
+6. **Remove POIs** - Cleaner, more professional look
+7. **Implement clustering** - Handle 10,000+ markers efficiently
+8. **Use `collisionBehavior`** - Prevent overlapping labels
+
+---
+
+**Last Updated:** 2025
+
+**Version:** 1.0.0
+
+**Compatibility:** React 18+, Next.js 13+ (App Router), TypeScript 5+

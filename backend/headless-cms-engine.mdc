@@ -1,0 +1,1462 @@
+---
+alwaysApply: false
+---
+
+## Critical Architecture Principles
+
+### The "Preview" Rule
+
+**⚠️ DRAFT OVERLAY FOR EDITORS**
+
+The site must detect if the user is an Editor. If yes, fetch `draft` content and enable "Visual Editing" (overlays).
+
+- **Editor Detection:** Check for Sanity authentication token or session
+- **Draft Fetching:** Use `draft` dataset or `_id` with `drafts.` prefix
+- **Visual Editing:** Wrap components in `<VisualEditing />` loader from `@sanity/visual-editing/next-pages-router`
+- **Source Maps:** Add `data-sanity={encodeSourceMap(path)}` attributes to DOM elements
+
+### GROQ over GraphQL
+
+**⚠️ ALWAYS USE GROQ (Graph-Relational Object Queries)**
+
+We use GROQ for its powerful projection capabilities. Do not use GraphQL.
+
+- **Projections:** Fetch exactly what components need, never `...all`
+- **References:** Use `->` for dereferencing document references
+- **Arrays:** Use `[]` for array operations and filtering
+- **Conditionals:** Use `select()` for conditional fields
+
+### Portable Text (Not HTML)
+
+**⚠️ NEVER STORE HTML IN SANITY**
+
+Store structured content as Portable Text and write a custom React Serializer to render it.
+
+- **Rich Text:** Use Portable Text blocks with marks and annotations
+- **Custom Serializers:** Map block types to React components
+- **Links:** Use annotations for internal/external links
+- **Media Embeds:** Use custom block types for video, audio, etc.
+
+---
+
+## Phase 1: Schema Definition (Code-First)
+
+### Project Structure
+
+```
+sanity/
+├── schemas/
+│   ├── documents/
+│   │   ├── page.ts
+│   │   └── settings.ts
+│   ├── modules/
+│   │   ├── hero.ts
+│   │   ├── featureGrid.ts
+│   │   ├── bentoGrid.ts
+│   │   └── pricingTable.ts
+│   ├── objects/
+│   │   ├── seo.ts
+│   │   ├── navigation.ts
+│   │   └── portableText.ts
+│   └── index.ts
+├── lib/
+│   ├── client.ts
+│   └── image.ts
+└── sanity.config.ts
+```
+
+### 1. Core Documents
+
+#### `page` Document
+
+Dynamic landing pages with modular sections.
+
+```typescript
+// schemas/documents/page.ts
+import { defineField, defineType } from 'sanity'
+
+export default defineType({
+  name: 'page',
+  title: 'Page',
+  type: 'document',
+  fields: [
+    defineField({
+      name: 'title',
+      title: 'Title',
+      type: 'string',
+      validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: 'slug',
+      title: 'Slug',
+      type: 'slug',
+      options: {
+        source: 'title',
+        maxLength: 96,
+      },
+      validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: 'seo',
+      title: 'SEO',
+      type: 'seo',
+    }),
+    defineField({
+      name: 'sections',
+      title: 'Sections',
+      type: 'array',
+      of: [
+        { type: 'hero' },
+        { type: 'featureGrid' },
+        { type: 'bentoGrid' },
+        { type: 'pricingTable' },
+      ],
+    }),
+  ],
+  preview: {
+    select: {
+      title: 'title',
+      subtitle: 'slug.current',
+    },
+  },
+})
+```
+
+#### `module` Types (The Builder Pattern)
+
+A "Page" is just an array of Modules. Marketing teams can reorder sections without developer help.
+
+**Hero Module:**
+
+```typescript
+// schemas/modules/hero.ts
+import { defineField, defineType } from 'sanity'
+
+export default defineType({
+  name: 'hero',
+  title: 'Hero',
+  type: 'object',
+  fields: [
+    defineField({
+      name: 'headline',
+      title: 'Headline',
+      type: 'string',
+      validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: 'subheadline',
+      title: 'Subheadline',
+      type: 'text',
+    }),
+    defineField({
+      name: 'backgroundImage',
+      title: 'Background Image',
+      type: 'image',
+      options: {
+        hotspot: true,
+      },
+    }),
+    defineField({
+      name: 'cta',
+      title: 'Call to Action',
+      type: 'object',
+      fields: [
+        defineField({
+          name: 'text',
+          title: 'Text',
+          type: 'string',
+        }),
+        defineField({
+          name: 'link',
+          title: 'Link',
+          type: 'url',
+        }),
+      ],
+    }),
+  ],
+  preview: {
+    select: {
+      title: 'headline',
+      media: 'backgroundImage',
+    },
+  },
+})
+```
+
+**Feature Grid Module:**
+
+```typescript
+// schemas/modules/featureGrid.ts
+import { defineField, defineType } from 'sanity'
+
+export default defineType({
+  name: 'featureGrid',
+  title: 'Feature Grid',
+  type: 'object',
+  fields: [
+    defineField({
+      name: 'title',
+      title: 'Title',
+      type: 'string',
+    }),
+    defineField({
+      name: 'features',
+      title: 'Features',
+      type: 'array',
+      of: [
+        {
+          type: 'object',
+          fields: [
+            defineField({
+              name: 'icon',
+              title: 'Icon',
+              type: 'string',
+            }),
+            defineField({
+              name: 'title',
+              title: 'Title',
+              type: 'string',
+            }),
+            defineField({
+              name: 'description',
+              title: 'Description',
+              type: 'text',
+            }),
+          ],
+        },
+      ],
+    }),
+  ],
+  preview: {
+    select: {
+      title: 'title',
+      subtitle: 'features',
+      subtitle: 'features.length + " features"',
+    },
+  },
+})
+```
+
+**Bento Grid Module:**
+
+```typescript
+// schemas/modules/bentoGrid.ts
+import { defineField, defineType } from 'sanity'
+
+export default defineType({
+  name: 'bentoGrid',
+  title: 'Bento Grid',
+  type: 'object',
+  fields: [
+    defineField({
+      name: 'items',
+      title: 'Items',
+      type: 'array',
+      of: [
+        {
+          type: 'object',
+          fields: [
+            defineField({
+              name: 'title',
+              title: 'Title',
+              type: 'string',
+            }),
+            defineField({
+              name: 'description',
+              title: 'Description',
+              type: 'portableText',
+            }),
+            defineField({
+              name: 'image',
+              title: 'Image',
+              type: 'image',
+              options: {
+                hotspot: true,
+              },
+            }),
+            defineField({
+              name: 'size',
+              title: 'Size',
+              type: 'string',
+              options: {
+                list: [
+                  { title: 'Small', value: 'small' },
+                  { title: 'Medium', value: 'medium' },
+                  { title: 'Large', value: 'large' },
+                ],
+              },
+            }),
+          ],
+        },
+      ],
+    }),
+  ],
+})
+```
+
+**Pricing Table Module:**
+
+```typescript
+// schemas/modules/pricingTable.ts
+import { defineField, defineType } from 'sanity'
+
+export default defineType({
+  name: 'pricingTable',
+  title: 'Pricing Table',
+  type: 'object',
+  fields: [
+    defineField({
+      name: 'title',
+      title: 'Title',
+      type: 'string',
+    }),
+    defineField({
+      name: 'plans',
+      title: 'Plans',
+      type: 'array',
+      of: [
+        {
+          type: 'object',
+          fields: [
+            defineField({
+              name: 'name',
+              title: 'Plan Name',
+              type: 'string',
+            }),
+            defineField({
+              name: 'price',
+              title: 'Price',
+              type: 'number',
+            }),
+            defineField({
+              name: 'currency',
+              title: 'Currency',
+              type: 'string',
+              initialValue: 'USD',
+            }),
+            defineField({
+              name: 'features',
+              title: 'Features',
+              type: 'array',
+              of: [{ type: 'string' }],
+            }),
+            defineField({
+              name: 'cta',
+              title: 'Call to Action',
+              type: 'object',
+              fields: [
+                defineField({
+                  name: 'text',
+                  title: 'Text',
+                  type: 'string',
+                }),
+                defineField({
+                  name: 'link',
+                  title: 'Link',
+                  type: 'url',
+                }),
+              ],
+            }),
+          ],
+        },
+      ],
+    }),
+  ],
+})
+```
+
+### 2. The Singleton Pattern
+
+#### `settings` Document
+
+A document that cannot be duplicated. Used for site-wide configuration.
+
+```typescript
+// schemas/documents/settings.ts
+import { defineField, defineType } from 'sanity'
+
+export default defineType({
+  name: 'settings',
+  title: 'Settings',
+  type: 'document',
+  __experimental_actions: [
+    // Disable create and delete actions
+    'update',
+    'publish',
+  ],
+  fields: [
+    defineField({
+      name: 'logo',
+      title: 'Logo',
+      type: 'image',
+      options: {
+        hotspot: true,
+      },
+    }),
+    defineField({
+      name: 'mainNavigation',
+      title: 'Main Navigation',
+      type: 'array',
+      of: [
+        {
+          type: 'object',
+          fields: [
+            defineField({
+              name: 'label',
+              title: 'Label',
+              type: 'string',
+            }),
+            defineField({
+              name: 'link',
+              title: 'Link',
+              type: 'string',
+            }),
+          ],
+        },
+      ],
+    }),
+    defineField({
+      name: 'footerLinks',
+      title: 'Footer Links',
+      type: 'array',
+      of: [
+        {
+          type: 'object',
+          fields: [
+            defineField({
+              name: 'label',
+              title: 'Label',
+              type: 'string',
+            }),
+            defineField({
+              name: 'url',
+              title: 'URL',
+              type: 'url',
+            }),
+          ],
+        },
+      ],
+    }),
+    defineField({
+      name: 'socialHandles',
+      title: 'Social Handles',
+      type: 'object',
+      fields: [
+        defineField({
+          name: 'twitter',
+          title: 'Twitter',
+          type: 'string',
+        }),
+        defineField({
+          name: 'instagram',
+          title: 'Instagram',
+          type: 'string',
+        }),
+        defineField({
+          name: 'linkedin',
+          title: 'LinkedIn',
+          type: 'string',
+        }),
+      ],
+    }),
+  ],
+})
+```
+
+### 3. Object Types
+
+#### SEO Object
+
+```typescript
+// schemas/objects/seo.ts
+import { defineField, defineType } from 'sanity'
+
+export default defineType({
+  name: 'seo',
+  title: 'SEO',
+  type: 'object',
+  fields: [
+    defineField({
+      name: 'title',
+      title: 'Meta Title',
+      type: 'string',
+      description: 'Title used for search engines and browsers',
+      validation: (Rule) => Rule.max(60).warning('Should be under 60 characters'),
+    }),
+    defineField({
+      name: 'description',
+      title: 'Meta Description',
+      type: 'text',
+      description: 'Description for search engines',
+      validation: (Rule) => Rule.max(160).warning('Should be under 160 characters'),
+    }),
+    defineField({
+      name: 'image',
+      title: 'OG Image',
+      type: 'image',
+      description: 'Image for social media sharing',
+      options: {
+        hotspot: true,
+      },
+    }),
+  ],
+})
+```
+
+#### Portable Text Configuration
+
+```typescript
+// schemas/objects/portableText.ts
+import { defineField, defineType } from 'sanity'
+
+export default defineType({
+  name: 'portableText',
+  title: 'Portable Text',
+  type: 'array',
+  of: [
+    {
+      type: 'block',
+      marks: {
+        annotations: [
+          {
+            name: 'link',
+            type: 'object',
+            title: 'Link',
+            fields: [
+              {
+                name: 'href',
+                type: 'url',
+                title: 'URL',
+              },
+              {
+                name: 'internal',
+                type: 'reference',
+                title: 'Internal Link',
+                to: [{ type: 'page' }],
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      type: 'image',
+      options: {
+        hotspot: true,
+      },
+    },
+  ],
+})
+```
+
+### 4. Schema Index
+
+```typescript
+// schemas/index.ts
+import page from './documents/page'
+import settings from './documents/settings'
+import hero from './modules/hero'
+import featureGrid from './modules/featureGrid'
+import bentoGrid from './modules/bentoGrid'
+import pricingTable from './modules/pricingTable'
+import seo from './objects/seo'
+import portableText from './objects/portableText'
+
+export const schemaTypes = [
+  // Documents
+  page,
+  settings,
+  // Modules
+  hero,
+  featureGrid,
+  bentoGrid,
+  pricingTable,
+  // Objects
+  seo,
+  portableText,
+]
+```
+
+---
+
+## Phase 2: The Query Engine (GROQ)
+
+### 1. The "Projections" Pattern
+
+**⚠️ CRITICAL RULE: Never fetch `...all`. Fetch exactly what the component needs.**
+
+#### Basic Projection Example
+
+```groq
+*[_type == "post"] {
+  title,
+  "slug": slug.current,
+  "author": author->{name, avatar},
+  "imageUrl": mainImage.asset->url
+}
+```
+
+#### Page Query with Modules
+
+```groq
+*[_type == "page" && slug.current == $slug][0] {
+  title,
+  "slug": slug.current,
+  seo {
+    title,
+    description,
+    "ogImage": image.asset->url
+  },
+  sections[] {
+    _type,
+    _type == "hero" => {
+      headline,
+      subheadline,
+      "backgroundImage": backgroundImage.asset->url,
+      cta {
+        text,
+        link
+      }
+    },
+    _type == "featureGrid" => {
+      title,
+      features[] {
+        icon,
+        title,
+        description
+      }
+    },
+    _type == "bentoGrid" => {
+      items[] {
+        title,
+        description,
+        "image": image.asset->url,
+        size
+      }
+    },
+    _type == "pricingTable" => {
+      title,
+      plans[] {
+        name,
+        price,
+        currency,
+        features,
+        cta {
+          text,
+          link
+        }
+      }
+    }
+  }
+}
+```
+
+#### Settings Singleton Query
+
+```groq
+*[_type == "settings"][0] {
+  "logo": logo.asset->url,
+  mainNavigation[] {
+    label,
+    link
+  },
+  footerLinks[] {
+    label,
+    url
+  },
+  socialHandles {
+    twitter,
+    instagram,
+    linkedin
+  }
+}
+```
+
+#### Advanced GROQ Patterns
+
+**Conditional Fields:**
+
+```groq
+*[_type == "page"] {
+  title,
+  "slug": slug.current,
+  "hasSeo": defined(seo),
+  "seoTitle": select(
+    defined(seo.title) => seo.title,
+    title
+  )
+}
+```
+
+**Array Filtering:**
+
+```groq
+*[_type == "page"] {
+  title,
+  "publishedSections": sections[!(_type == "draft")] {
+    _type,
+    ...
+  }
+}
+```
+
+**Reference Dereferencing:**
+
+```groq
+*[_type == "post"] {
+  title,
+  "author": author->{
+    name,
+    "avatar": avatar.asset->url,
+    "bio": bio[0].children[0].text
+  },
+  "category": category->title
+}
+```
+
+**Date Formatting:**
+
+```groq
+*[_type == "post"] {
+  title,
+  "publishedAt": _createdAt,
+  "formattedDate": dateTime(_createdAt).format("MMMM d, yyyy")
+}
+```
+
+### 2. Draft Content Detection
+
+#### Client Configuration
+
+```typescript
+// lib/client.ts
+import { createClient } from 'next-sanity'
+import { apiVersion, dataset, projectId, useCdn } from '../sanity.config'
+
+export const client = createClient({
+  projectId,
+  dataset,
+  apiVersion,
+  useCdn,
+  perspective: 'published', // or 'previewDrafts' for draft content
+})
+
+// Preview client for draft content
+export const previewClient = createClient({
+  projectId,
+  dataset,
+  apiVersion,
+  useCdn: false,
+  token: process.env.SANITY_API_READ_TOKEN,
+  perspective: 'previewDrafts',
+})
+
+// Helper to get the right client
+export const getClient = (preview?: boolean) => (preview ? previewClient : client)
+```
+
+#### Draft-Aware Query
+
+```groq
+*[_type == "page" && slug.current == $slug] | order(_updatedAt desc) [0] {
+  _id,
+  _type,
+  title,
+  "slug": slug.current,
+  // ... rest of fields
+}
+```
+
+**Note:** When using `perspective: 'previewDrafts'`, Sanity automatically returns draft documents if they exist, otherwise published documents.
+
+### 3. Visual Editing (Sanity Presentation)
+
+#### Setup Configuration
+
+```typescript
+// app/layout.tsx or pages/_app.tsx
+import { VisualEditing } from '@sanity/visual-editing/next-pages-router'
+import { draftMode } from 'next/headers'
+
+export default function RootLayout({ children }) {
+  const { isEnabled } = draftMode()
+  
+  return (
+    <html>
+      <body>
+        {children}
+        {isEnabled && <VisualEditing />}
+      </body>
+    </html>
+  )
+}
+```
+
+#### Component Wrapper with Source Maps
+
+```typescript
+// components/PageBuilder.tsx
+import { encodeSourceMap } from '@sanity/visual-editing'
+import { draftMode } from 'next/headers'
+
+interface PageBuilderProps {
+  sections: any[]
+  path: string
+}
+
+export function PageBuilder({ sections, path }: PageBuilderProps) {
+  const { isEnabled } = draftMode()
+  
+  return (
+    <div data-sanity={isEnabled ? encodeSourceMap(path) : undefined}>
+      {sections.map((section, index) => {
+        const sectionPath = `${path}.sections[${index}]`
+        
+        switch (section._type) {
+          case 'hero':
+            return (
+              <Hero
+                key={index}
+                data-sanity={isEnabled ? encodeSourceMap(sectionPath) : undefined}
+                {...section}
+              />
+            )
+          case 'featureGrid':
+            return (
+              <FeatureGrid
+                key={index}
+                data-sanity={isEnabled ? encodeSourceMap(sectionPath) : undefined}
+                {...section}
+              />
+            )
+          // ... other module types
+        }
+      })}
+    </div>
+  )
+}
+```
+
+#### Draft Mode Route Handler
+
+```typescript
+// app/api/draft/route.ts
+import { draftMode } from 'next/headers'
+import { redirect } from 'next/navigation'
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const secret = searchParams.get('secret')
+  const slug = searchParams.get('slug')
+
+  // Verify secret token
+  if (secret !== process.env.SANITY_REVALIDATE_SECRET) {
+    return new Response('Invalid token', { status: 401 })
+  }
+
+  // Enable draft mode
+  draftMode().enable()
+
+  // Redirect to the page
+  redirect(`/${slug}`)
+}
+```
+
+#### Exit Draft Mode
+
+```typescript
+// app/api/exit-draft/route.ts
+import { draftMode } from 'next/headers'
+import { redirect } from 'next/navigation'
+
+export async function GET(request: Request) {
+  draftMode().disable()
+  redirect('/')
+}
+```
+
+---
+
+## Phase 3: Image Handling
+
+### The Image Loader Utility
+
+Auto-generate `srcset` and `lqip` (Low Quality Image Placeholder) using the Sanity Image Pipeline.
+
+```typescript
+// lib/image.ts
+import imageUrlBuilder from '@sanity/image-url'
+import { client } from './client'
+import type { SanityImageSource } from '@sanity/image-url/lib/types/types'
+
+const builder = imageUrlBuilder(client)
+
+export function urlFor(source: SanityImageSource) {
+  return builder.image(source)
+}
+
+export interface ImageOptions {
+  width?: number
+  height?: number
+  quality?: number
+  format?: 'webp' | 'jpg' | 'png'
+  fit?: 'clip' | 'crop' | 'fill' | 'fillmax' | 'max' | 'scale' | 'min'
+  crop?: 'top' | 'bottom' | 'left' | 'right' | 'center'
+  auto?: 'format'
+}
+
+/**
+ * Generate responsive image srcset
+ */
+export function getImageSrcSet(
+  source: SanityImageSource,
+  options: {
+    widths?: number[]
+    baseOptions?: ImageOptions
+  } = {}
+): string {
+  const { widths = [400, 800, 1200, 1600, 2000], baseOptions = {} } = options
+
+  return widths
+    .map((width) => {
+      const url = urlFor(source)
+        .width(width)
+        .quality(baseOptions.quality || 85)
+        .format(baseOptions.format || 'webp')
+        .auto('format')
+        .url()
+
+      return `${url} ${width}w`
+    })
+    .join(', ')
+}
+
+/**
+ * Generate Low Quality Image Placeholder (LQIP)
+ */
+export function getLQIP(
+  source: SanityImageSource,
+  options: ImageOptions = {}
+): string {
+  return urlFor(source)
+    .width(20)
+    .height(20)
+    .quality(20)
+    .blur(50)
+    .format('jpg')
+    .url()
+}
+
+/**
+ * Generate optimized image URL
+ */
+export function getImageUrl(
+  source: SanityImageSource,
+  options: ImageOptions = {}
+): string {
+  const {
+    width,
+    height,
+    quality = 85,
+    format = 'webp',
+    fit = 'crop',
+    crop,
+    auto = 'format',
+  } = options
+
+  let url = urlFor(source).quality(quality).format(format)
+
+  if (width) url = url.width(width)
+  if (height) url = url.height(height)
+  if (fit) url = url.fit(fit)
+  if (crop) url = url.crop(crop)
+  if (auto) url = url.auto(auto)
+
+  return url.url()
+}
+
+/**
+ * Complete image data with all variants
+ */
+export interface ImageData {
+  url: string
+  srcset: string
+  lqip: string
+  width?: number
+  height?: number
+  alt?: string
+}
+
+export function getImageData(
+  source: SanityImageSource,
+  options: {
+    widths?: number[]
+    baseOptions?: ImageOptions
+    alt?: string
+  } = {}
+): ImageData {
+  const image = source as any
+
+  return {
+    url: getImageUrl(source, { width: 1200, ...options.baseOptions }),
+    srcset: getImageSrcSet(source, {
+      widths: options.widths,
+      baseOptions: options.baseOptions,
+    }),
+    lqip: getLQIP(source, options.baseOptions),
+    width: image.asset?.metadata?.dimensions?.width,
+    height: image.asset?.metadata?.dimensions?.height,
+    alt: options.alt || image.alt || '',
+  }
+}
+```
+
+### React Image Component
+
+```typescript
+// components/SanityImage.tsx
+import Image from 'next/image'
+import { getImageData, type SanityImageSource } from '@/lib/image'
+
+interface SanityImageProps {
+  source: SanityImageSource
+  alt?: string
+  width?: number
+  height?: number
+  className?: string
+  priority?: boolean
+  sizes?: string
+}
+
+export function SanityImage({
+  source,
+  alt,
+  width,
+  height,
+  className,
+  priority = false,
+  sizes = '(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw',
+}: SanityImageProps) {
+  const imageData = getImageData(source, { alt })
+
+  return (
+    <Image
+      src={imageData.url}
+      srcSet={imageData.srcset}
+      alt={imageData.alt}
+      width={width || imageData.width}
+      height={height || imageData.height}
+      className={className}
+      priority={priority}
+      sizes={sizes}
+      placeholder="blur"
+      blurDataURL={imageData.lqip}
+    />
+  )
+}
+```
+
+---
+
+## Phase 4: Portable Text Serialization
+
+### Custom React Serializer
+
+```typescript
+// lib/portableText.tsx
+import { PortableText as SanityPortableText } from '@portabletext/react'
+import { SanityImage } from '@/components/SanityImage'
+import Link from 'next/link'
+
+const components = {
+  types: {
+    image: ({ value }: any) => {
+      return (
+        <div className="my-8">
+          <SanityImage source={value} alt={value.alt || ''} />
+        </div>
+      )
+    },
+  },
+  marks: {
+    link: ({ value, children }: any) => {
+      const { href, internal } = value
+
+      // Internal link (reference)
+      if (internal?._ref) {
+        return (
+          <Link href={`/${internal.slug?.current || ''}`}>
+            {children}
+          </Link>
+        )
+      }
+
+      // External link
+      if (href) {
+        return (
+          <a href={href} target="_blank" rel="noopener noreferrer">
+            {children}
+          </a>
+        )
+      }
+
+      return <span>{children}</span>
+    },
+    strong: ({ children }: any) => <strong>{children}</strong>,
+    em: ({ children }: any) => <em>{children}</em>,
+    code: ({ children }: any) => (
+      <code className="bg-gray-100 px-1 py-0.5 rounded">{children}</code>
+    ),
+  },
+  block: {
+    h1: ({ children }: any) => (
+      <h1 className="text-4xl font-bold mb-4">{children}</h1>
+    ),
+    h2: ({ children }: any) => (
+      <h2 className="text-3xl font-bold mb-3">{children}</h2>
+    ),
+    h3: ({ children }: any) => (
+      <h3 className="text-2xl font-bold mb-2">{children}</h3>
+    ),
+    normal: ({ children }: any) => (
+      <p className="mb-4 leading-relaxed">{children}</p>
+    ),
+    blockquote: ({ children }: any) => (
+      <blockquote className="border-l-4 border-gray-300 pl-4 italic my-4">
+        {children}
+      </blockquote>
+    ),
+  },
+}
+
+export function PortableText({ value }: { value: any }) {
+  return <SanityPortableText value={value} components={components} />
+}
+```
+
+---
+
+## Phase 5: Type Generation
+
+### Running Sanity Typegen
+
+**⚠️ CRITICAL: Generate TypeScript interfaces from GROQ queries automatically.**
+
+#### Installation
+
+```bash
+npm install --save-dev @sanity-typed/groq
+```
+
+#### Type Generation Script
+
+```typescript
+// scripts/generate-types.ts
+import { groq } from '@sanity-typed/groq'
+import type { InferType } from '@sanity-typed/groq'
+
+// Define your GROQ query
+export const pageQuery = groq`
+  *[_type == "page" && slug.current == $slug][0] {
+    _id,
+    title,
+    "slug": slug.current,
+    seo {
+      title,
+      description,
+      "ogImage": image.asset->url
+    },
+    sections[] {
+      _type,
+      _type == "hero" => {
+        headline,
+        subheadline,
+        "backgroundImage": backgroundImage.asset->url,
+        cta {
+          text,
+          link
+        }
+      }
+    }
+  }
+`
+
+// Infer the type
+export type Page = InferType<typeof pageQuery>
+```
+
+#### Using Generated Types
+
+```typescript
+// app/page/[slug]/page.tsx
+import { getClient } from '@/lib/client'
+import { pageQuery, type Page } from '@/queries/page'
+
+export default async function Page({ params }: { params: { slug: string } }) {
+  const client = getClient()
+  const page: Page = await client.fetch(pageQuery, { slug: params.slug })
+
+  if (!page) {
+    return <div>Page not found</div>
+  }
+
+  return (
+    <div>
+      <h1>{page.title}</h1>
+      {/* TypeScript knows the structure of page.sections */}
+    </div>
+  )
+}
+```
+
+#### Alternative: Manual Type Definitions
+
+If you prefer manual type definitions:
+
+```typescript
+// types/sanity.ts
+export interface Page {
+  _id: string
+  _type: 'page'
+  title: string
+  slug: string
+  seo?: {
+    title?: string
+    description?: string
+    ogImage?: string
+  }
+  sections: Array<Hero | FeatureGrid | BentoGrid | PricingTable>
+}
+
+export interface Hero {
+  _type: 'hero'
+  headline: string
+  subheadline?: string
+  backgroundImage?: string
+  cta?: {
+    text?: string
+    link?: string
+  }
+}
+
+export interface FeatureGrid {
+  _type: 'featureGrid'
+  title?: string
+  features: Array<{
+    icon?: string
+    title?: string
+    description?: string
+  }>
+}
+
+// ... other module types
+```
+
+---
+
+## Phase 6: Complete Implementation Example
+
+### Page Route Handler
+
+```typescript
+// app/page/[slug]/page.tsx
+import { getClient } from '@/lib/client'
+import { draftMode } from 'next/headers'
+import { PageBuilder } from '@/components/PageBuilder'
+import { notFound } from 'next/navigation'
+
+const pageQuery = `
+  *[_type == "page" && slug.current == $slug] | order(_updatedAt desc) [0] {
+    _id,
+    _type,
+    title,
+    "slug": slug.current,
+    seo {
+      title,
+      description,
+      "ogImage": image.asset->url
+    },
+    sections[] {
+      _type,
+      _type == "hero" => {
+        headline,
+        subheadline,
+        backgroundImage,
+        cta {
+          text,
+          link
+        }
+      },
+      _type == "featureGrid" => {
+        title,
+        features[] {
+          icon,
+          title,
+          description
+        }
+      },
+      _type == "bentoGrid" => {
+        items[] {
+          title,
+          description,
+          image,
+          size
+        }
+      },
+      _type == "pricingTable" => {
+        title,
+        plans[] {
+          name,
+          price,
+          currency,
+          features,
+          cta {
+            text,
+            link
+          }
+        }
+      }
+    }
+  }
+`
+
+export default async function Page({ params }: { params: { slug: string } }) {
+  const { isEnabled } = draftMode()
+  const client = getClient(isEnabled)
+  const page = await client.fetch(pageQuery, { slug: params.slug })
+
+  if (!page) {
+    notFound()
+  }
+
+  return (
+    <div>
+      <PageBuilder sections={page.sections} path={`page[slug=="${params.slug}"]`} />
+    </div>
+  )
+}
+```
+
+### Settings Component
+
+```typescript
+// components/Settings.tsx
+import { getClient } from '@/lib/client'
+
+const settingsQuery = `
+  *[_type == "settings"][0] {
+    "logo": logo.asset->url,
+    mainNavigation[] {
+      label,
+      link
+    },
+    footerLinks[] {
+      label,
+      url
+    },
+    socialHandles {
+      twitter,
+      instagram,
+      linkedin
+    }
+  }
+`
+
+export async function Settings() {
+  const client = getClient()
+  const settings = await client.fetch(settingsQuery)
+
+  return (
+    <nav>
+      {settings?.mainNavigation?.map((item: any, index: number) => (
+        <a key={index} href={item.link}>
+          {item.label}
+        </a>
+      ))}
+    </nav>
+  )
+}
+```
+
+---
+
+## Best Practices Summary
+
+### 1. Query Optimization
+
+- ✅ **DO:** Use projections to fetch only needed fields
+- ✅ **DO:** Use `->` for dereferencing instead of multiple queries
+- ✅ **DO:** Use array operations `[]` for filtering and mapping
+- ❌ **DON'T:** Fetch `...all` or entire documents
+- ❌ **DON'T:** Make multiple queries when one will do
+
+### 2. Visual Editing
+
+- ✅ **DO:** Wrap all editable components with source map attributes
+- ✅ **DO:** Use `draftMode()` to conditionally enable visual editing
+- ✅ **DO:** Test visual editing in preview mode
+- ❌ **DON'T:** Enable visual editing in production for non-editors
+
+### 3. Image Handling
+
+- ✅ **DO:** Always generate `srcset` for responsive images
+- ✅ **DO:** Use LQIP for better perceived performance
+- ✅ **DO:** Use WebP format with fallback
+- ✅ **DO:** Set appropriate `sizes` attribute
+- ❌ **DON'T:** Load full-resolution images on mobile
+
+### 4. Portable Text
+
+- ✅ **DO:** Store structured content, not HTML
+- ✅ **DO:** Create custom serializers for each block type
+- ✅ **DO:** Handle internal and external links separately
+- ❌ **DON'T:** Store HTML strings in Sanity
+- ❌ **DON'T:** Use `dangerouslySetInnerHTML` with Portable Text
+
+### 5. Type Safety
+
+- ✅ **DO:** Generate types from GROQ queries when possible
+- ✅ **DO:** Use TypeScript interfaces for all Sanity documents
+- ✅ **DO:** Validate types at runtime for user-generated content
+- ❌ **DON'T:** Use `any` types for Sanity data
+
+---
+
+## Environment Variables
+
+```bash
+# .env.local
+NEXT_PUBLIC_SANITY_PROJECT_ID=your_project_id
+NEXT_PUBLIC_SANITY_DATASET=production
+SANITY_API_READ_TOKEN=your_read_token
+SANITY_REVALIDATE_SECRET=your_secret_token
+```
+
+---
+
+## Sanity Configuration
+
+```typescript
+// sanity.config.ts
+import { defineConfig } from 'sanity'
+import { deskTool } from 'sanity/desk'
+import { visionTool } from '@sanity/vision'
+import { schemaTypes } from './schemas'
+
+export default defineConfig({
+  name: 'default',
+  title: 'My Sanity Studio',
+  projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID!,
+  dataset: process.env.NEXT_PUBLIC_SANITY_DATASET!,
+  plugins: [deskTool(), visionTool()],
+  schema: {
+    types: schemaTypes,
+  },
+})
+```
+
+---
+
+**Last Updated:** 2025
+
+**Key Technologies:** Sanity.io, GROQ, Portable Text, Next.js, TypeScript, Visual Editing

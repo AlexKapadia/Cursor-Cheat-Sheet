@@ -1,0 +1,1289 @@
+---
+alwaysApply: false
+---
+# Communication Engine
+## Source of Truth: Email Templates (React Email), SMS Logic (Twilio), and Notification Routing
+
+> **CRITICAL ARCHITECTURE PRINCIPLE: THE "ROUTER" PATTERN**
+> 
+> **⚠️ NEVER HARDCODE "Send Email" IN YOUR LOGIC**
+> 
+> - **The Notification Center:** Always call `notifyUser(userId, 'welcome')` instead of directly calling email/SMS functions
+> - **The Router Logic:** Checks user preferences (`email_enabled`, `sms_enabled`) and message urgency
+> - **Urgent Messages (Security Codes):** Always sent via SMS + Email regardless of preferences
+> - **Marketing Messages:** Only sent via Email (respects `email_enabled` preference)
+> - **Transactional Messages:** Respects user preferences for both channels
+
+---
+
+## PHASE 1: THE NOTIFICATION ROUTER (THE "SOURCE OF TRUTH")
+
+### Core Architecture
+
+The router is the **single entry point** for all notifications. It decides which channels to use based on:
+1. **Message Type** (urgent, transactional, marketing)
+2. **User Preferences** (`email_enabled`, `sms_enabled`)
+3. **Channel Availability** (user has email/phone on file)
+
+### Database Schema: User Preferences
+
+```sql
+-- Extend your existing users table or create a separate preferences table
+CREATE TABLE user_notification_preferences (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  
+  -- Channel Preferences
+  email_enabled BOOLEAN DEFAULT true,
+  sms_enabled BOOLEAN DEFAULT true,
+  
+  -- Marketing Preferences
+  marketing_emails_enabled BOOLEAN DEFAULT false,
+  
+  -- Contact Information (cached for performance)
+  email TEXT,
+  phone_number TEXT, -- E.164 format: +1234567890
+  
+  -- Timestamps
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_user_prefs_user_id ON user_notification_preferences(user_id);
+```
+
+### The Router Function
+
+```typescript
+// lib/notifications/router.ts
+
+import { sendEmail } from './email';
+import { sendSMS } from './sms';
+import { getUserPreferences } from './preferences';
+
+export type NotificationType = 
+  | 'welcome'
+  | 'password_reset'
+  | 'security_code'
+  | 'transactional'
+  | 'marketing'
+  | 'order_confirmation'
+  | 'payment_received';
+
+export type NotificationPriority = 'urgent' | 'normal' | 'low';
+
+interface NotificationPayload {
+  userId: string;
+  type: NotificationType;
+  priority?: NotificationPriority;
+  data: Record<string, any>;
+}
+
+/**
+ * THE ROUTER: Single entry point for all notifications
+ * 
+ * Logic:
+ * - Urgent (security_code) -> SMS + Email (always)
+ * - Marketing -> Email only (respects email_enabled)
+ * - Transactional -> Respects user preferences
+ */
+export async function notifyUser(
+  userId: string,
+  type: NotificationType,
+  data: Record<string, any> = {},
+  priority: NotificationPriority = 'normal'
+): Promise<{ email?: boolean; sms?: boolean }> {
+  const prefs = await getUserPreferences(userId);
+  
+  if (!prefs) {
+    throw new Error(`User preferences not found for user ${userId}`);
+  }
+
+  const results: { email?: boolean; sms?: boolean } = {};
+
+  // URGENT MESSAGES: Always send via both channels (security codes, critical alerts)
+  if (priority === 'urgent' || type === 'security_code') {
+    if (prefs.email && prefs.email_enabled) {
+      results.email = await sendEmail(userId, type, data);
+    }
+    if (prefs.phone_number && prefs.sms_enabled) {
+      results.sms = await sendSMS(userId, type, data);
+    }
+    return results;
+  }
+
+  // MARKETING MESSAGES: Email only, respect marketing preference
+  if (type === 'marketing') {
+    if (prefs.email && prefs.email_enabled && prefs.marketing_emails_enabled) {
+      results.email = await sendEmail(userId, type, data);
+    }
+    return results;
+  }
+
+  // TRANSACTIONAL MESSAGES: Respect user preferences
+  if (prefs.email && prefs.email_enabled) {
+    results.email = await sendEmail(userId, type, data);
+  }
+  
+  if (prefs.phone_number && prefs.sms_enabled) {
+    results.sms = await sendSMS(userId, type, data);
+  }
+
+  return results;
+}
+
+// Helper function to get user preferences
+async function getUserPreferences(userId: string) {
+  const { data, error } = await supabase
+    .from('user_notification_preferences')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+```
+
+### Usage Examples
+
+```typescript
+// ✅ CORRECT: Use the router
+await notifyUser(userId, 'welcome', { name: 'John' });
+
+// ✅ CORRECT: Urgent security code
+await notifyUser(userId, 'security_code', { code: '123456' }, 'urgent');
+
+// ✅ CORRECT: Marketing email
+await notifyUser(userId, 'marketing', { campaign: 'summer_sale' });
+
+// ❌ WRONG: Don't do this
+await sendEmail(userId, 'welcome', { name: 'John' }); // Bypasses router!
+```
+
+---
+
+## PHASE 2: EMAIL ENGINE (RESEND + REACT EMAIL)
+
+### Architecture: "Emails that look like websites"
+
+React Email allows you to build email templates using React components, styled with Tailwind CSS. The templates are then rendered to HTML and sent via Resend.
+
+### Installation
+
+```bash
+npm install @react-email/components @react-email/tailwind resend
+npm install -D @react-email/render
+```
+
+### Project Structure
+
+```
+emails/
+├── components/
+│   ├── Layout.tsx          # Base layout (logo, footer, unsubscribe)
+│   ├── Button.tsx          # Reusable button component
+│   └── Header.tsx          # Email header
+├── WelcomeEmail.tsx
+├── ResetPassword.tsx
+├── SecurityCodeEmail.tsx
+├── OrderConfirmation.tsx
+└── MarketingEmail.tsx
+```
+
+### Base Layout Component
+
+```typescript
+// emails/components/Layout.tsx
+
+import {
+  Html,
+  Head,
+  Body,
+  Container,
+  Section,
+  Text,
+  Link,
+  Tailwind,
+} from '@react-email/components';
+import * as React from 'react';
+
+interface LayoutProps {
+  children: React.ReactNode;
+  preview?: string;
+}
+
+export function Layout({ children, preview }: LayoutProps) {
+  return (
+    <Html>
+      <Head />
+      <Tailwind>
+        <Body className="bg-gray-50 font-sans">
+          <Container className="mx-auto py-8 px-4">
+            {/* Header with Logo */}
+            <Section className="mb-8">
+              <Link href="https://yourapp.com" className="text-2xl font-bold text-gray-900">
+                YourApp
+              </Link>
+            </Section>
+
+            {/* Preview Text */}
+            {preview && (
+              <Text className="text-sm text-gray-500 mb-4">{preview}</Text>
+            )}
+
+            {/* Main Content */}
+            <Section className="bg-white rounded-lg shadow-sm p-8 mb-8">
+              {children}
+            </Section>
+
+            {/* Footer */}
+            <Section className="text-center text-sm text-gray-500">
+              <Text className="mb-2">
+                © {new Date().getFullYear()} YourApp. All rights reserved.
+              </Text>
+              <Text className="mb-2">
+                <Link href="https://yourapp.com/unsubscribe" className="text-blue-600">
+                  Unsubscribe
+                </Link>
+                {' | '}
+                <Link href="https://yourapp.com/privacy" className="text-blue-600">
+                  Privacy Policy
+                </Link>
+              </Text>
+              <Text className="text-xs text-gray-400">
+                123 Main St, City, State 12345
+              </Text>
+            </Section>
+          </Container>
+        </Body>
+      </Tailwind>
+    </Html>
+  );
+}
+```
+
+### Welcome Email Template
+
+```typescript
+// emails/WelcomeEmail.tsx
+
+import {
+  Text,
+  Button,
+  Section,
+} from '@react-email/components';
+import { Layout } from './components/Layout';
+import * as React from 'react';
+
+interface WelcomeEmailProps {
+  name: string;
+  verificationLink?: string;
+}
+
+export function WelcomeEmail({ name, verificationLink }: WelcomeEmailProps) {
+  return (
+    <Layout preview={`Welcome to YourApp, ${name}!`}>
+      <Text className="text-2xl font-bold text-gray-900 mb-4">
+        Welcome, {name}! 👋
+      </Text>
+      
+      <Text className="text-gray-700 mb-4">
+        We're thrilled to have you on board. YourApp is designed to help you achieve your goals faster and more efficiently.
+      </Text>
+
+      {verificationLink && (
+        <Section className="my-6">
+          <Button
+            href={verificationLink}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold"
+          >
+            Verify Your Email
+          </Button>
+        </Section>
+      )}
+
+      <Text className="text-gray-700 mb-4">
+        If you have any questions, feel free to reach out to our support team.
+      </Text>
+
+      <Text className="text-gray-700">
+        Best regards,<br />
+        The YourApp Team
+      </Text>
+    </Layout>
+  );
+}
+```
+
+### Password Reset Email Template
+
+```typescript
+// emails/ResetPassword.tsx
+
+import {
+  Text,
+  Button,
+  Section,
+} from '@react-email/components';
+import { Layout } from './components/Layout';
+import * as React from 'react';
+
+interface ResetPasswordEmailProps {
+  name: string;
+  resetLink: string;
+  expiresIn?: string; // e.g., "15 minutes"
+}
+
+export function ResetPasswordEmail({ 
+  name, 
+  resetLink, 
+  expiresIn = "15 minutes" 
+}: ResetPasswordEmailProps) {
+  return (
+    <Layout preview="Reset your password">
+      <Text className="text-2xl font-bold text-gray-900 mb-4">
+        Reset Your Password
+      </Text>
+      
+      <Text className="text-gray-700 mb-4">
+        Hi {name},
+      </Text>
+
+      <Text className="text-gray-700 mb-4">
+        We received a request to reset your password. Click the button below to create a new password:
+      </Text>
+
+      <Section className="my-6">
+        <Button
+          href={resetLink}
+          className="bg-red-600 text-white px-6 py-3 rounded-lg font-semibold"
+        >
+          Reset Password
+        </Button>
+      </Section>
+
+      <Text className="text-sm text-gray-500 mb-4">
+        This link will expire in {expiresIn}. If you didn't request this, you can safely ignore this email.
+      </Text>
+
+      <Text className="text-xs text-gray-400">
+        If the button doesn't work, copy and paste this link into your browser:<br />
+        <Link href={resetLink} className="text-blue-600 break-all">
+          {resetLink}
+        </Link>
+      </Text>
+    </Layout>
+  );
+}
+```
+
+### Security Code Email Template
+
+```typescript
+// emails/SecurityCodeEmail.tsx
+
+import {
+  Text,
+  Section,
+} from '@react-email/components';
+import { Layout } from './components/Layout';
+import * as React from 'react';
+
+interface SecurityCodeEmailProps {
+  name: string;
+  code: string;
+  purpose?: string; // e.g., "login", "transaction", "account_verification"
+}
+
+export function SecurityCodeEmail({ 
+  name, 
+  code, 
+  purpose = "verify your identity" 
+}: SecurityCodeEmailProps) {
+  return (
+    <Layout preview={`Your security code: ${code}`}>
+      <Text className="text-2xl font-bold text-gray-900 mb-4">
+        Security Code
+      </Text>
+      
+      <Text className="text-gray-700 mb-4">
+        Hi {name},
+      </Text>
+
+      <Text className="text-gray-700 mb-6">
+        Use this code to {purpose}:
+      </Text>
+
+      <Section className="bg-gray-100 rounded-lg p-6 text-center my-6">
+        <Text className="text-4xl font-bold text-gray-900 tracking-wider">
+          {code}
+        </Text>
+      </Section>
+
+      <Text className="text-sm text-red-600 font-semibold mb-4">
+        ⚠️ Do not share this code with anyone. YourApp will never ask for this code via phone or email.
+      </Text>
+
+      <Text className="text-sm text-gray-500">
+        This code will expire in 10 minutes. If you didn't request this code, please secure your account immediately.
+      </Text>
+    </Layout>
+  );
+}
+```
+
+### Email Sending Logic (Resend)
+
+```typescript
+// lib/notifications/email.ts
+
+import { Resend } from 'resend';
+import { render } from '@react-email/render';
+import { WelcomeEmail } from '../../emails/WelcomeEmail';
+import { ResetPasswordEmail } from '../../emails/ResetPasswordEmail';
+import { SecurityCodeEmail } from '../../emails/SecurityCodeEmail';
+import { getUserEmail } from './preferences';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+export async function sendEmail(
+  userId: string,
+  type: NotificationType,
+  data: Record<string, any>
+): Promise<boolean> {
+  try {
+    const userEmail = await getUserEmail(userId);
+    if (!userEmail) {
+      throw new Error(`No email found for user ${userId}`);
+    }
+
+    // Get the appropriate template
+    const { subject, component } = getEmailTemplate(type, data);
+
+    // Render React component to HTML
+    const html = await render(component);
+
+    // Send via Resend
+    const result = await resend.emails.send({
+      from: process.env.EMAIL_FROM || 'YourApp <noreply@yourapp.com>',
+      to: userEmail,
+      subject,
+      html,
+      // Optional: Add reply-to for transactional emails
+      replyTo: type === 'transactional' ? 'support@yourapp.com' : undefined,
+    });
+
+    if (result.error) {
+      console.error('Resend error:', result.error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Email send error:', error);
+    return false;
+  }
+}
+
+function getEmailTemplate(type: NotificationType, data: Record<string, any>) {
+  switch (type) {
+    case 'welcome':
+      return {
+        subject: `Welcome to YourApp, ${data.name || 'there'}!`,
+        component: <WelcomeEmail name={data.name} verificationLink={data.verificationLink} />,
+      };
+    
+    case 'password_reset':
+      return {
+        subject: 'Reset Your Password',
+        component: <ResetPasswordEmail 
+          name={data.name} 
+          resetLink={data.resetLink}
+          expiresIn={data.expiresIn}
+        />,
+      };
+    
+    case 'security_code':
+      return {
+        subject: `Your security code: ${data.code}`,
+        component: <SecurityCodeEmail 
+          name={data.name} 
+          code={data.code}
+          purpose={data.purpose}
+        />,
+      };
+    
+    default:
+      throw new Error(`Unknown email type: ${type}`);
+  }
+}
+
+// Batch sending for newsletters (marketing emails)
+export async function sendBatchEmails(
+  userIds: string[],
+  type: NotificationType,
+  data: Record<string, any>
+): Promise<{ sent: number; failed: number }> {
+  const emails = await Promise.all(
+    userIds.map(async (userId) => {
+      const email = await getUserEmail(userId);
+      if (!email) return null;
+      
+      const { subject, component } = getEmailTemplate(type, data);
+      const html = await render(component);
+      
+      return {
+        from: process.env.EMAIL_FROM || 'YourApp <noreply@yourapp.com>',
+        to: email,
+        subject,
+        html,
+      };
+    })
+  );
+
+  const validEmails = emails.filter(Boolean);
+  
+  // Resend batch API (up to 100 emails per batch)
+  const batches = [];
+  for (let i = 0; i < validEmails.length; i += 100) {
+    batches.push(validEmails.slice(i, i + 100));
+  }
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const batch of batches) {
+    const result = await resend.batch.send(batch);
+    sent += result.data?.length || 0;
+    failed += (result.error ? batch.length : 0);
+  }
+
+  return { sent, failed };
+}
+```
+
+### Environment Variables
+
+```env
+# .env
+RESEND_API_KEY=re_xxxxxxxxxxxxx
+EMAIL_FROM=YourApp <noreply@yourapp.com>
+```
+
+---
+
+## PHASE 3: SMS ENGINE (TWILIO)
+
+### Architecture: "Short and strict"
+
+SMS messages are concise, action-oriented, and follow WebOTP format for security codes.
+
+### Installation
+
+```bash
+npm install twilio
+```
+
+### Database Schema: OTP Storage
+
+```sql
+-- Store hashed OTPs for verification
+CREATE TABLE otp_hashes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  
+  -- Hashed OTP (never store plaintext)
+  otp_hash TEXT NOT NULL, -- bcrypt hash of the 6-digit code
+  
+  -- Metadata
+  purpose TEXT NOT NULL, -- 'login', 'transaction', 'account_verification'
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  
+  -- Rate limiting metadata
+  phone_number TEXT NOT NULL, -- E.164 format
+  
+  -- Timestamps
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_otp_user_id ON otp_hashes(user_id);
+CREATE INDEX idx_otp_expires ON otp_hashes(expires_at) WHERE used_at IS NULL;
+CREATE INDEX idx_otp_phone ON otp_hashes(phone_number, created_at);
+```
+
+### OTP Generation and Hashing
+
+```typescript
+// lib/notifications/otp.ts
+
+import bcrypt from 'bcryptjs';
+import { supabase } from '../supabase';
+
+/**
+ * Generate a 6-digit OTP
+ */
+export function generateOTP(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+/**
+ * Hash OTP before storing in database
+ */
+export async function hashOTP(otp: string): Promise<string> {
+  return bcrypt.hash(otp, 10);
+}
+
+/**
+ * Verify OTP against stored hash
+ */
+export async function verifyOTP(
+  userId: string,
+  otp: string,
+  purpose: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('otp_hashes')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('purpose', purpose)
+    .is('used_at', null)
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error || !data) {
+    return false;
+  }
+
+  // Verify the OTP against the hash
+  const isValid = await bcrypt.compare(otp, data.otp_hash);
+
+  if (isValid) {
+    // Mark as used
+    await supabase
+      .from('otp_hashes')
+      .update({ used_at: new Date().toISOString() })
+      .eq('id', data.id);
+  }
+
+  return isValid;
+}
+
+/**
+ * Store OTP hash in database
+ */
+export async function storeOTP(
+  userId: string,
+  otpHash: string,
+  phoneNumber: string,
+  purpose: string,
+  expiresInMinutes: number = 10
+): Promise<void> {
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + expiresInMinutes);
+
+  const { error } = await supabase
+    .from('otp_hashes')
+    .insert({
+      user_id: userId,
+      otp_hash: otpHash,
+      phone_number: phoneNumber,
+      purpose,
+      expires_at: expiresAt.toISOString(),
+    });
+
+  if (error) {
+    throw new Error(`Failed to store OTP: ${error.message}`);
+  }
+}
+```
+
+### SMS Sending Logic (Twilio)
+
+```typescript
+// lib/notifications/sms.ts
+
+import twilio from 'twilio';
+import { generateOTP, hashOTP, storeOTP } from './otp';
+import { getUserPhoneNumber } from './preferences';
+import { checkRateLimit } from './rate-limit';
+
+const client = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
+
+const FROM_NUMBER = process.env.TWILIO_PHONE_NUMBER; // E.164 format: +1234567890
+
+export async function sendSMS(
+  userId: string,
+  type: NotificationType,
+  data: Record<string, any>
+): Promise<boolean> {
+  try {
+    // Rate limiting check (CRITICAL for cost protection)
+    const rateLimited = await checkRateLimit(userId, 'sms');
+    if (rateLimited) {
+      console.warn(`Rate limit exceeded for user ${userId}`);
+      return false;
+    }
+
+    const phoneNumber = await getUserPhoneNumber(userId);
+    if (!phoneNumber) {
+      throw new Error(`No phone number found for user ${userId}`);
+    }
+
+    // Get the appropriate SMS template
+    const message = getSMSTemplate(type, data);
+
+    // Send via Twilio
+    const result = await client.messages.create({
+      body: message,
+      from: FROM_NUMBER,
+      to: phoneNumber,
+    });
+
+    if (result.errorCode) {
+      console.error('Twilio error:', result.errorCode, result.errorMessage);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('SMS send error:', error);
+    return false;
+  }
+}
+
+/**
+ * Send OTP via SMS with WebOTP format
+ */
+export async function sendOTP(
+  userId: string,
+  purpose: string = 'login'
+): Promise<{ success: boolean; code?: string }> {
+  try {
+    // Rate limiting check
+    const rateLimited = await checkRateLimit(userId, 'sms');
+    if (rateLimited) {
+      return { success: false };
+    }
+
+    const phoneNumber = await getUserPhoneNumber(userId);
+    if (!phoneNumber) {
+      throw new Error(`No phone number found for user ${userId}`);
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+    const otpHash = await hashOTP(otp);
+
+    // Store hashed OTP
+    await storeOTP(userId, otpHash, phoneNumber, purpose, 10);
+
+    // Format message with WebOTP (allows autofill on mobile)
+    const appName = process.env.APP_NAME || 'YourApp';
+    const appDomain = process.env.APP_DOMAIN || 'yourapp.com';
+    const message = `Your verification code is ${otp}. Do not share this code.\n\n${appName} @${appDomain} #${otp}`;
+
+    // Send via Twilio
+    const result = await client.messages.create({
+      body: message,
+      from: FROM_NUMBER,
+      to: phoneNumber,
+    });
+
+    if (result.errorCode) {
+      console.error('Twilio error:', result.errorCode);
+      return { success: false };
+    }
+
+    // Return success (but NOT the code in production - this is for testing)
+    // In production, return { success: true } without the code
+    return { success: true, code: process.env.NODE_ENV === 'development' ? otp : undefined };
+  } catch (error) {
+    console.error('OTP send error:', error);
+    return { success: false };
+  }
+}
+
+function getSMSTemplate(type: NotificationType, data: Record<string, any>): string {
+  const appName = process.env.APP_NAME || 'YourApp';
+
+  switch (type) {
+    case 'security_code':
+      // This should use sendOTP() instead, but included for completeness
+      return `Your ${appName} verification code is ${data.code}. Do not share this code.`;
+
+    case 'transactional':
+      return `${appName}: ${data.message}`;
+
+    case 'order_confirmation':
+      return `${appName}: Your order #${data.orderId} has been confirmed. Total: $${data.total}`;
+
+    case 'payment_received':
+      return `${appName}: Payment of $${data.amount} received. Thank you!`;
+
+    default:
+      return `${appName}: ${data.message || 'You have a new notification.'}`;
+  }
+}
+```
+
+### Environment Variables
+
+```env
+# .env
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=your_auth_token_here
+TWILIO_PHONE_NUMBER=+1234567890
+APP_NAME=YourApp
+APP_DOMAIN=yourapp.com
+```
+
+---
+
+## PHASE 4: RATE LIMITING (REDIS)
+
+### Critical: Cost Protection
+
+Rate limiting prevents abuse and protects against excessive costs (especially for SMS, which can be expensive).
+
+### Architecture
+
+- **Redis** for fast, distributed rate limiting
+- **Sliding window** algorithm for smooth rate limiting
+- **Per-user, per-channel** limits (SMS has stricter limits than Email)
+
+### Installation
+
+```bash
+npm install ioredis
+```
+
+### Rate Limiting Logic
+
+```typescript
+// lib/notifications/rate-limit.ts
+
+import Redis from 'ioredis';
+
+const redis = new Redis(process.env.REDIS_URL);
+
+// Rate limits (per user, per channel)
+const RATE_LIMITS = {
+  sms: {
+    maxRequests: 5,      // 5 SMS per window
+    windowSeconds: 60,   // 1 minute window
+  },
+  email: {
+    maxRequests: 20,     // 20 emails per window
+    windowSeconds: 60,   // 1 minute window
+  },
+};
+
+/**
+ * Check if user has exceeded rate limit for a channel
+ * Returns true if rate limited (should block), false if allowed
+ */
+export async function checkRateLimit(
+  userId: string,
+  channel: 'sms' | 'email'
+): Promise<boolean> {
+  const limit = RATE_LIMITS[channel];
+  const key = `rate_limit:${channel}:${userId}`;
+  const now = Date.now();
+  const windowStart = now - (limit.windowSeconds * 1000);
+
+  try {
+    // Get current count
+    const count = await redis.zcount(key, windowStart, now);
+
+    if (count >= limit.maxRequests) {
+      // Rate limited
+      return true;
+    }
+
+    // Add this request to the sorted set
+    await redis.zadd(key, now, `${now}-${Math.random()}`);
+
+    // Set expiration on the key (cleanup)
+    await redis.expire(key, limit.windowSeconds);
+
+    return false;
+  } catch (error) {
+    console.error('Rate limit check error:', error);
+    // On error, allow the request (fail open)
+    return false;
+  }
+}
+
+/**
+ * Get remaining requests for a user/channel
+ */
+export async function getRemainingRequests(
+  userId: string,
+  channel: 'sms' | 'email'
+): Promise<number> {
+  const limit = RATE_LIMITS[channel];
+  const key = `rate_limit:${channel}:${userId}`;
+  const now = Date.now();
+  const windowStart = now - (limit.windowSeconds * 1000);
+
+  try {
+    const count = await redis.zcount(key, windowStart, now);
+    return Math.max(0, limit.maxRequests - count);
+  } catch (error) {
+    console.error('Get remaining requests error:', error);
+    return limit.maxRequests;
+  }
+}
+
+/**
+ * Reset rate limit for a user/channel (admin function)
+ */
+export async function resetRateLimit(
+  userId: string,
+  channel: 'sms' | 'email'
+): Promise<void> {
+  const key = `rate_limit:${channel}:${userId}`;
+  await redis.del(key);
+}
+```
+
+### Environment Variables
+
+```env
+# .env
+REDIS_URL=redis://localhost:6379
+# Or for production:
+# REDIS_URL=rediss://user:password@host:port
+```
+
+---
+
+## PHASE 5: EMAIL PREVIEW SERVER
+
+### Development Workflow
+
+React Email provides a development server to preview templates locally before sending.
+
+### Setup
+
+```bash
+# Install React Email CLI
+npm install -D @react-email/cli
+
+# Initialize (creates emails/ directory if it doesn't exist)
+npx email dev
+```
+
+### Running the Preview Server
+
+```bash
+# Start the development server
+npm run email:dev
+
+# Or directly:
+npx email dev
+```
+
+The server will:
+- Start on `http://localhost:3000` (or next available port)
+- Show a list of all email templates
+- Allow you to preview each template with sample data
+- Hot-reload on file changes
+
+### Package.json Scripts
+
+```json
+{
+  "scripts": {
+    "email:dev": "email dev",
+    "email:export": "email export"
+  }
+}
+```
+
+### Preview with Custom Data
+
+You can create preview files for each template:
+
+```typescript
+// emails/WelcomeEmail.preview.tsx
+
+import { WelcomeEmail } from './WelcomeEmail';
+
+export default {
+  component: WelcomeEmail,
+  props: {
+    name: 'John Doe',
+    verificationLink: 'https://yourapp.com/verify?token=abc123',
+  },
+};
+```
+
+### Exporting Templates (for testing)
+
+```bash
+# Export all templates as HTML files
+npm run email:export
+```
+
+This creates a `output/` directory with static HTML files you can open in a browser.
+
+---
+
+## PHASE 6: COMPLETE INTEGRATION EXAMPLE
+
+### Full Flow: User Registration
+
+```typescript
+// app/api/auth/register/route.ts
+
+import { notifyUser } from '@/lib/notifications/router';
+import { sendOTP } from '@/lib/notifications/sms';
+
+export async function POST(request: Request) {
+  const { email, phone, name } = await request.json();
+
+  // 1. Create user account
+  const user = await createUser({ email, phone, name });
+
+  // 2. Send welcome email (via router)
+  await notifyUser(user.id, 'welcome', {
+    name,
+    verificationLink: `https://yourapp.com/verify?token=${token}`,
+  });
+
+  // 3. Send OTP for phone verification (urgent, bypasses router)
+  const otpResult = await sendOTP(user.id, 'account_verification');
+
+  return Response.json({ 
+    success: true, 
+    userId: user.id,
+    otpSent: otpResult.success 
+  });
+}
+```
+
+### Full Flow: Password Reset
+
+```typescript
+// app/api/auth/reset-password/route.ts
+
+import { notifyUser } from '@/lib/notifications/router';
+
+export async function POST(request: Request) {
+  const { email } = await request.json();
+
+  // 1. Find user
+  const user = await findUserByEmail(email);
+  if (!user) {
+    // Don't reveal if user exists (security)
+    return Response.json({ success: true });
+  }
+
+  // 2. Generate reset token
+  const resetToken = generateResetToken();
+  await storeResetToken(user.id, resetToken);
+
+  // 3. Send reset email (via router)
+  await notifyUser(user.id, 'password_reset', {
+    name: user.name,
+    resetLink: `https://yourapp.com/reset?token=${resetToken}`,
+    expiresIn: '15 minutes',
+  });
+
+  return Response.json({ success: true });
+}
+```
+
+### Full Flow: Security Code (Login 2FA)
+
+```typescript
+// app/api/auth/2fa/route.ts
+
+import { notifyUser } from '@/lib/notifications/router';
+import { sendOTP, verifyOTP } from '@/lib/notifications/sms';
+
+export async function POST(request: Request) {
+  const { userId, action, code } = await request.json();
+
+  if (action === 'request') {
+    // Request OTP
+    const result = await sendOTP(userId, 'login');
+    
+    // Also send email notification (urgent, so router sends both)
+    await notifyUser(userId, 'security_code', {
+      name: user.name,
+      code: result.code, // Only in dev mode
+      purpose: 'login',
+    }, 'urgent');
+
+    return Response.json({ success: result.success });
+  }
+
+  if (action === 'verify') {
+    // Verify OTP
+    const isValid = await verifyOTP(userId, code, 'login');
+    return Response.json({ success: isValid });
+  }
+}
+```
+
+---
+
+## PHASE 7: TESTING & MONITORING
+
+### Testing Email Templates
+
+```typescript
+// __tests__/notifications/email.test.tsx
+
+import { render } from '@react-email/render';
+import { WelcomeEmail } from '@/emails/WelcomeEmail';
+
+describe('WelcomeEmail', () => {
+  it('renders correctly', async () => {
+    const html = await render(
+      <WelcomeEmail 
+        name="John Doe" 
+        verificationLink="https://test.com/verify"
+      />
+    );
+    
+    expect(html).toContain('Welcome, John Doe');
+    expect(html).toContain('Verify Your Email');
+  });
+});
+```
+
+### Testing SMS Templates
+
+```typescript
+// __tests__/notifications/sms.test.ts
+
+import { getSMSTemplate } from '@/lib/notifications/sms';
+
+describe('SMS Templates', () => {
+  it('formats security code correctly', () => {
+    const message = getSMSTemplate('security_code', { code: '123456' });
+    expect(message).toContain('123456');
+    expect(message).toContain('Do not share');
+  });
+});
+```
+
+### Monitoring & Logging
+
+```typescript
+// lib/notifications/monitoring.ts
+
+export async function logNotification(
+  userId: string,
+  channel: 'email' | 'sms',
+  type: NotificationType,
+  success: boolean,
+  error?: string
+) {
+  // Log to your analytics/monitoring service
+  await supabase.from('notification_logs').insert({
+    user_id: userId,
+    channel,
+    type,
+    success,
+    error,
+    created_at: new Date().toISOString(),
+  });
+}
+```
+
+---
+
+## CRITICAL BEST PRACTICES
+
+### 1. Never Store Plaintext OTPs
+
+✅ **CORRECT:**
+```typescript
+const otp = generateOTP();
+const hash = await hashOTP(otp);
+await storeOTP(userId, hash, phoneNumber, 'login');
+// Send plaintext OTP via SMS
+await sendSMS(phoneNumber, `Your code is ${otp}`);
+```
+
+❌ **WRONG:**
+```typescript
+// Never do this!
+await db.otps.create({ userId, code: otp }); // Plaintext in DB!
+```
+
+### 2. Always Use the Router
+
+✅ **CORRECT:**
+```typescript
+await notifyUser(userId, 'welcome', { name: 'John' });
+```
+
+❌ **WRONG:**
+```typescript
+await sendEmail(userId, 'welcome', { name: 'John' }); // Bypasses preferences!
+```
+
+### 3. Rate Limit SMS Aggressively
+
+SMS costs money. Always check rate limits before sending:
+
+```typescript
+const rateLimited = await checkRateLimit(userId, 'sms');
+if (rateLimited) {
+  return { success: false, error: 'Rate limit exceeded' };
+}
+```
+
+### 4. Use WebOTP Format for Mobile
+
+The format `YourApp @yourapp.com #123456` enables autofill on mobile browsers:
+
+```typescript
+const message = `Your verification code is ${otp}. Do not share this code.\n\n${appName} @${appDomain} #${otp}`;
+```
+
+### 5. Preview Before Sending
+
+Always use `email dev` to preview templates before deploying:
+
+```bash
+npm run email:dev
+```
+
+### 6. Handle Failures Gracefully
+
+```typescript
+try {
+  await notifyUser(userId, 'welcome', data);
+} catch (error) {
+  // Log error, but don't break user flow
+  console.error('Notification failed:', error);
+  // Continue with user registration
+}
+```
+
+---
+
+## SUMMARY: THE COMPLETE STACK
+
+1. **Router** (`notifyUser()`) - Single entry point, respects preferences
+2. **Email Engine** - React Email + Resend, beautiful templates
+3. **SMS Engine** - Twilio, OTP generation/hashing, WebOTP format
+4. **Rate Limiting** - Redis, protects against abuse and costs
+5. **Preview Server** - `email dev` for local template testing
+6. **Database** - User preferences, OTP hashes, notification logs
+
+**Always remember:** The router is the source of truth. Never bypass it.

@@ -1,0 +1,1049 @@
+# PostHog Analytics Engine - Source of Truth
+
+**Principal Product Engineer: Observability & Experimentation**
+
+> **Core Philosophy:** "100% data accuracy through reverse proxy architecture. Feature flags before code releases. Privacy-first session replay."
+
+This document defines the **Event Capture Strategy, Feature Flag Implementation, and Session Replay Privacy** rules for all PostHog integrations.
+
+---
+
+## Table of Contents
+
+1. [Critical Architecture Rules](#critical-architecture-rules)
+2. [Phase 1: Initialization (Next.js)](#phase-1-initialization-nextjs)
+3. [Phase 2: Feature Flags & Experiments](#phase-2-feature-flags--experiments)
+4. [Phase 3: Event Taxonomy](#phase-3-event-taxonomy)
+5. [Phase 4: Session Replay Privacy](#phase-4-session-replay-privacy)
+6. [Phase 5: Middleware Guards](#phase-5-middleware-guards)
+7. [Implementation Examples](#implementation-examples)
+8. [Troubleshooting & Best Practices](#troubleshooting--best-practices)
+
+---
+
+## Critical Architecture Rules
+
+### ⚠️ THE "REVERSE PROXY" RULE (MANDATORY)
+
+**Ad-Blocker Evasion:** Do NOT send events directly to `app.posthog.com`. Configure a **Reverse Proxy** (via Next.js Rewrites) to send events to `yourdomain.com/ingest`. This ensures 100% data accuracy by bypassing ad blockers.
+
+**Why This Matters:**
+- Ad blockers block `app.posthog.com` by default
+- Reverse proxy makes requests appear as first-party traffic
+- Zero data loss from blocked requests
+- Better privacy compliance (first-party data)
+
+### 🔐 THE "IDENTIFICATION" RULE
+
+**You MUST call `posthog.identify(userId)` immediately after login.** Before that, track as `anonymous`.
+
+**Flow:**
+1. User visits site → Anonymous tracking begins
+2. User logs in → `posthog.identify(userId)` called immediately
+3. All subsequent events are tied to the identified user
+
+### 🚩 THE "FLAGS FIRST" RULE
+
+**Never release code directly. Wrap it in `useFeatureFlag('new-feature-key')`.**
+
+**Principle:** All new features must be behind feature flags. This enables:
+- Safe rollouts (1% → 10% → 100%)
+- Instant rollbacks without deployments
+- A/B testing and experimentation
+- Gradual feature releases
+
+---
+
+## Phase 1: Initialization (Next.js)
+
+### 1.1 The Provider Pattern
+
+**Component:** `CSPostHogProvider`
+
+**Key Requirements:**
+- Initialize `posthog-js` only on the client side
+- Configure reverse proxy endpoint
+- Disable auto pageview capture (manual control)
+- Handle SSR safely
+
+#### Installation
+
+```bash
+npm install posthog-js
+npm install posthog-node  # For server-side feature flags
+```
+
+#### Provider Implementation
+
+```typescript
+// lib/posthog-provider.tsx
+'use client'
+
+import posthog from 'posthog-js'
+import { PostHogProvider } from 'posthog-js/react'
+import { useEffect } from 'react'
+
+export function CSPostHogProvider({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    // Only initialize on client side
+    if (typeof window !== 'undefined') {
+      const posthogKey = process.env.NEXT_PUBLIC_POSTHOG_KEY
+      const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.posthog.com'
+
+      if (posthogKey) {
+        posthog.init(posthogKey, {
+          api_host: '/ingest', // CRITICAL: Use reverse proxy, not app.posthog.com
+          ui_host: posthogHost, // For PostHog UI access
+          capture_pageview: false, // We handle this manually for better control
+          capture_pageleave: true,
+          loaded: (posthog) => {
+            if (process.env.NODE_ENV === 'development') {
+              console.log('PostHog initialized')
+            }
+          },
+          // Session Replay Privacy (see Phase 4)
+          session_recording: {
+            maskAllInputs: true, // Mask all inputs by default
+            maskTextSelector: '.ph-no-capture', // Additional masking
+          },
+        })
+      }
+    }
+  }, [])
+
+  return <PostHogProvider client={posthog}>{children}</PostHogProvider>
+}
+```
+
+#### App Integration
+
+```typescript
+// app/layout.tsx
+import { CSPostHogProvider } from '@/lib/posthog-provider'
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <CSPostHogProvider>
+          {children}
+        </CSPostHogProvider>
+      </body>
+    </html>
+  )
+}
+```
+
+### 1.2 Next.js Rewrites Configuration
+
+**CRITICAL:** This is the reverse proxy that evades ad blockers.
+
+```javascript
+// next.config.js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  async rewrites() {
+    return [
+      {
+        source: '/ingest/:path*',
+        destination: 'https://us.posthog.com/:path*', // Change to your PostHog region
+      },
+    ]
+  },
+}
+
+module.exports = nextConfig
+```
+
+**Environment Variables:**
+
+```bash
+# .env.local
+NEXT_PUBLIC_POSTHOG_KEY=phc_your_project_key_here
+NEXT_PUBLIC_POSTHOG_HOST=https://us.posthog.com
+```
+
+**How It Works:**
+1. Client sends event to `/ingest/decide` (appears as first-party)
+2. Next.js rewrite forwards to `https://us.posthog.com/decide`
+3. Ad blockers don't block `/ingest` (it's your domain)
+4. 100% data accuracy achieved
+
+### 1.3 Manual Pageview Tracking
+
+Since `capture_pageview: false`, we track pageviews manually for better control:
+
+```typescript
+// app/[slug]/page.tsx or in a layout
+'use client'
+
+import { usePostHog } from 'posthog-js/react'
+import { usePathname, useSearchParams } from 'next/navigation'
+import { useEffect } from 'react'
+
+export function PostHogPageView() {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const posthog = usePostHog()
+
+  useEffect(() => {
+    if (pathname && posthog) {
+      let url = window.origin + pathname
+      if (searchParams && searchParams.toString()) {
+        url = url + `?${searchParams.toString()}`
+      }
+      posthog.capture('$pageview', {
+        $current_url: url,
+      })
+    }
+  }, [pathname, searchParams, posthog])
+
+  return null
+}
+```
+
+---
+
+## Phase 2: Feature Flags & Experiments
+
+### 2.1 The Flag Hook (Client-Side)
+
+**Usage Pattern:** `const showNewDashboard = useFeatureFlagEnabled('new-dashboard-v2')`
+
+#### Hook Implementation
+
+```typescript
+// hooks/useFeatureFlag.ts
+'use client'
+
+import { usePostHog } from 'posthog-js/react'
+import { useEffect, useState } from 'react'
+
+/**
+ * Check if a feature flag is enabled
+ * @param flagKey - The feature flag key
+ * @returns boolean - Whether the flag is enabled
+ */
+export function useFeatureFlagEnabled(flagKey: string): boolean {
+  const posthog = usePostHog()
+  const [enabled, setEnabled] = useState(false)
+
+  useEffect(() => {
+    if (!posthog) return
+
+    // Get flag value
+    const flagValue = posthog.isFeatureEnabled(flagKey)
+    setEnabled(flagValue === true)
+
+    // Listen for flag updates (useful for real-time changes)
+    const unsubscribe = posthog.onFeatureFlags(() => {
+      const updatedValue = posthog.isFeatureEnabled(flagKey)
+      setEnabled(updatedValue === true)
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [posthog, flagKey])
+
+  return enabled
+}
+
+/**
+ * Get feature flag value (supports JSON payloads)
+ * @param flagKey - The feature flag key
+ * @returns T | undefined - The flag value or undefined
+ */
+export function useFeatureFlag<T = any>(flagKey: string): T | undefined {
+  const posthog = usePostHog()
+  const [value, setValue] = useState<T | undefined>(undefined)
+
+  useEffect(() => {
+    if (!posthog) return
+
+    const flagValue = posthog.getFeatureFlag(flagKey)
+    setValue(flagValue as T)
+
+    const unsubscribe = posthog.onFeatureFlags(() => {
+      const updatedValue = posthog.getFeatureFlag(flagKey)
+      setValue(updatedValue as T)
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [posthog, flagKey])
+
+  return value
+}
+```
+
+#### Usage Examples
+
+```typescript
+// components/Dashboard.tsx
+'use client'
+
+import { useFeatureFlagEnabled, useFeatureFlag } from '@/hooks/useFeatureFlag'
+
+export function Dashboard() {
+  // Boolean flag
+  const showNewDashboard = useFeatureFlagEnabled('new-dashboard-v2')
+  
+  // JSON payload flag
+  const bannerConfig = useFeatureFlag<{ banner_color: string; text: string }>('banner-config')
+
+  if (showNewDashboard) {
+    return <NewDashboardV2 />
+  }
+
+  return (
+    <>
+      {bannerConfig && (
+        <Banner 
+          color={bannerConfig.banner_color} 
+          text={bannerConfig.text} 
+        />
+      )}
+      <DashboardV1 />
+    </>
+  )
+}
+```
+
+### 2.2 Server-Side Feature Flags
+
+**For API routes and server components:** Use `posthog-node` to check flags before executing sensitive logic.
+
+#### Server-Side Client Setup
+
+```typescript
+// lib/posthog-server.ts
+import { PostHog } from 'posthog-node'
+
+let posthogClient: PostHog | null = null
+
+export function getPostHogServer(): PostHog {
+  if (!posthogClient) {
+    posthogClient = new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
+      host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.posthog.com',
+    })
+  }
+  return posthogClient
+}
+```
+
+#### API Route Example
+
+```typescript
+// app/api/payments/route.ts
+import { getPostHogServer } from '@/lib/posthog-server'
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function POST(request: NextRequest) {
+  const userId = request.headers.get('x-user-id') // From your auth system
+  const posthog = getPostHogServer()
+
+  // Check feature flag before executing
+  const isNewPaymentFlowEnabled = await posthog.isFeatureEnabled(
+    'new-payment-flow',
+    userId || 'anonymous'
+  )
+
+  if (isNewPaymentFlowEnabled) {
+    // Execute new payment logic
+    return NextResponse.json({ message: 'New payment flow' })
+  }
+
+  // Fallback to old payment logic
+  return NextResponse.json({ message: 'Legacy payment flow' })
+}
+```
+
+#### Server Component Example
+
+```typescript
+// app/dashboard/page.tsx
+import { getPostHogServer } from '@/lib/posthog-server'
+import { getServerSession } from 'next-auth'
+import { NewDashboard } from '@/components/NewDashboard'
+import { LegacyDashboard } from '@/components/LegacyDashboard'
+
+export default async function DashboardPage() {
+  const session = await getServerSession()
+  const userId = session?.user?.id
+
+  if (!userId) {
+    return <div>Please log in</div>
+  }
+
+  const posthog = getPostHogServer()
+  const showNewDashboard = await posthog.isFeatureEnabled('new-dashboard-v2', userId)
+
+  if (showNewDashboard) {
+    return <NewDashboard />
+  }
+
+  return <LegacyDashboard />
+}
+```
+
+### 2.3 Feature Flag Payloads (JSON Configuration)
+
+**Use JSON payloads in flags to configure values remotely without deploying code.**
+
+**Example Flag Configuration in PostHog:**
+- Flag Key: `banner-config`
+- Payload: `{"banner_color": "#FF0000", "text": "Limited Time Offer!", "show_cta": true}`
+
+**Usage:**
+
+```typescript
+// components/Banner.tsx
+'use client'
+
+import { useFeatureFlag } from '@/hooks/useFeatureFlag'
+
+interface BannerConfig {
+  banner_color: string
+  text: string
+  show_cta: boolean
+  cta_text?: string
+}
+
+export function Banner() {
+  const config = useFeatureFlag<BannerConfig>('banner-config')
+
+  if (!config) return null
+
+  return (
+    <div style={{ backgroundColor: config.banner_color }}>
+      <p>{config.text}</p>
+      {config.show_cta && (
+        <button>{config.cta_text || 'Learn More'}</button>
+      )}
+    </div>
+  )
+}
+```
+
+---
+
+## Phase 3: Event Taxonomy
+
+### 3.1 The "No Auto-Capture" Rule
+
+**Do NOT auto-capture everything. It creates noise.**
+
+**Principle:** Manual tracking gives you:
+- Clear event names
+- Relevant properties
+- Better data quality
+- Easier analysis
+
+### 3.2 Event Naming Convention
+
+**Format:** `snake_case` with descriptive names
+
+**Pattern:** `[object]_[action]`
+
+**Examples:**
+- `payment_success`
+- `invite_sent`
+- `feature_flag_viewed`
+- `user_onboarded`
+- `subscription_cancelled`
+
+### 3.3 Core Events to Track
+
+#### Authentication Events
+
+```typescript
+// After successful login
+posthog.identify(userId, {
+  email: user.email,
+  name: user.name,
+  plan: user.plan,
+})
+
+posthog.capture('user_logged_in', {
+  method: 'email', // or 'google', 'github', etc.
+  timestamp: new Date().toISOString(),
+})
+```
+
+#### Payment Events
+
+```typescript
+// Payment success
+posthog.capture('payment_success', {
+  amount: 50.00,
+  currency: 'USD',
+  plan: 'pro',
+  payment_method: 'stripe',
+  subscription_id: 'sub_123',
+})
+
+// Payment failed
+posthog.capture('payment_failed', {
+  amount: 50.00,
+  plan: 'pro',
+  error_code: 'card_declined',
+  error_message: 'Insufficient funds',
+})
+```
+
+#### Feature Usage Events
+
+```typescript
+// User sends invite
+posthog.capture('invite_sent', {
+  role: 'admin',
+  invite_method: 'email',
+  team_id: 'team_123',
+})
+
+// User views feature
+posthog.capture('feature_viewed', {
+  feature_name: 'analytics_dashboard',
+  view_duration: 45, // seconds
+})
+```
+
+#### Conversion Events
+
+```typescript
+// User completes onboarding
+posthog.capture('user_onboarded', {
+  onboarding_steps_completed: 5,
+  time_to_complete: 120, // seconds
+  skipped_steps: ['tutorial'],
+})
+
+// User upgrades plan
+posthog.capture('subscription_upgraded', {
+  from_plan: 'free',
+  to_plan: 'pro',
+  upgrade_reason: 'feature_limit',
+})
+```
+
+### 3.4 Event Properties Best Practices
+
+**Always Include:**
+- Timestamps (ISO format)
+- User context (if available)
+- Relevant IDs (subscription_id, team_id, etc.)
+- Error details (for failure events)
+
+**Avoid:**
+- PII in event names (use properties)
+- Sensitive data (passwords, tokens)
+- Excessive nested objects (keep it flat)
+
+---
+
+## Phase 4: Session Replay Privacy
+
+### 4.1 Configuration
+
+**Config:** `maskAllInputs: true` (set in provider initialization)
+
+**Additional Privacy Settings:**
+
+```typescript
+// lib/posthog-provider.tsx (updated)
+posthog.init(posthogKey, {
+  // ... other config
+  session_recording: {
+    maskAllInputs: true, // Mask all inputs by default
+    maskTextSelector: '.ph-no-capture', // Additional elements to mask
+    recordCrossOriginIframes: false, // Don't record cross-origin iframes
+    maskAllText: false, // Only mask inputs, not all text
+  },
+})
+```
+
+### 4.2 Sensitive Data Blacklisting
+
+**Add class `ph-no-capture` to any DOM element to blacklist it from recording.**
+
+#### Examples
+
+```tsx
+// Bank account number
+<div className="ph-no-capture">
+  Account: ****1234
+</div>
+
+// Credit card input
+<input 
+  type="text" 
+  className="ph-no-capture"
+  placeholder="Card Number"
+/>
+
+// Sensitive user data
+<div className="ph-no-capture">
+  <p>SSN: {maskedSSN}</p>
+  <p>API Key: {maskedKey}</p>
+</div>
+```
+
+#### Component-Level Masking
+
+```tsx
+// components/SensitiveData.tsx
+export function SensitiveData({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="ph-no-capture">
+      {children}
+    </div>
+  )
+}
+
+// Usage
+<SensitiveData>
+  <BankAccountDetails account={account} />
+</SensitiveData>
+```
+
+### 4.3 Privacy Compliance Checklist
+
+- [ ] All password fields are masked (automatic with `maskAllInputs: true`)
+- [ ] Financial data has `ph-no-capture` class
+- [ ] PII (SSN, credit cards) is blacklisted
+- [ ] API keys and tokens are masked
+- [ ] Cross-origin iframes are not recorded
+- [ ] Review session recordings regularly for compliance
+
+---
+
+## Phase 5: Middleware Guards
+
+### 5.1 Middleware Feature Flag Check
+
+**Use Middleware to check Feature Flags and redirect users (e.g., Blocking access to a beta page if the flag is off).**
+
+#### Middleware Implementation
+
+```typescript
+// middleware.ts
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import { PostHog } from 'posthog-node'
+
+const posthog = new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
+  host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.posthog.com',
+})
+
+export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+
+  // Example: Protect beta routes
+  if (pathname.startsWith('/beta')) {
+    // Get user ID from session/cookie
+    const userId = request.cookies.get('user_id')?.value || 'anonymous'
+    
+    // Check feature flag
+    const hasBetaAccess = await posthog.isFeatureEnabled('beta-access', userId)
+
+    if (!hasBetaAccess) {
+      // Redirect to access denied page
+      return NextResponse.redirect(new URL('/access-denied', request.url))
+    }
+  }
+
+  // Example: A/B test different landing pages
+  if (pathname === '/') {
+    const userId = request.cookies.get('user_id')?.value || 'anonymous'
+    const variant = await posthog.getFeatureFlag('landing-page-variant', userId)
+
+    if (variant === 'variant-b') {
+      return NextResponse.rewrite(new URL('/landing-variant-b', request.url))
+    }
+    // Default to variant A
+  }
+
+  return NextResponse.next()
+}
+
+export const config = {
+  matcher: [
+    '/beta/:path*',
+    '/',
+    // Add other protected routes
+  ],
+}
+```
+
+### 5.2 Advanced Middleware Patterns
+
+#### Gradual Rollout Based on User Properties
+
+```typescript
+// middleware.ts (continued)
+export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+
+  if (pathname.startsWith('/new-feature')) {
+    const userId = request.cookies.get('user_id')?.value
+    const userEmail = request.cookies.get('user_email')?.value
+
+    if (!userId) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+
+    // Check flag with user properties
+    const hasAccess = await posthog.isFeatureEnabled('new-feature-access', userId, {
+      email: userEmail,
+      // PostHog will use these for targeting
+    })
+
+    if (!hasAccess) {
+      return NextResponse.redirect(new URL('/coming-soon', request.url))
+    }
+  }
+
+  return NextResponse.next()
+}
+```
+
+#### Geographic Restrictions
+
+```typescript
+// middleware.ts (continued)
+export async function middleware(request: NextRequest) {
+  const country = request.geo?.country || 'US'
+  const pathname = request.nextUrl.pathname
+
+  if (pathname.startsWith('/eu-only-feature')) {
+    const userId = request.cookies.get('user_id')?.value || 'anonymous'
+    
+    // Check flag with geographic context
+    const hasAccess = await posthog.isFeatureEnabled('eu-feature', userId, {
+      country,
+    })
+
+    if (!hasAccess || !['DE', 'FR', 'IT', 'ES'].includes(country)) {
+      return NextResponse.redirect(new URL('/not-available', request.url))
+    }
+  }
+
+  return NextResponse.next()
+}
+```
+
+---
+
+## Implementation Examples
+
+### Complete Example: Feature Flag Gated Component
+
+```typescript
+// components/NewFeature.tsx
+'use client'
+
+import { useFeatureFlagEnabled } from '@/hooks/useFeatureFlag'
+import { usePostHog } from 'posthog-js/react'
+import { useEffect } from 'react'
+
+export function NewFeature() {
+  const isEnabled = useFeatureFlagEnabled('new-feature-v2')
+  const posthog = usePostHog()
+
+  useEffect(() => {
+    if (isEnabled && posthog) {
+      // Track feature exposure
+      posthog.capture('feature_exposed', {
+        feature_name: 'new-feature-v2',
+        timestamp: new Date().toISOString(),
+      })
+    }
+  }, [isEnabled, posthog])
+
+  if (!isEnabled) {
+    return <div>This feature is not available yet.</div>
+  }
+
+  return (
+    <div>
+      <h1>New Feature V2</h1>
+      <button
+        onClick={() => {
+          posthog?.capture('feature_action', {
+            feature_name: 'new-feature-v2',
+            action: 'button_clicked',
+          })
+        }}
+      >
+        Click Me
+      </button>
+    </div>
+  )
+}
+```
+
+### Complete Example: Authentication Flow
+
+```typescript
+// app/api/auth/callback/route.ts
+import { getPostHogServer } from '@/lib/posthog-server'
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  // Your auth logic here
+  const user = await authenticateUser(request)
+  
+  if (user) {
+    const posthog = getPostHogServer()
+    
+    // CRITICAL: Identify user immediately after login
+    posthog.identify(user.id, {
+      email: user.email,
+      name: user.name,
+      plan: user.plan,
+      created_at: user.createdAt,
+    })
+
+    // Track login event
+    posthog.capture({
+      distinctId: user.id,
+      event: 'user_logged_in',
+      properties: {
+        method: 'oauth',
+        timestamp: new Date().toISOString(),
+      },
+    })
+
+    // Set cookie for middleware
+    const response = NextResponse.redirect(new URL('/dashboard', request.url))
+    response.cookies.set('user_id', user.id)
+    return response
+  }
+
+  return NextResponse.redirect(new URL('/login?error=auth_failed', request.url))
+}
+```
+
+### Complete Example: A/B Test Implementation
+
+```typescript
+// components/CheckoutButton.tsx
+'use client'
+
+import { useFeatureFlag } from '@/hooks/useFeatureFlag'
+import { usePostHog } from 'posthog-js/react'
+
+interface ButtonConfig {
+  color: string
+  text: string
+  size: 'small' | 'medium' | 'large'
+}
+
+export function CheckoutButton() {
+  const config = useFeatureFlag<ButtonConfig>('checkout-button-variant')
+  const posthog = usePostHog()
+
+  const defaultConfig: ButtonConfig = {
+    color: '#000000',
+    text: 'Checkout',
+    size: 'medium',
+  }
+
+  const buttonConfig = config || defaultConfig
+
+  const handleClick = () => {
+    posthog?.capture('checkout_button_clicked', {
+      variant: config ? 'experimental' : 'control',
+      button_color: buttonConfig.color,
+      button_text: buttonConfig.text,
+    })
+    // Proceed with checkout
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      style={{
+        backgroundColor: buttonConfig.color,
+        padding: buttonConfig.size === 'large' ? '16px 32px' : '12px 24px',
+      }}
+    >
+      {buttonConfig.text}
+    </button>
+  )
+}
+```
+
+---
+
+## Troubleshooting & Best Practices
+
+### Common Issues
+
+#### 1. Events Not Appearing in PostHog
+
+**Checklist:**
+- [ ] Verify `NEXT_PUBLIC_POSTHOG_KEY` is set correctly
+- [ ] Check browser console for errors
+- [ ] Verify reverse proxy is working (`/ingest` endpoint)
+- [ ] Check network tab - requests should go to `/ingest`, not `app.posthog.com`
+- [ ] Ensure PostHog is initialized before capturing events
+
+#### 2. Feature Flags Not Updating
+
+**Solutions:**
+- Clear browser cache
+- Check flag configuration in PostHog dashboard
+- Verify user identification (`posthog.identify()` called)
+- Check flag targeting rules
+- Use `posthog.reloadFeatureFlags()` to force reload
+
+#### 3. Session Replay Not Recording
+
+**Checklist:**
+- [ ] Verify `session_recording` config is enabled
+- [ ] Check PostHog project settings (Session Replay must be enabled)
+- [ ] Verify no ad blockers are interfering
+- [ ] Check browser console for errors
+
+### Best Practices
+
+1. **Always Identify Users After Login**
+   ```typescript
+   // ✅ Correct
+   await login()
+   posthog.identify(userId, { email, name })
+   
+   // ❌ Wrong
+   posthog.identify(userId) // Missing properties
+   ```
+
+2. **Use Descriptive Event Names**
+   ```typescript
+   // ✅ Correct
+   posthog.capture('payment_success', { amount, plan })
+   
+   // ❌ Wrong
+   posthog.capture('event1', { data })
+   ```
+
+3. **Check Flags Before Rendering**
+   ```typescript
+   // ✅ Correct
+   const enabled = useFeatureFlagEnabled('feature')
+   if (!enabled) return null
+   
+   // ❌ Wrong
+   const enabled = useFeatureFlagEnabled('feature')
+   return enabled ? <Feature /> : null // Still renders wrapper
+   ```
+
+4. **Mask Sensitive Data**
+   ```typescript
+   // ✅ Correct
+   <div className="ph-no-capture">{creditCard}</div>
+   
+   // ❌ Wrong
+   <div>{creditCard}</div> // Exposed in session replay
+   ```
+
+5. **Use Reverse Proxy (Always)**
+   ```typescript
+   // ✅ Correct
+   api_host: '/ingest'
+   
+   // ❌ Wrong
+   api_host: 'https://app.posthog.com' // Blocked by ad blockers
+   ```
+
+### Performance Considerations
+
+- **Lazy Load PostHog:** Only initialize when needed
+- **Batch Events:** PostHog batches automatically, but avoid excessive captures
+- **Server-Side Flags:** Cache flag results when possible
+- **Middleware:** Keep middleware logic lightweight
+
+### Security Checklist
+
+- [ ] PostHog key is in environment variables (never commit)
+- [ ] Reverse proxy is configured correctly
+- [ ] Sensitive data is masked in session replay
+- [ ] User identification doesn't expose PII
+- [ ] Feature flags don't leak sensitive business logic
+- [ ] API routes validate user authentication before flag checks
+
+---
+
+## Quick Reference
+
+### Environment Variables
+
+```bash
+NEXT_PUBLIC_POSTHOG_KEY=phc_your_key_here
+NEXT_PUBLIC_POSTHOG_HOST=https://us.posthog.com
+```
+
+### Next.js Config
+
+```javascript
+// next.config.js
+async rewrites() {
+  return [
+    {
+      source: '/ingest/:path*',
+      destination: 'https://us.posthog.com/:path*',
+    },
+  ]
+}
+```
+
+### Provider Setup
+
+```typescript
+// lib/posthog-provider.tsx
+posthog.init(key, {
+  api_host: '/ingest',
+  ui_host: 'https://us.posthog.com',
+  capture_pageview: false,
+  session_recording: {
+    maskAllInputs: true,
+  },
+})
+```
+
+### Common Hooks
+
+```typescript
+// Boolean flag
+const enabled = useFeatureFlagEnabled('flag-key')
+
+// Flag with payload
+const config = useFeatureFlag<ConfigType>('flag-key')
+
+// PostHog instance
+const posthog = usePostHog()
+```
+
+### Common Methods
+
+```typescript
+// Identify user
+posthog.identify(userId, { email, name })
+
+// Capture event
+posthog.capture('event_name', { property: value })
+
+// Check flag (client)
+posthog.isFeatureEnabled('flag-key')
+
+// Get flag value (client)
+posthog.getFeatureFlag('flag-key')
+```
+
+---
+
+**Last Updated:** [Current Date]
+**Version:** 1.0.0
+**Maintained By:** Principal Product Engineer (Observability & Experimentation)

@@ -1,0 +1,1575 @@
+# Liveblocks Multiplayer Engine - CRDTs & WebSocket State
+## Source of Truth for Real-Time Collaborative Applications
+
+> **Core Philosophy:** "The Room is the Source of Truth. Presence is ephemeral, Storage is persistent. Use Suspense to prevent flash of null states. CRDTs handle conflict resolution automatically—just mutate like normal JavaScript objects."
+
+This document defines the **Presence Logic (Cursors & Avatars), Shared Storage (LiveObjects & LiveLists), and Optimistic Mutations** for building real-time collaborative applications using Liveblocks.
+
+---
+
+## TABLE OF CONTENTS
+
+1. [Architecture: The Room Model](#architecture-the-room-model)
+2. [Phase 1: Presence (Cursors & Avatars)](#phase-1-presence-cursors--avatars)
+3. [Phase 2: Shared Storage (The Data)](#phase-2-shared-storage-the-data)
+4. [Phase 3: Optimistic Mutations](#phase-3-optimistic-mutations)
+5. [Authentication & Authorization](#authentication--authorization)
+6. [Yjs Integration (Advanced Text Editors)](#yjs-integration-advanced-text-editors)
+7. [Performance & Best Practices](#performance--best-practices)
+8. [Error Handling & Edge Cases](#error-handling--edge-cases)
+
+---
+
+## ARCHITECTURE: THE ROOM MODEL
+
+### The Room Concept
+
+**Every multiplayer context is a "Room":**
+
+- A **Document** = One Room
+- A **Canvas** = One Room
+- A **Whiteboard** = One Room
+- A **Spreadsheet** = One Room
+
+```typescript
+// Room ID is typically a URL path or document ID
+const roomId = "document:abc123";
+// or
+const roomId = `canvas:${projectId}:${canvasId}`;
+```
+
+### Presence vs. Storage
+
+**CRITICAL DISTINCTION:**
+
+| **Presence** | **Storage** |
+|--------------|-------------|
+| Ephemeral data | Persistent data |
+| Disappears when user leaves | Stays forever |
+| Examples: Cursor position, Selection, "is typing" | Examples: Document text, Shape coordinates, Comments |
+| Updated via `useMyPresence()` | Updated via `useMutation()` |
+| Broadcasted to all users | Synced via CRDTs |
+
+### Suspense Pattern
+
+**Always use Suspense hooks to prevent "flash of null" loading states:**
+
+```typescript
+import { RoomProvider } from "@liveblocks/react";
+import { Suspense } from "react";
+
+function App() {
+  return (
+    <RoomProvider id={roomId} initialPresence={{ cursor: null, selection: [] }}>
+      <Suspense fallback={<LoadingSpinner />}>
+        <CollaborativeEditor />
+      </Suspense>
+    </RoomProvider>
+  );
+}
+```
+
+**Why Suspense?**
+- `useStorage()` and `useSelf()` can return `null` during initial load
+- Suspense boundaries catch these states and show loading UI
+- Prevents rendering errors and flickering
+
+---
+
+## PHASE 1: PRESENCE (CURSORS & AVATARS)
+
+### 1.1 The Cursor System
+
+**Goal:** Show real-time cursor positions of all users in the room.
+
+#### Setup: Broadcast Your Cursor
+
+```typescript
+import { useMyPresence, useOthers } from "@liveblocks/react";
+import { useCallback, useEffect } from "react";
+
+function CollaborativeCanvas() {
+  const [myPresence, updateMyPresence] = useMyPresence();
+  const others = useOthers();
+
+  // Update cursor position on mouse move
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    updateMyPresence({
+      cursor: { x: e.clientX, y: e.clientY },
+    });
+  }, [updateMyPresence]);
+
+  // Clear cursor when mouse leaves
+  const handleMouseLeave = useCallback(() => {
+    updateMyPresence({ cursor: null });
+  }, [updateMyPresence]);
+
+  return (
+    <div onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>
+      {/* Your canvas content */}
+      
+      {/* Render other users' cursors */}
+      {others.map((other) => {
+        if (!other.presence?.cursor) return null;
+        
+        return (
+          <OtherUserCursor
+            key={other.connectionId}
+            x={other.presence.cursor.x}
+            y={other.presence.cursor.y}
+            name={other.info?.name || "Anonymous"}
+            color={other.info?.color || "#000"}
+          />
+        );
+      })}
+    </div>
+  );
+}
+```
+
+#### SVG Cursor Component with Smooth Animation
+
+```typescript
+import { motion } from "framer-motion";
+
+interface OtherUserCursorProps {
+  x: number;
+  y: number;
+  name: string;
+  color: string;
+}
+
+function OtherUserCursor({ x, y, name, color }: OtherUserCursorProps) {
+  return (
+    <motion.div
+      style={{
+        position: "fixed",
+        left: 0,
+        top: 0,
+        pointerEvents: "none",
+        zIndex: 1000,
+      }}
+      initial={{ x, y }}
+      animate={{ x, y }}
+      transition={{
+        type: "spring",
+        damping: 30,
+        stiffness: 300,
+        mass: 0.8,
+      }}
+    >
+      {/* SVG Arrow Cursor */}
+      <svg
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M5 3L19 12L13 14L11 19L5 3Z"
+          fill={color}
+          stroke="white"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+      </svg>
+      
+      {/* Name Tag */}
+      <div
+        style={{
+          position: "absolute",
+          left: "20px",
+          top: "0px",
+          backgroundColor: color,
+          color: "white",
+          padding: "4px 8px",
+          borderRadius: "4px",
+          fontSize: "12px",
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+        }}
+      >
+        {name}
+      </div>
+    </motion.div>
+  );
+}
+```
+
+**Key Points:**
+- Use `framer-motion`'s `motion.div` with `spring` animation for smooth interpolation
+- The `transition` config prevents jittery movement
+- Position is `fixed` so it follows the viewport, not the canvas scroll
+
+#### Presence Type Definition
+
+```typescript
+// types/presence.ts
+export type Presence = {
+  cursor: { x: number; y: number } | null;
+  selection: string[]; // Array of selected object IDs
+  isTyping?: boolean;
+};
+
+// In your RoomProvider
+<RoomProvider
+  id={roomId}
+  initialPresence={{
+    cursor: null,
+    selection: [],
+    isTyping: false,
+  }}
+>
+```
+
+### 1.2 Live Selection
+
+**Goal:** Show which objects other users have selected (like Figma's selection borders).
+
+#### Broadcast Selection
+
+```typescript
+function CanvasObject({ objectId }: { objectId: string }) {
+  const [myPresence, updateMyPresence] = useMyPresence();
+  const others = useOthers();
+
+  const handleClick = () => {
+    // Broadcast selection
+    updateMyPresence({
+      selection: [objectId],
+    });
+  };
+
+  // Check if any other user has this object selected
+  const isSelectedByOthers = others.some(
+    (other) => other.presence?.selection?.includes(objectId)
+  );
+
+  // Get the user who selected it (for showing their color)
+  const selector = others.find(
+    (other) => other.presence?.selection?.includes(objectId)
+  );
+
+  return (
+    <div
+      onClick={handleClick}
+      style={{
+        border: isSelectedByOthers
+          ? `3px solid ${selector?.info?.color || "#000"}`
+          : "1px solid transparent",
+        position: "relative",
+      }}
+    >
+      {/* Object content */}
+      
+      {/* Show selector name badge */}
+      {isSelectedByOthers && selector && (
+        <div
+          style={{
+            position: "absolute",
+            top: "-24px",
+            left: 0,
+            backgroundColor: selector.info?.color || "#000",
+            color: "white",
+            padding: "2px 6px",
+            borderRadius: "4px",
+            fontSize: "10px",
+          }}
+        >
+          {selector.info?.name || "Someone"} selected
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+#### Multi-Selection Support
+
+```typescript
+// Allow selecting multiple objects (Shift+Click)
+const handleClick = (e: React.MouseEvent) => {
+  if (e.shiftKey) {
+    // Add to existing selection
+    updateMyPresence({
+      selection: [...(myPresence.selection || []), objectId],
+    });
+  } else {
+    // Replace selection
+    updateMyPresence({
+      selection: [objectId],
+    });
+  }
+};
+```
+
+---
+
+## PHASE 2: SHARED STORAGE (THE DATA)
+
+### 2.1 The Storage Schema
+
+**Define your storage structure in `liveblocks.config.ts`:**
+
+```typescript
+// liveblocks.config.ts
+import { createClient } from "@liveblocks/client";
+import { createRoomContext } from "@liveblocks/react";
+
+const client = createClient({
+  publicApiKey: process.env.NEXT_PUBLIC_LIVEBLOCKS_PUBLIC_KEY!,
+});
+
+// Define the Storage type
+type Storage = {
+  // For a document editor
+  doc: LiveObject<{
+    text: string;
+    title: string;
+    version: number;
+  }>;
+  
+  // For a canvas/whiteboard
+  shapes: LiveMap<string, LiveObject<{
+    id: string;
+    type: "rectangle" | "circle" | "text";
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    fill: string;
+  }>>;
+  
+  // For comments/threads
+  comments: LiveList<LiveObject<{
+    id: string;
+    x: number;
+    y: number;
+    text: string;
+    authorId: string;
+    createdAt: number;
+    resolved: boolean;
+  }>>;
+};
+
+export const {
+  RoomProvider,
+  useStorage,
+  useMutation,
+  useSelf,
+  useOthers,
+  useMyPresence,
+} = createRoomContext<Presence, Storage>(client);
+```
+
+### 2.2 LiveObject: Simple Key-Value Storage
+
+**For single objects (like a document):**
+
+```typescript
+function DocumentEditor() {
+  // Use Suspense to handle loading state
+  const text = useStorage((root) => root.doc.get("text"));
+  const title = useStorage((root) => root.doc.get("title"));
+
+  // Mutation to update text
+  const updateText = useMutation(({ storage }, newText: string) => {
+    storage.get("doc").set("text", newText);
+    storage.get("doc").set("version", (storage.get("doc").get("version") || 0) + 1);
+  }, []);
+
+  const updateTitle = useMutation(({ storage }, newTitle: string) => {
+    storage.get("doc").set("title", newTitle);
+  }, []);
+
+  return (
+    <div>
+      <input
+        value={title || ""}
+        onChange={(e) => updateTitle(e.target.value)}
+        placeholder="Document title"
+      />
+      <textarea
+        value={text || ""}
+        onChange={(e) => updateText(e.target.value)}
+        placeholder="Start typing..."
+      />
+    </div>
+  );
+}
+```
+
+**CRDT Magic:**
+- Multiple users can type simultaneously
+- Liveblocks automatically merges changes using CRDTs
+- No manual conflict resolution needed
+- Works offline and syncs when reconnected
+
+### 2.3 LiveList: Ordered Collections
+
+**For arrays/lists (like comments, shapes, todos):**
+
+```typescript
+function CommentList() {
+  const comments = useStorage((root) => root.comments.toArray());
+
+  const addComment = useMutation(({ storage }, text: string, x: number, y: number) => {
+    const self = useSelf();
+    const comment: Comment = {
+      id: nanoid(),
+      text,
+      x,
+      y,
+      authorId: self.info.id,
+      createdAt: Date.now(),
+      resolved: false,
+    };
+    
+    storage.get("comments").push(new LiveObject(comment));
+  }, []);
+
+  const deleteComment = useMutation(({ storage }, commentId: string) => {
+    const index = storage.get("comments").findIndex(
+      (comment) => comment.get("id") === commentId
+    );
+    if (index !== -1) {
+      storage.get("comments").delete(index);
+    }
+  }, []);
+
+  return (
+    <div>
+      {comments?.map((comment) => (
+        <Comment
+          key={comment.id}
+          comment={comment}
+          onDelete={() => deleteComment(comment.id)}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+### 2.4 LiveMap: Key-Value Maps
+
+**For objects keyed by ID (like shapes on a canvas):**
+
+```typescript
+function CanvasEditor() {
+  const shapes = useStorage((root) => 
+    Array.from(root.shapes.entries()).map(([id, shape]) => ({
+      id,
+      ...shape.toObject(),
+    }))
+  );
+
+  const createShape = useMutation(({ storage }, type: ShapeType, x: number, y: number) => {
+    const id = nanoid();
+    const shape = new LiveObject({
+      id,
+      type,
+      x,
+      y,
+      width: 100,
+      height: 100,
+      fill: "#3b82f6",
+    });
+    
+    storage.get("shapes").set(id, shape);
+  }, []);
+
+  const updateShape = useMutation(({ storage }, id: string, updates: Partial<Shape>) => {
+    const shape = storage.get("shapes").get(id);
+    if (shape) {
+      Object.entries(updates).forEach(([key, value]) => {
+        shape.set(key as keyof Shape, value);
+      });
+    }
+  }, []);
+
+  const deleteShape = useMutation(({ storage }, id: string) => {
+    storage.get("shapes").delete(id);
+  }, []);
+
+  return (
+    <div>
+      {shapes?.map((shape) => (
+        <ShapeComponent
+          key={shape.id}
+          shape={shape}
+          onUpdate={(updates) => updateShape(shape.id, updates)}
+          onDelete={() => deleteShape(shape.id)}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+### 2.5 Threaded Comments (Figma-Style)
+
+**Anchor comments to specific coordinates or DOM elements:**
+
+```typescript
+// types/storage.ts
+type Storage = {
+  comments: LiveList<LiveObject<{
+    id: string;
+    x: number; // Canvas X coordinate
+    y: number; // Canvas Y coordinate
+    text: string;
+    authorId: string;
+    createdAt: number;
+    resolved: boolean;
+    replies?: LiveList<LiveObject<{
+      id: string;
+      text: string;
+      authorId: string;
+      createdAt: number;
+    }>>;
+  }>>;
+};
+
+// Component
+function CommentThread({ commentId }: { commentId: string }) {
+  const comment = useStorage((root) => 
+    root.comments.find((c) => c.get("id") === commentId)
+  );
+
+  const addReply = useMutation(({ storage }, text: string) => {
+    const comment = storage.get("comments").find(
+      (c) => c.get("id") === commentId
+    );
+    if (comment) {
+      const replies = comment.get("replies") || new LiveList();
+      replies.push(new LiveObject({
+        id: nanoid(),
+        text,
+        authorId: useSelf().info.id,
+        createdAt: Date.now(),
+      }));
+      comment.set("replies", replies);
+    }
+  }, []);
+
+  if (!comment) return null;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: comment.get("x"),
+        top: comment.get("y"),
+      }}
+    >
+      <div>{comment.get("text")}</div>
+      {comment.get("replies")?.map((reply) => (
+        <div key={reply.get("id")}>{reply.get("text")}</div>
+      ))}
+      <Composer onSend={addReply} />
+    </div>
+  );
+}
+
+// Composer component
+function Composer({ onSend }: { onSend: (text: string) => void }) {
+  const [text, setText] = useState("");
+  const [myPresence, updateMyPresence] = useMyPresence();
+
+  // Broadcast "is typing" status
+  useEffect(() => {
+    if (text.length > 0) {
+      updateMyPresence({ isTyping: true });
+    } else {
+      updateMyPresence({ isTyping: false });
+    }
+  }, [text, updateMyPresence]);
+
+  const handleSubmit = () => {
+    if (text.trim()) {
+      onSend(text);
+      setText("");
+      updateMyPresence({ isTyping: false });
+    }
+  };
+
+  return (
+    <div>
+      <input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+        placeholder="Add a comment..."
+      />
+      <button onClick={handleSubmit}>Send</button>
+    </div>
+  );
+}
+```
+
+---
+
+## PHASE 3: OPTIMISTIC MUTATIONS
+
+### 3.1 Understanding Optimistic Updates
+
+**Liveblocks mutations are optimistic by default:**
+
+- Changes appear instantly in your UI
+- Sync happens in the background
+- If sync fails, Liveblocks reverts the change
+- You can listen to sync status
+
+### 3.2 Mutation with Error Handling
+
+```typescript
+function OptimisticButton() {
+  const [status, setStatus] = useState<"idle" | "syncing" | "error">("idle");
+
+  const updateData = useMutation(
+    async ({ storage }, newValue: string) => {
+      // This mutation is optimistic
+      storage.get("doc").set("text", newValue);
+      
+      // Optional: Add async validation
+      await validateOnServer(newValue);
+    },
+    []
+  );
+
+  const handleClick = async () => {
+    setStatus("syncing");
+    try {
+      await updateData("new text");
+      setStatus("idle");
+    } catch (error) {
+      setStatus("error");
+      // Liveblocks will automatically revert the change
+    }
+  };
+
+  return (
+    <button onClick={handleClick} disabled={status === "syncing"}>
+      {status === "syncing" ? "Syncing..." : "Update"}
+    </button>
+  );
+}
+```
+
+### 3.3 Batch Mutations
+
+**Group multiple changes into a single transaction:**
+
+```typescript
+const batchUpdate = useMutation(({ storage }, updates: ShapeUpdate[]) => {
+  // All changes in this mutation are atomic
+  updates.forEach(({ id, ...updates }) => {
+    const shape = storage.get("shapes").get(id);
+    if (shape) {
+      Object.entries(updates).forEach(([key, value]) => {
+        shape.set(key as keyof Shape, value);
+      });
+    }
+  });
+}, []);
+```
+
+### 3.4 Undo/Redo with History
+
+**Liveblocks doesn't have built-in undo/redo, but you can implement it:**
+
+```typescript
+// Store history in storage
+type Storage = {
+  history: LiveList<LiveObject<{
+    id: string;
+    action: string;
+    timestamp: number;
+    data: any;
+  }>>;
+  historyIndex: LiveObject<{ current: number }>;
+};
+
+const performAction = useMutation(({ storage }, action: string, data: any) => {
+  // Add to history
+  const history = storage.get("history");
+  const currentIndex = storage.get("historyIndex").get("current");
+  
+  // Remove any "future" history if we're not at the end
+  while (history.length > currentIndex + 1) {
+    history.delete(history.length - 1);
+  }
+  
+  history.push(new LiveObject({
+    id: nanoid(),
+    action,
+    timestamp: Date.now(),
+    data,
+  }));
+  
+  storage.get("historyIndex").set("current", history.length - 1);
+  
+  // Apply the action
+  applyAction(action, data, storage);
+}, []);
+
+const undo = useMutation(({ storage }) => {
+  const history = storage.get("history");
+  const currentIndex = storage.get("historyIndex").get("current");
+  
+  if (currentIndex >= 0) {
+    const action = history.get(currentIndex);
+    revertAction(action.get("action"), action.get("data"), storage);
+    storage.get("historyIndex").set("current", currentIndex - 1);
+  }
+}, []);
+```
+
+---
+
+## AUTHENTICATION & AUTHORIZATION
+
+### 4.1 Next.js API Route: Auth Endpoint
+
+**CRITICAL: This endpoint authenticates users with Liveblocks and assigns anonymous users a random color/name.**
+
+```typescript
+// app/api/liveblocks-auth/route.ts
+import { authorize } from "@liveblocks/node";
+import { NextRequest } from "next/server";
+
+// Generate random color for anonymous users
+const COLORS = [
+  "#ef4444", // red
+  "#f59e0b", // orange
+  "#eab308", // yellow
+  "#22c55e", // green
+  "#3b82f6", // blue
+  "#8b5cf6", // purple
+  "#ec4899", // pink
+];
+
+function getRandomColor() {
+  return COLORS[Math.floor(Math.random() * COLORS.length)];
+}
+
+function generateAnonymousName() {
+  const adjectives = ["Swift", "Bold", "Clever", "Bright", "Quick", "Sharp"];
+  const nouns = ["Fox", "Eagle", "Wolf", "Hawk", "Lion", "Tiger"];
+  const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+  return `${adjective} ${noun}`;
+}
+
+export async function POST(request: NextRequest) {
+  const { room } = await request.json();
+
+  // Get the current user (from your auth system)
+  // Example: Using NextAuth, Clerk, or Supabase Auth
+  const session = await getSession(request); // Your auth function
+  
+  if (!session) {
+    // Anonymous user
+    return authorize({
+      userInfo: {
+        name: generateAnonymousName(),
+        color: getRandomColor(),
+        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${Math.random()}`,
+      },
+    });
+  }
+
+  // Authenticated user
+  return authorize({
+    userInfo: {
+      name: session.user.name || session.user.email,
+      color: session.user.color || getRandomColor(),
+      avatar: session.user.avatar || session.user.image,
+      id: session.user.id,
+    },
+  });
+}
+```
+
+### 4.2 Client-Side Configuration
+
+```typescript
+// lib/liveblocks.ts
+import { createClient } from "@liveblocks/client";
+import { createRoomContext } from "@liveblocks/react";
+
+const client = createClient({
+  publicApiKey: process.env.NEXT_PUBLIC_LIVEBLOCKS_PUBLIC_KEY!,
+  authEndpoint: "/api/liveblocks-auth",
+});
+
+export const {
+  RoomProvider,
+  useStorage,
+  useMutation,
+  useSelf,
+  useOthers,
+  useMyPresence,
+} = createRoomContext<Presence, Storage>(client);
+```
+
+### 4.3 Room-Level Authorization
+
+**Control who can access which rooms:**
+
+```typescript
+// app/api/liveblocks-auth/route.ts
+export async function POST(request: NextRequest) {
+  const { room } = await request.json();
+  const session = await getSession(request);
+
+  // Check room permissions
+  const hasAccess = await checkRoomAccess(session?.user?.id, room);
+  
+  if (!hasAccess) {
+    return new Response("Unauthorized", { status: 403 });
+  }
+
+  return authorize({
+    userInfo: {
+      name: session?.user?.name || generateAnonymousName(),
+      // ... rest of user info
+    },
+  });
+}
+
+async function checkRoomAccess(userId: string | undefined, roomId: string) {
+  // Example: Check database for room permissions
+  // This is where you'd query your database
+  if (!userId) {
+    // Anonymous users can only access public rooms
+    return roomId.startsWith("public:");
+  }
+  
+  // Authenticated users: check your database
+  // const room = await db.rooms.findUnique({ where: { id: roomId } });
+  // return room?.members.includes(userId) || room?.isPublic;
+  
+  return true; // Placeholder
+}
+```
+
+### 4.4 Storage Permissions
+
+**Control who can read/write to storage:**
+
+```typescript
+// app/api/liveblocks-auth/route.ts
+export async function POST(request: NextRequest) {
+  const { room } = await request.json();
+  const session = await getSession(request);
+
+  return authorize({
+    userInfo: {
+      // ... user info
+    },
+    // Define permissions per room
+    permissions: {
+      [room]: {
+        read: true, // Can read storage
+        write: session ? true : false, // Only authenticated users can write
+      },
+    },
+  });
+}
+```
+
+---
+
+## YJS INTEGRATION (ADVANCED TEXT EDITORS)
+
+### 5.1 Why Bridge Yjs with Liveblocks?
+
+**Yjs is better for:**
+- Complex text editing (rich text, code editors)
+- Operational Transform (OT) for text
+- Better performance for large documents
+
+**Liveblocks is better for:**
+- Presence (cursors, selections)
+- Comments/threads
+- UI state synchronization
+
+**Solution: Use both!**
+
+### 5.2 Yjs + Liveblocks Architecture
+
+```typescript
+import * as Y from "yjs";
+import { useMutation, useStorage } from "@liveblocks/react";
+import { useEffect, useRef } from "react";
+
+// Create a Yjs document
+const ydoc = new Y.Doc();
+const ytext = ydoc.getText("content");
+
+function RichTextEditor() {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const yjsSyncedRef = useRef(false);
+
+  // Store Yjs document state in Liveblocks
+  const yjsState = useStorage((root) => root.yjsState?.toString());
+
+  // Initialize Yjs from Liveblocks storage
+  useEffect(() => {
+    if (yjsState && !yjsSyncedRef.current) {
+      Y.applyUpdate(ydoc, Uint8Array.from(JSON.parse(yjsState)));
+      yjsSyncedRef.current = true;
+    }
+  }, [yjsState]);
+
+  // Sync Yjs changes to Liveblocks
+  useEffect(() => {
+    const updateHandler = () => {
+      const update = Y.encodeStateAsUpdate(ydoc);
+      const updateString = JSON.stringify(Array.from(update));
+      
+      // Store in Liveblocks
+      syncYjsToLiveblocks(updateString);
+    };
+
+    ydoc.on("update", updateHandler);
+    return () => {
+      ydoc.off("update", updateHandler);
+    };
+  }, []);
+
+  const syncYjsToLiveblocks = useMutation(({ storage }, updateString: string) => {
+    storage.get("yjsState").set(updateString);
+  }, []);
+
+  // Use Yjs with your editor (e.g., Tiptap, Lexical, Monaco)
+  useEffect(() => {
+    if (!editorRef.current) return;
+
+    // Example with Tiptap
+    // const editor = new Editor({
+    //   extensions: [YjsExtension.configure({ yjsDoc: ydoc })],
+    //   editorProps: {
+    //     attributes: {
+    //       class: "prose max-w-none",
+    //     },
+    //   },
+    // });
+
+    return () => {
+      // editor.destroy();
+    };
+  }, []);
+
+  return (
+    <div>
+      {/* Your editor component */}
+      <div ref={editorRef} contentEditable />
+      
+      {/* Use Liveblocks for presence (cursors) */}
+      <PresenceCursors />
+    </div>
+  );
+}
+```
+
+### 5.3 Yjs Provider Pattern
+
+**Use Yjs providers for peer-to-peer sync, Liveblocks for presence:**
+
+```typescript
+import { WebrtcProvider } from "y-webrtc";
+import { IndexeddbPersistence } from "y-indexeddb";
+
+function YjsLiveblocksBridge() {
+  const ydoc = useRef(new Y.Doc()).current;
+  const ytext = ydoc.getText("content");
+
+  // Yjs WebRTC provider for P2P sync
+  useEffect(() => {
+    const provider = new WebrtcProvider(roomId, ydoc);
+    
+    // Optional: Persist to IndexedDB
+    const persistence = new IndexeddbPersistence(roomId, ydoc);
+
+    return () => {
+      provider.destroy();
+      persistence.destroy();
+    };
+  }, [roomId]);
+
+  // Use Liveblocks ONLY for presence
+  const [myPresence, updateMyPresence] = useMyPresence();
+  const others = useOthers();
+
+  // Sync Yjs selection to Liveblocks presence
+  useEffect(() => {
+    const selectionHandler = (event: any) => {
+      updateMyPresence({
+        selection: event.selection, // Yjs selection range
+      });
+    };
+
+    // Listen to Yjs selection changes
+    ytext.observe(selectionHandler);
+    return () => {
+      ytext.unobserve(selectionHandler);
+    };
+  }, [updateMyPresence]);
+
+  return (
+    <div>
+      {/* Yjs handles the text content */}
+      {/* Liveblocks handles cursors and presence */}
+    </div>
+  );
+}
+```
+
+---
+
+## PERFORMANCE & BEST PRACTICES
+
+### 6.1 Selective Subscriptions
+
+**Only subscribe to the data you need:**
+
+```typescript
+// ❌ BAD: Subscribes to entire storage
+const storage = useStorage();
+
+// ✅ GOOD: Subscribe to specific values
+const text = useStorage((root) => root.doc.get("text"));
+const title = useStorage((root) => root.doc.get("title"));
+
+// ✅ GOOD: Subscribe to filtered lists
+const activeComments = useStorage((root) =>
+  root.comments.filter((c) => !c.get("resolved"))
+);
+```
+
+### 6.2 Memoization
+
+**Prevent unnecessary re-renders:**
+
+```typescript
+import { useMemo } from "react";
+
+function CommentList() {
+  const comments = useStorage((root) => root.comments.toArray());
+  
+  // Memoize expensive computations
+  const sortedComments = useMemo(
+    () => comments?.sort((a, b) => b.createdAt - a.createdAt),
+    [comments]
+  );
+
+  return (
+    <div>
+      {sortedComments?.map((comment) => (
+        <Comment key={comment.id} comment={comment} />
+      ))}
+    </div>
+  );
+}
+```
+
+### 6.3 Throttle Presence Updates
+
+**Don't update presence on every mouse move:**
+
+```typescript
+import { throttle } from "lodash";
+
+function Canvas() {
+  const [myPresence, updateMyPresence] = useMyPresence();
+
+  // Throttle cursor updates to 60fps
+  const throttledUpdate = useMemo(
+    () =>
+      throttle((x: number, y: number) => {
+        updateMyPresence({ cursor: { x, y } });
+      }, 16), // ~60fps
+    [updateMyPresence]
+  );
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    throttledUpdate(e.clientX, e.clientY);
+  };
+
+  return <div onMouseMove={handleMouseMove}>...</div>;
+}
+```
+
+### 6.4 Batch Storage Updates
+
+**Group related updates:**
+
+```typescript
+// ❌ BAD: Multiple mutations
+updateShape(id1, { x: 10 });
+updateShape(id2, { x: 20 });
+updateShape(id3, { x: 30 });
+
+// ✅ GOOD: Single batch mutation
+batchUpdateShapes([
+  { id: id1, updates: { x: 10 } },
+  { id: id2, updates: { x: 20 } },
+  { id: id3, updates: { x: 30 } },
+]);
+```
+
+### 6.5 Cleanup on Unmount
+
+**Always clean up presence when leaving:**
+
+```typescript
+function Component() {
+  const [myPresence, updateMyPresence] = useMyPresence();
+
+  useEffect(() => {
+    return () => {
+      // Clear presence when component unmounts
+      updateMyPresence({ cursor: null, selection: [] });
+    };
+  }, [updateMyPresence]);
+
+  return <div>...</div>;
+}
+```
+
+---
+
+## ERROR HANDLING & EDGE CASES
+
+### 7.1 Connection Status
+
+**Handle disconnections gracefully:**
+
+```typescript
+import { useStatus } from "@liveblocks/react";
+
+function ConnectionStatus() {
+  const status = useStatus();
+
+  if (status === "connecting") {
+    return <div>Connecting...</div>;
+  }
+
+  if (status === "disconnected") {
+    return <div>Disconnected. Reconnecting...</div>;
+  }
+
+  if (status === "reconnecting") {
+    return <div>Reconnecting...</div>;
+  }
+
+  return null; // Connected
+}
+```
+
+### 7.2 Storage Loading States
+
+**Handle null states with Suspense:**
+
+```typescript
+function DocumentEditor() {
+  // This will suspend if storage isn't loaded yet
+  const text = useStorage((root) => root.doc.get("text"));
+
+  // After Suspense resolves, text is guaranteed to be defined
+  return <textarea value={text} />;
+}
+
+// Wrap in Suspense
+<Suspense fallback={<LoadingSpinner />}>
+  <DocumentEditor />
+</Suspense>
+```
+
+### 7.3 Conflict Resolution
+
+**CRDTs handle conflicts automatically, but you can add validation:**
+
+```typescript
+const updateText = useMutation(
+  async ({ storage }, newText: string) => {
+    // Validate before updating
+    if (newText.length > 10000) {
+      throw new Error("Text too long");
+    }
+
+    storage.get("doc").set("text", newText);
+  },
+  []
+);
+```
+
+### 7.4 Handling Concurrent Deletes
+
+**When multiple users delete the same item:**
+
+```typescript
+const deleteShape = useMutation(({ storage }, id: string) => {
+  const shape = storage.get("shapes").get(id);
+  
+  // Check if shape still exists (might have been deleted by another user)
+  if (!shape) {
+    console.warn(`Shape ${id} already deleted`);
+    return;
+  }
+
+  storage.get("shapes").delete(id);
+}, []);
+```
+
+### 7.5 Rate Limiting
+
+**Liveblocks has rate limits. Handle them:**
+
+```typescript
+const updatePresence = useMutation(
+  async ({ storage }, data: any) => {
+    try {
+      storage.get("doc").set("text", data);
+    } catch (error) {
+      if (error.message.includes("rate limit")) {
+        // Retry after delay
+        setTimeout(() => updatePresence(data), 1000);
+      } else {
+        throw error;
+      }
+    }
+  },
+  []
+);
+```
+
+---
+
+## COMPLETE EXAMPLE: COLLABORATIVE CANVAS
+
+### Full Implementation
+
+```typescript
+// app/canvas/[roomId]/page.tsx
+"use client";
+
+import { RoomProvider } from "@/lib/liveblocks";
+import { Suspense } from "react";
+import { CollaborativeCanvas } from "@/components/CollaborativeCanvas";
+
+export default function CanvasPage({ params }: { params: { roomId: string } }) {
+  return (
+    <RoomProvider
+      id={params.roomId}
+      initialPresence={{
+        cursor: null,
+        selection: [],
+      }}
+    >
+      <Suspense fallback={<CanvasLoadingSpinner />}>
+        <CollaborativeCanvas roomId={params.roomId} />
+      </Suspense>
+    </RoomProvider>
+  );
+}
+
+// components/CollaborativeCanvas.tsx
+import {
+  useStorage,
+  useMutation,
+  useMyPresence,
+  useOthers,
+  useSelf,
+} from "@/lib/liveblocks";
+import { useCallback, useEffect } from "react";
+import { motion } from "framer-motion";
+import { nanoid } from "nanoid";
+
+type Shape = {
+  id: string;
+  type: "rectangle" | "circle";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fill: string;
+};
+
+export function CollaborativeCanvas({ roomId }: { roomId: string }) {
+  const shapes = useStorage((root) =>
+    Array.from(root.shapes.entries()).map(([id, shape]) => ({
+      id,
+      ...shape.toObject(),
+    }))
+  );
+
+  const [myPresence, updateMyPresence] = useMyPresence();
+  const others = useOthers();
+  const self = useSelf();
+
+  const createShape = useMutation(
+    ({ storage }, type: "rectangle" | "circle", x: number, y: number) => {
+      const id = nanoid();
+      const shape = new LiveObject({
+        id,
+        type,
+        x,
+        y,
+        width: 100,
+        height: 100,
+        fill: self?.info?.color || "#3b82f6",
+      });
+      storage.get("shapes").set(id, shape);
+    },
+    [self]
+  );
+
+  const updateShape = useMutation(
+    ({ storage }, id: string, updates: Partial<Shape>) => {
+      const shape = storage.get("shapes").get(id);
+      if (shape) {
+        Object.entries(updates).forEach(([key, value]) => {
+          shape.set(key as keyof Shape, value);
+        });
+      }
+    },
+    []
+  );
+
+  const deleteShape = useMutation(({ storage }, id: string) => {
+    storage.get("shapes").delete(id);
+  }, []);
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      updateMyPresence({
+        cursor: { x: e.clientX, y: e.clientY },
+      });
+    },
+    [updateMyPresence]
+  );
+
+  const handleMouseLeave = useCallback(() => {
+    updateMyPresence({ cursor: null });
+  }, [updateMyPresence]);
+
+  const handleCanvasClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.target === e.currentTarget) {
+        createShape("rectangle", e.clientX, e.clientY);
+      }
+    },
+    [createShape]
+  );
+
+  return (
+    <div
+      style={{ width: "100vw", height: "100vh", position: "relative" }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      onClick={handleCanvasClick}
+    >
+      {/* Render shapes */}
+      {shapes?.map((shape) => (
+        <ShapeComponent
+          key={shape.id}
+          shape={shape}
+          isSelected={myPresence.selection?.includes(shape.id)}
+          onSelect={() => updateMyPresence({ selection: [shape.id] })}
+          onUpdate={(updates) => updateShape(shape.id, updates)}
+          onDelete={() => deleteShape(shape.id)}
+        />
+      ))}
+
+      {/* Render other users' cursors */}
+      {others.map((other) => {
+        if (!other.presence?.cursor) return null;
+        return (
+          <OtherUserCursor
+            key={other.connectionId}
+            x={other.presence.cursor.x}
+            y={other.presence.cursor.y}
+            name={other.info?.name || "Anonymous"}
+            color={other.info?.color || "#000"}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function ShapeComponent({
+  shape,
+  isSelected,
+  onSelect,
+  onUpdate,
+  onDelete,
+}: {
+  shape: Shape;
+  isSelected: boolean;
+  onSelect: () => void;
+  onUpdate: (updates: Partial<Shape>) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <motion.div
+      style={{
+        position: "absolute",
+        left: shape.x,
+        top: shape.y,
+        width: shape.width,
+        height: shape.height,
+        backgroundColor: shape.fill,
+        border: isSelected ? "3px solid #3b82f6" : "1px solid #ccc",
+        cursor: "move",
+      }}
+      onClick={onSelect}
+      drag
+      onDragEnd={(e, info) => {
+        onUpdate({
+          x: shape.x + info.offset.x,
+          y: shape.y + info.offset.y,
+        });
+      }}
+      whileHover={{ scale: 1.05 }}
+    >
+      <button onClick={onDelete}>Delete</button>
+    </motion.div>
+  );
+}
+
+function OtherUserCursor({
+  x,
+  y,
+  name,
+  color,
+}: {
+  x: number;
+  y: number;
+  name: string;
+  color: string;
+}) {
+  return (
+    <motion.div
+      style={{
+        position: "fixed",
+        left: 0,
+        top: 0,
+        pointerEvents: "none",
+        zIndex: 1000,
+      }}
+      initial={{ x, y }}
+      animate={{ x, y }}
+      transition={{
+        type: "spring",
+        damping: 30,
+        stiffness: 300,
+        mass: 0.8,
+      }}
+    >
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <path
+          d="M5 3L19 12L13 14L11 19L5 3Z"
+          fill={color}
+          stroke="white"
+          strokeWidth="1.5"
+        />
+      </svg>
+      <div
+        style={{
+          position: "absolute",
+          left: "20px",
+          top: "0px",
+          backgroundColor: color,
+          color: "white",
+          padding: "4px 8px",
+          borderRadius: "4px",
+          fontSize: "12px",
+          fontWeight: 600,
+        }}
+      >
+        {name}
+      </div>
+    </motion.div>
+  );
+}
+```
+
+---
+
+## QUICK REFERENCE
+
+### Hooks Cheat Sheet
+
+```typescript
+// Presence
+const [myPresence, updateMyPresence] = useMyPresence();
+const others = useOthers();
+const self = useSelf();
+
+// Storage
+const value = useStorage((root) => root.key.get("property"));
+const list = useStorage((root) => root.list.toArray());
+
+// Mutations
+const update = useMutation(({ storage }, newValue) => {
+  storage.get("key").set("property", newValue);
+}, []);
+
+// Status
+const status = useStatus(); // "connecting" | "connected" | "disconnected" | "reconnecting"
+```
+
+### Storage Types
+
+```typescript
+// LiveObject: Single object
+storage.get("doc").set("text", "Hello");
+
+// LiveList: Array
+storage.get("comments").push(new LiveObject({ id: "1", text: "Hi" }));
+
+// LiveMap: Key-value map
+storage.get("shapes").set("shape-1", new LiveObject({ id: "shape-1" }));
+```
+
+---
+
+## SUMMARY
+
+**Key Takeaways:**
+
+1. **The Room is the Source of Truth** - Every collaborative context is a Room
+2. **Presence is Ephemeral** - Cursors, selections disappear when users leave
+3. **Storage is Persistent** - Document content, shapes, comments persist forever
+4. **Use Suspense** - Prevents flash of null states during loading
+5. **CRDTs Handle Conflicts** - Just mutate like normal JavaScript objects
+6. **Optimistic by Default** - Changes appear instantly, sync in background
+7. **Auth Endpoint Required** - Next.js API route authenticates users and assigns colors/names
+8. **Yjs for Complex Text** - Bridge Yjs for rich text editing, Liveblocks for presence
+
+**When to Use Liveblocks:**
+- Real-time collaboration (cursors, presence)
+- Shared state (whiteboards, canvases)
+- Comments/threads
+- UI synchronization
+
+**When to Use Yjs Instead:**
+- Complex text editors (rich text, code editors)
+- Very large documents
+- Need operational transform (OT)
+
+**Best of Both Worlds:**
+- Use Yjs for text content
+- Use Liveblocks for presence (cursors, selections)
+- Bridge them together for the ultimate collaborative experience
+
+---
+
+**END OF DOCUMENTATION**

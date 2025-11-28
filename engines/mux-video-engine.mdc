@@ -1,0 +1,1405 @@
+# Mux Video Engine: Streaming & HLS Architecture
+## Source of Truth: Video Upload Pipeline, Signed URL Security, and Adaptive Player
+
+**Version:** 1.0  
+**Last Updated:** 2024  
+**Architecture Pattern:** Direct Upload → Webhook Processing → Adaptive HLS Streaming
+
+---
+
+## 🏗️ ARCHITECTURAL PRINCIPLES
+
+### The "Adaptive" Rule (CRITICAL)
+
+1. **Never use `<video src="file.mp4">`:** This kills mobile performance and doesn't support adaptive bitrate streaming. Always use the `<MuxPlayer />` component which handles HLS (m3u8) streaming automatically.
+
+2. **Signed URLs for Paid Content:** For paid content, *never* expose the public Playback ID. You must generate a JWT on the server signed with your Mux Private Key and pass that token to the player.
+
+3. **Instant Ready Pattern:** Videos take time to process. You must implement a webhook handler to listen for `video.asset.ready` before showing the video to the user. Never show a video with `status: 'processing'`.
+
+4. **Direct Upload Architecture:** Large video files should bypass your server entirely. Use Mux's direct upload URLs with `@mux/upchunk` for pause/resume capability and zero server load.
+
+---
+
+## 📦 PHASE 1: THE UPLOAD PIPELINE (DIRECT UPLOADS)
+
+### 1.1 Environment Setup
+
+```bash
+# Install required packages
+npm install @mux/mux-node @mux/upchunk @mux/mux-player-react
+npm install --save-dev @types/jsonwebtoken
+npm install jsonwebtoken
+```
+
+```env
+# .env
+MUX_TOKEN_ID=your_token_id
+MUX_TOKEN_SECRET=your_token_secret
+MUX_SIGNING_KEY_ID=your_signing_key_id
+MUX_SIGNING_KEY_PRIVATE_KEY=your_rsa_private_key
+MUX_WEBHOOK_SECRET=your_webhook_secret
+```
+
+### 1.2 The "Upload URL" Pattern
+
+**Purpose:** Generate a direct upload URL that allows clients to upload large video files directly to Mux's GCS bucket, bypassing your server entirely.
+
+#### Server Action: `createUploadUrl()`
+
+```typescript
+// app/api/mux/upload/route.ts (Next.js App Router)
+// OR: app/actions/mux.ts (Server Actions)
+
+import Mux from '@mux/mux-node';
+
+const mux = new Mux(
+  process.env.MUX_TOKEN_ID!,
+  process.env.MUX_TOKEN_SECRET!
+);
+
+export async function createUploadUrl(
+  metadata?: {
+    videoTitle?: string;
+    userId?: string;
+    courseId?: string;
+  }
+) {
+  try {
+    // Create a direct upload URL
+    const upload = await mux.video.uploads.create({
+      // Configure the asset that will be created from this upload
+      new_asset_settings: {
+        playback_policy: ['signed'], // CRITICAL: Use signed for paid content
+        // Optional: Set encoding tier for quality
+        encoding_tier: 'smart', // 'baseline' | 'smart' | 'balanced'
+        // Optional: Enable MP4 support (adds processing time)
+        mp4_support: 'standard', // 'none' | 'standard' | 'capped-1080p' | 'capped-2160p'
+        // Optional: Normalize audio
+        normalize_audio: true,
+        // Optional: Passthrough metadata
+        passthrough: JSON.stringify({
+          video_title: metadata?.videoTitle,
+          user_id: metadata?.userId,
+          course_id: metadata?.courseId,
+        }),
+      },
+      // Optional: Set CORS headers for direct upload
+      cors_origin: process.env.NEXT_PUBLIC_APP_URL || '*',
+      // Optional: Test mode
+      test: process.env.NODE_ENV === 'development',
+    });
+
+    return {
+      uploadId: upload.id,
+      uploadUrl: upload.url,
+      // Store this in your DB to track upload status
+      assetId: null, // Will be set via webhook
+    };
+  } catch (error) {
+    console.error('Failed to create upload URL:', error);
+    throw new Error('Failed to create upload URL');
+  }
+}
+```
+
+#### Client Logic: Direct Upload with `@mux/upchunk`
+
+```typescript
+// components/VideoUploader.tsx
+
+'use client';
+
+import { useState, useRef } from 'react';
+import UpChunk from '@mux/upchunk';
+import { createUploadUrl } from '@/app/actions/mux';
+
+interface UploadProgress {
+  percentage: number;
+  bytesUploaded: number;
+  bytesTotal: number;
+}
+
+export function VideoUploader() {
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
+  const [uploadId, setUploadId] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadRef = useRef<UpChunk | null>(null);
+
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('video/')) {
+      setError('Please select a video file');
+      return;
+    }
+
+    // Validate file size (e.g., 5GB max)
+    const maxSize = 5 * 1024 * 1024 * 1024; // 5GB
+    if (file.size > maxSize) {
+      setError('File size must be less than 5GB');
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      setError(null);
+
+      // Step 1: Get upload URL from server
+      const { uploadId, uploadUrl } = await createUploadUrl({
+        videoTitle: file.name,
+        userId: 'user_123', // Get from auth context
+      });
+
+      setUploadId(uploadId);
+
+      // Step 2: Create UpChunk instance for direct upload
+      const upload = UpChunk.createUpload({
+        endpoint: uploadUrl,
+        file: file,
+        chunkSize: 5120, // 5MB chunks (default)
+        // Optional: Resume capability
+        resume: true,
+      });
+
+      uploadRef.current = upload;
+
+      // Step 3: Handle upload progress
+      upload.on('progress', (progress: { detail: number }) => {
+        const percentage = Math.round(progress.detail);
+        setUploadProgress({
+          percentage,
+          bytesUploaded: Math.round((percentage / 100) * file.size),
+          bytesTotal: file.size,
+        });
+      });
+
+      // Step 4: Handle upload success
+      upload.on('success', () => {
+        setIsUploading(false);
+        setUploadProgress(null);
+        // The webhook will handle asset creation and status updates
+        // Poll or use websocket to check when video.asset.ready fires
+      });
+
+      // Step 5: Handle upload errors
+      upload.on('error', (err: Error) => {
+        setIsUploading(false);
+        setError(err.message || 'Upload failed');
+        console.error('Upload error:', err);
+      });
+
+      // Step 6: Start upload
+      upload.start();
+    } catch (err) {
+      setIsUploading(false);
+      setError(err instanceof Error ? err.message : 'Failed to start upload');
+    }
+  };
+
+  const handlePause = () => {
+    uploadRef.current?.pause();
+  };
+
+  const handleResume = () => {
+    uploadRef.current?.resume();
+  };
+
+  const handleCancel = () => {
+    uploadRef.current?.abort();
+    setIsUploading(false);
+    setUploadProgress(null);
+    setUploadId(null);
+  };
+
+  return (
+    <div className="video-uploader">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*"
+        onChange={handleFileSelect}
+        disabled={isUploading}
+        className="hidden"
+      />
+      
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        disabled={isUploading}
+        className="px-4 py-2 bg-blue-600 text-white rounded"
+      >
+        {isUploading ? 'Uploading...' : 'Select Video'}
+      </button>
+
+      {uploadProgress && (
+        <div className="mt-4">
+          <div className="w-full bg-gray-200 rounded-full h-2.5">
+            <div
+              className="bg-blue-600 h-2.5 rounded-full transition-all"
+              style={{ width: `${uploadProgress.percentage}%` }}
+            />
+          </div>
+          <p className="text-sm text-gray-600 mt-1">
+            {uploadProgress.percentage}% ({formatBytes(uploadProgress.bytesUploaded)} / {formatBytes(uploadProgress.bytesTotal)})
+          </p>
+        </div>
+      )}
+
+      {isUploading && (
+        <div className="mt-2 flex gap-2">
+          <button onClick={handlePause} className="px-3 py-1 bg-gray-600 text-white rounded text-sm">
+            Pause
+          </button>
+          <button onClick={handleResume} className="px-3 py-1 bg-gray-600 text-white rounded text-sm">
+            Resume
+          </button>
+          <button onClick={handleCancel} className="px-3 py-1 bg-red-600 text-white rounded text-sm">
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-2 text-red-600 text-sm">{error}</div>
+      )}
+
+      {uploadId && (
+        <div className="mt-2 text-sm text-gray-600">
+          Upload ID: {uploadId}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+```
+
+---
+
+## 🔔 PHASE 2: THE WEBHOOK LIFECYCLE
+
+### 2.1 Webhook Endpoint Setup
+
+**Purpose:** Listen for Mux events to track upload and processing status.
+
+#### Webhook Endpoint: `/api/webhooks/mux`
+
+```typescript
+// app/api/webhooks/mux/route.ts (Next.js App Router)
+
+import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
+import Mux from '@mux/mux-node';
+
+const mux = new Mux(
+  process.env.MUX_TOKEN_ID!,
+  process.env.MUX_TOKEN_SECRET!
+);
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.text();
+    const signature = request.headers.get('mux-signature');
+
+    if (!signature) {
+      return NextResponse.json(
+        { error: 'Missing signature' },
+        { status: 401 }
+      );
+    }
+
+    // Verify webhook signature
+    const isValid = verifyWebhookSignature(
+      body,
+      signature,
+      process.env.MUX_WEBHOOK_SECRET!
+    );
+
+    if (!isValid) {
+      return NextResponse.json(
+        { error: 'Invalid signature' },
+        { status: 401 }
+      );
+    }
+
+    const event = JSON.parse(body);
+
+    // Handle different event types
+    switch (event.type) {
+      case 'video.upload.asset_created':
+        await handleUploadAssetCreated(event);
+        break;
+
+      case 'video.asset.ready':
+        await handleAssetReady(event);
+        break;
+
+      case 'video.asset.errored':
+        await handleAssetErrored(event);
+        break;
+
+      case 'video.upload.cancelled':
+        await handleUploadCancelled(event);
+        break;
+
+      default:
+        console.log(`Unhandled event type: ${event.type}`);
+    }
+
+    return NextResponse.json({ received: true });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    return NextResponse.json(
+      { error: 'Webhook processing failed' },
+      { status: 500 }
+    );
+  }
+}
+
+// Verify webhook signature
+function verifyWebhookSignature(
+  body: string,
+  signature: string,
+  secret: string
+): boolean {
+  try {
+    // Mux sends signature as: "t=timestamp,v1=hash"
+    const parts = signature.split(',');
+    const timestamp = parts.find(p => p.startsWith('t='))?.split('=')[1];
+    const hash = parts.find(p => p.startsWith('v1='))?.split('=')[1];
+
+    if (!timestamp || !hash) {
+      return false;
+    }
+
+    // Create expected signature
+    const signedPayload = `${timestamp}.${body}`;
+    const expectedHash = crypto
+      .createHmac('sha256', secret)
+      .update(signedPayload)
+      .digest('hex');
+
+    // Constant-time comparison
+    return crypto.timingSafeEqual(
+      Buffer.from(hash),
+      Buffer.from(expectedHash)
+    );
+  } catch (error) {
+    console.error('Signature verification error:', error);
+    return false;
+  }
+}
+
+// Event Handlers
+
+async function handleUploadAssetCreated(event: any) {
+  const { data } = event;
+  const uploadId = data.id;
+  const assetId = data.asset_id;
+
+  // Update your database
+  // Example with Prisma:
+  /*
+  await prisma.video.update({
+    where: { muxUploadId: uploadId },
+    data: {
+      muxAssetId: assetId,
+      status: 'processing',
+      updatedAt: new Date(),
+    },
+  });
+  */
+
+  console.log(`Upload ${uploadId} created asset ${assetId}`);
+}
+
+async function handleAssetReady(event: any) {
+  const { data } = event;
+  const assetId = data.id;
+  const playbackId = data.playback_ids?.[0]?.id;
+  const duration = data.duration;
+  const aspectRatio = data.aspect_ratio;
+  const maxResolutionWidth = data.max_resolution_width;
+  const maxResolutionHeight = data.max_resolution_height;
+
+  // Update your database
+  // Example with Prisma:
+  /*
+  await prisma.video.update({
+    where: { muxAssetId: assetId },
+    data: {
+      status: 'ready',
+      playbackId: playbackId,
+      duration: duration,
+      aspectRatio: aspectRatio,
+      maxResolutionWidth: maxResolutionWidth,
+      maxResolutionHeight: maxResolutionHeight,
+      updatedAt: new Date(),
+    },
+  });
+  */
+
+  // Optional: Send notification to user
+  // await sendNotification(userId, 'Your video is ready!');
+
+  console.log(`Asset ${assetId} is ready. Playback ID: ${playbackId}`);
+}
+
+async function handleAssetErrored(event: any) {
+  const { data } = event;
+  const assetId = data.id;
+  const errors = data.errors;
+
+  // Update your database
+  // Example with Prisma:
+  /*
+  await prisma.video.update({
+    where: { muxAssetId: assetId },
+    data: {
+      status: 'error',
+      errorMessage: JSON.stringify(errors),
+      updatedAt: new Date(),
+    },
+  });
+  */
+
+  // Notify user of failure
+  // await sendNotification(userId, 'Video processing failed. Please try again.');
+
+  console.error(`Asset ${assetId} errored:`, errors);
+}
+
+async function handleUploadCancelled(event: any) {
+  const { data } = event;
+  const uploadId = data.id;
+
+  // Update your database
+  /*
+  await prisma.video.update({
+    where: { muxUploadId: uploadId },
+    data: {
+      status: 'cancelled',
+      updatedAt: new Date(),
+    },
+  });
+  */
+
+  console.log(`Upload ${uploadId} was cancelled`);
+}
+```
+
+### 2.2 Database Schema (Example)
+
+```sql
+-- Example PostgreSQL schema for video tracking
+
+CREATE TABLE videos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id),
+  title TEXT NOT NULL,
+  
+  -- Mux identifiers
+  mux_upload_id TEXT UNIQUE,
+  mux_asset_id TEXT UNIQUE,
+  playback_id TEXT, -- Only set when ready
+  
+  -- Video metadata
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'uploading', 'processing', 'ready', 'error', 'cancelled')),
+  duration DECIMAL, -- in seconds
+  aspect_ratio TEXT, -- e.g., '16:9'
+  max_resolution_width INTEGER,
+  max_resolution_height INTEGER,
+  
+  -- Playback settings
+  playback_policy TEXT DEFAULT 'signed' CHECK (playback_policy IN ('public', 'signed')),
+  
+  -- Error tracking
+  error_message TEXT,
+  
+  -- Timestamps
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_videos_user_id ON videos(user_id);
+CREATE INDEX idx_videos_status ON videos(status);
+CREATE INDEX idx_videos_mux_asset_id ON videos(mux_asset_id);
+```
+
+---
+
+## 🎬 PHASE 3: THE PLAYER EXPERIENCE (REACT)
+
+### 3.1 The `<MuxPlayer>` Component
+
+**Purpose:** YouTube-grade adaptive streaming with HLS support.
+
+#### Basic Player Implementation
+
+```typescript
+// components/MuxPlayerWrapper.tsx
+
+'use client';
+
+import { useEffect, useState } from 'react';
+import MuxPlayer from '@mux/mux-player-react';
+import { generateSignedToken } from '@/app/actions/mux';
+
+interface MuxPlayerWrapperProps {
+  playbackId: string;
+  videoId: string;
+  videoTitle: string;
+  userId: string;
+  isSigned?: boolean; // If true, generate JWT tokens
+  startTime?: number; // Resume from this time (in seconds)
+  autoPlay?: boolean;
+  muted?: boolean;
+  className?: string;
+}
+
+export function MuxPlayerWrapper({
+  playbackId,
+  videoId,
+  videoTitle,
+  userId,
+  isSigned = false,
+  startTime = 0,
+  autoPlay = false,
+  muted = false,
+  className = '',
+}: MuxPlayerWrapperProps) {
+  const [tokens, setTokens] = useState<{ video?: string; thumbnail?: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isSigned) {
+      // Generate signed tokens for paid content
+      generateSignedToken(playbackId)
+        .then((tokenData) => {
+          setTokens({
+            video: tokenData.videoToken,
+            thumbnail: tokenData.thumbnailToken,
+          });
+          setIsLoading(false);
+        })
+        .catch((err) => {
+          setError('Failed to load video');
+          setIsLoading(false);
+          console.error('Token generation error:', err);
+        });
+    } else {
+      setIsLoading(false);
+    }
+  }, [isSigned, playbackId]);
+
+  if (isLoading) {
+    return (
+      <div className={`flex items-center justify-center bg-black ${className}`}>
+        <div className="text-white">Loading video...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={`flex items-center justify-center bg-black ${className}`}>
+        <div className="text-red-500">{error}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={className}>
+      <MuxPlayer
+        playbackId={isSigned ? undefined : playbackId}
+        tokens={isSigned ? tokens : undefined}
+        streamType="on-demand"
+        metadata={{
+          video_id: videoId,
+          video_title: videoTitle,
+          viewer_user_id: userId,
+        }}
+        startTime={startTime}
+        autoPlay={autoPlay}
+        muted={muted}
+        // Customization via CSS variables
+        style={{
+          '--media-primary-color': '#0071e3', // Apple blue
+          '--media-secondary-color': '#86868b', // Apple gray
+        } as React.CSSProperties}
+        // Enable keyboard shortcuts
+        keyboardShortcuts
+        // Show default controls
+        controls
+        // Enable picture-in-picture
+        pip
+        // Enable fullscreen
+        fullscreen
+        // Preload metadata
+        preload="metadata"
+      />
+    </div>
+  );
+}
+```
+
+### 3.2 Instant Thumbnails (BlurHash Pattern)
+
+**Purpose:** Show instant preview while HLS manifest loads.
+
+```typescript
+// components/MuxPlayerWithThumbnail.tsx
+
+'use client';
+
+import { useState } from 'react';
+import MuxPlayer from '@mux/mux-player-react';
+import Image from 'next/image';
+
+interface MuxPlayerWithThumbnailProps {
+  playbackId: string;
+  videoId: string;
+  videoTitle: string;
+  userId: string;
+  isSigned?: boolean;
+  tokens?: { video?: string; thumbnail?: string };
+  className?: string;
+}
+
+export function MuxPlayerWithThumbnail({
+  playbackId,
+  videoId,
+  videoTitle,
+  userId,
+  isSigned = false,
+  tokens,
+  className = '',
+}: MuxPlayerWithThumbnailProps) {
+  const [isManifestLoading, setIsManifestLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+
+  // Generate thumbnail URL
+  const thumbnailUrl = isSigned && tokens?.thumbnail
+    ? `https://image.mux.com/${playbackId}/thumbnail.jpg?token=${tokens.thumbnail}`
+    : `https://image.mux.com/${playbackId}/thumbnail.jpg`;
+
+  // Generate animated GIF for instant preview
+  const animatedGifUrl = isSigned && tokens?.thumbnail
+    ? `https://image.mux.com/${playbackId}/animated.gif?token=${tokens.thumbnail}`
+    : `https://image.mux.com/${playbackId}/animated.gif`;
+
+  return (
+    <div className={`relative ${className}`}>
+      {/* Thumbnail overlay while loading */}
+      {isManifestLoading && !hasError && (
+        <div className="absolute inset-0 z-10 bg-black flex items-center justify-center">
+          <div className="relative w-full h-full">
+            <Image
+              src={animatedGifUrl}
+              alt={videoTitle}
+              fill
+              className="object-contain"
+              unoptimized
+              priority
+            />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error state */}
+      {hasError && (
+        <div className="absolute inset-0 z-10 bg-black flex items-center justify-center">
+          <div className="text-white text-center">
+            <p className="text-lg mb-2">Failed to load video</p>
+            <p className="text-sm text-gray-400">Please try again later</p>
+          </div>
+        </div>
+      )}
+
+      {/* Mux Player */}
+      <MuxPlayer
+        playbackId={isSigned ? undefined : playbackId}
+        tokens={isSigned ? tokens : undefined}
+        streamType="on-demand"
+        metadata={{
+          video_id: videoId,
+          video_title: videoTitle,
+          viewer_user_id: userId,
+        }}
+        poster={thumbnailUrl}
+        onLoadedMetadata={() => {
+          setIsManifestLoading(false);
+        }}
+        onError={() => {
+          setHasError(true);
+          setIsManifestLoading(false);
+        }}
+        style={{
+          '--media-primary-color': '#0071e3',
+          '--media-secondary-color': '#86868b',
+        } as React.CSSProperties}
+        keyboardShortcuts
+        controls
+        pip
+        fullscreen
+        preload="metadata"
+      />
+    </div>
+  );
+}
+```
+
+---
+
+## 🔐 PHASE 4: SIGNED URL SECURITY
+
+### 4.1 The "Signing" Utility
+
+**Purpose:** Generate JWT tokens for signed playback of paid content.
+
+```typescript
+// lib/mux-signing.ts
+
+import jwt from 'jsonwebtoken';
+
+interface TokenClaims {
+  sub: string; // Playback ID
+  kid: string; // Signing Key ID
+  exp: number; // Expiration timestamp
+  aud: 'v' | 't'; // Audience: 'v' for video, 't' for thumbnail
+  iat?: number; // Issued at (optional)
+}
+
+/**
+ * Generate a signed JWT token for Mux playback
+ * 
+ * @param playbackId - The Mux playback ID
+ * @param type - 'video' for video playback, 'thumbnail' for thumbnail access
+ * @param expirationSeconds - Token expiration in seconds (default: 7 days)
+ * @returns Signed JWT token
+ */
+export function generateSignedToken(
+  playbackId: string,
+  type: 'video' | 'thumbnail' = 'video',
+  expirationSeconds: number = 7 * 24 * 60 * 60 // 7 days
+): string {
+  const signingKeyId = process.env.MUX_SIGNING_KEY_ID;
+  const signingKeyPrivateKey = process.env.MUX_SIGNING_KEY_PRIVATE_KEY;
+
+  if (!signingKeyId || !signingKeyPrivateKey) {
+    throw new Error('Mux signing credentials not configured');
+  }
+
+  // Format the private key (ensure it includes header/footer if needed)
+  const privateKey = formatPrivateKey(signingKeyPrivateKey);
+
+  const now = Math.floor(Date.now() / 1000);
+  const exp = now + expirationSeconds;
+
+  const claims: TokenClaims = {
+    sub: playbackId,
+    kid: signingKeyId,
+    exp: exp,
+    aud: type === 'video' ? 'v' : 't',
+    iat: now,
+  };
+
+  // Sign the token
+  const token = jwt.sign(claims, privateKey, {
+    algorithm: 'RS256',
+    header: {
+      alg: 'RS256',
+      kid: signingKeyId,
+    },
+  });
+
+  return token;
+}
+
+/**
+ * Format private key to ensure proper PEM format
+ */
+function formatPrivateKey(key: string): string {
+  // If key already has headers, return as-is
+  if (key.includes('BEGIN PRIVATE KEY') || key.includes('BEGIN RSA PRIVATE KEY')) {
+    return key;
+  }
+
+  // Otherwise, wrap it in PEM headers
+  // Handle both single-line and multi-line keys
+  const cleanKey = key.replace(/\s/g, '');
+  const formattedKey = [
+    '-----BEGIN PRIVATE KEY-----',
+    ...chunkString(cleanKey, 64),
+    '-----END PRIVATE KEY-----',
+  ].join('\n');
+
+  return formattedKey;
+}
+
+/**
+ * Split string into chunks of specified length
+ */
+function chunkString(str: string, chunkSize: number): string[] {
+  const chunks: string[] = [];
+  for (let i = 0; i < str.length; i += chunkSize) {
+    chunks.push(str.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+/**
+ * Generate both video and thumbnail tokens
+ */
+export function generateSignedTokens(
+  playbackId: string,
+  expirationSeconds: number = 7 * 24 * 60 * 60
+): { videoToken: string; thumbnailToken: string } {
+  return {
+    videoToken: generateSignedToken(playbackId, 'video', expirationSeconds),
+    thumbnailToken: generateSignedToken(playbackId, 'thumbnail', expirationSeconds),
+  };
+}
+```
+
+#### Server Action: `generateSignedToken()`
+
+```typescript
+// app/actions/mux.ts
+
+'use server';
+
+import { generateSignedTokens } from '@/lib/mux-signing';
+
+export async function generateSignedToken(playbackId: string) {
+  try {
+    const tokens = generateSignedTokens(playbackId);
+    return {
+      videoToken: tokens.videoToken,
+      thumbnailToken: tokens.thumbnailToken,
+    };
+  } catch (error) {
+    console.error('Failed to generate signed token:', error);
+    throw new Error('Failed to generate signed token');
+  }
+}
+```
+
+---
+
+## 📍 PHASE 5: RESUME PLAYBACK (PROGRESS TRACKING)
+
+### 5.1 The "Resume" Hook
+
+**Purpose:** Save and restore video playback position so users can pick up where they left off.
+
+```typescript
+// hooks/useVideoProgress.ts
+
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+
+interface UseVideoProgressOptions {
+  videoId: string;
+  saveInterval?: number; // Save progress every N seconds (default: 5)
+  storageKey?: string; // Custom storage key prefix
+  persistToServer?: boolean; // If true, also save to database
+  onSaveToServer?: (videoId: string, currentTime: number) => Promise<void>;
+}
+
+interface VideoProgress {
+  currentTime: number;
+  duration: number;
+  lastUpdated: number;
+}
+
+/**
+ * Hook to track and persist video playback progress
+ * 
+ * @example
+ * ```tsx
+ * const { currentTime, setPlayerRef } = useVideoProgress({
+ *   videoId: 'video_123',
+ *   saveInterval: 5,
+ * });
+ * 
+ * <MuxPlayer
+ *   ref={setPlayerRef}
+ *   startTime={currentTime}
+ *   ...
+ * />
+ * ```
+ */
+export function useVideoProgress({
+  videoId,
+  saveInterval = 5,
+  storageKey = 'video-progress',
+  persistToServer = false,
+  onSaveToServer,
+}: UseVideoProgressOptions) {
+  const [currentTime, setCurrentTime] = useState<number>(0);
+  const playerRef = useRef<HTMLMediaElement | null>(null);
+  const saveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSavedTimeRef = useRef<number>(0);
+
+  // Load saved progress on mount
+  useEffect(() => {
+    if (!videoId) return;
+
+    const saved = loadProgress(videoId, storageKey);
+    if (saved && saved.currentTime > 0) {
+      // Only restore if progress is significant (> 10 seconds)
+      if (saved.currentTime > 10) {
+        setCurrentTime(saved.currentTime);
+      }
+    }
+  }, [videoId, storageKey]);
+
+  // Set up progress tracking
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+
+    let lastSaveTime = Date.now();
+
+    const handleTimeUpdate = () => {
+      const now = Date.now();
+      const timeSinceLastSave = (now - lastSaveTime) / 1000; // Convert to seconds
+
+      // Save progress every N seconds
+      if (timeSinceLastSave >= saveInterval) {
+        const currentTime = player.currentTime;
+        const duration = player.duration;
+
+        // Only save if video has loaded and time has changed significantly
+        if (duration && Math.abs(currentTime - lastSavedTimeRef.current) >= 1) {
+          saveProgress(videoId, {
+            currentTime,
+            duration,
+            lastUpdated: now,
+          }, storageKey);
+
+          lastSavedTimeRef.current = currentTime;
+          lastSaveTime = now;
+
+          // Optionally save to server
+          if (persistToServer && onSaveToServer) {
+            onSaveToServer(videoId, currentTime).catch((err) => {
+              console.error('Failed to save progress to server:', err);
+            });
+          }
+        }
+      }
+    };
+
+    player.addEventListener('timeupdate', handleTimeUpdate);
+
+    // Save on pause/unload
+    const handlePause = () => {
+      if (player.currentTime > 0) {
+        saveProgress(videoId, {
+          currentTime: player.currentTime,
+          duration: player.duration || 0,
+          lastUpdated: Date.now(),
+        }, storageKey);
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      if (player.currentTime > 0) {
+        saveProgress(videoId, {
+          currentTime: player.currentTime,
+          duration: player.duration || 0,
+          lastUpdated: Date.now(),
+        }, storageKey);
+      }
+    };
+
+    player.addEventListener('pause', handlePause);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      player.removeEventListener('timeupdate', handleTimeUpdate);
+      player.removeEventListener('pause', handlePause);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [videoId, saveInterval, storageKey, persistToServer, onSaveToServer]);
+
+  const setPlayerRef = (element: HTMLMediaElement | null) => {
+    playerRef.current = element;
+  };
+
+  return {
+    currentTime,
+    setPlayerRef,
+  };
+}
+
+// Local Storage Helpers
+
+function getStorageKey(videoId: string, prefix: string): string {
+  return `${prefix}:${videoId}`;
+}
+
+function saveProgress(
+  videoId: string,
+  progress: VideoProgress,
+  storageKey: string
+): void {
+  try {
+    const key = getStorageKey(videoId, storageKey);
+    localStorage.setItem(key, JSON.stringify(progress));
+  } catch (error) {
+    // Handle quota exceeded or other storage errors
+    console.warn('Failed to save progress to localStorage:', error);
+  }
+}
+
+function loadProgress(
+  videoId: string,
+  storageKey: string
+): VideoProgress | null {
+  try {
+    const key = getStorageKey(videoId, storageKey);
+    const data = localStorage.getItem(key);
+    if (!data) return null;
+
+    const progress = JSON.parse(data) as VideoProgress;
+
+    // Check if progress is stale (older than 30 days)
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    if (progress.lastUpdated < thirtyDaysAgo) {
+      // Clear stale progress
+      localStorage.removeItem(key);
+      return null;
+    }
+
+    return progress;
+  } catch (error) {
+    console.warn('Failed to load progress from localStorage:', error);
+    return null;
+  }
+}
+
+/**
+ * Clear saved progress for a video
+ */
+export function clearVideoProgress(videoId: string, storageKey: string = 'video-progress'): void {
+  try {
+    const key = getStorageKey(videoId, storageKey);
+    localStorage.removeItem(key);
+  } catch (error) {
+    console.warn('Failed to clear progress from localStorage:', error);
+  }
+}
+```
+
+### 5.2 Complete Player with Resume
+
+```typescript
+// components/MuxPlayerWithResume.tsx
+
+'use client';
+
+import { useRef, useEffect } from 'react';
+import MuxPlayer from '@mux/mux-player-react';
+import { useVideoProgress } from '@/hooks/useVideoProgress';
+import { saveVideoProgress } from '@/app/actions/video';
+
+interface MuxPlayerWithResumeProps {
+  playbackId: string;
+  videoId: string;
+  videoTitle: string;
+  userId: string;
+  isSigned?: boolean;
+  tokens?: { video?: string; thumbnail?: string };
+  className?: string;
+}
+
+export function MuxPlayerWithResume({
+  playbackId,
+  videoId,
+  videoTitle,
+  userId,
+  isSigned = false,
+  tokens,
+  className = '',
+}: MuxPlayerWithResumeProps) {
+  const playerRef = useRef<HTMLMediaElement>(null);
+
+  const { currentTime, setPlayerRef } = useVideoProgress({
+    videoId,
+    saveInterval: 5, // Save every 5 seconds
+    persistToServer: true,
+    onSaveToServer: async (vidId, time) => {
+      await saveVideoProgress(vidId, time);
+    },
+  });
+
+  useEffect(() => {
+    if (playerRef.current) {
+      setPlayerRef(playerRef.current);
+    }
+  }, [setPlayerRef]);
+
+  return (
+    <MuxPlayer
+      ref={playerRef}
+      playbackId={isSigned ? undefined : playbackId}
+      tokens={isSigned ? tokens : undefined}
+      streamType="on-demand"
+      metadata={{
+        video_id: videoId,
+        video_title: videoTitle,
+        viewer_user_id: userId,
+      }}
+      startTime={currentTime}
+      style={{
+        '--media-primary-color': '#0071e3',
+        '--media-secondary-color': '#86868b',
+      } as React.CSSProperties}
+      keyboardShortcuts
+      controls
+      pip
+      fullscreen
+      preload="metadata"
+    />
+  );
+}
+```
+
+### 5.3 Server Action: Save Progress to Database
+
+```typescript
+// app/actions/video.ts
+
+'use server';
+
+import { prisma } from '@/lib/prisma'; // Example with Prisma
+
+export async function saveVideoProgress(videoId: string, currentTime: number) {
+  try {
+    // Upsert progress record
+    await prisma.videoProgress.upsert({
+      where: {
+        videoId_userId: {
+          videoId,
+          userId: 'user_123', // Get from auth context
+        },
+      },
+      update: {
+        currentTime,
+        updatedAt: new Date(),
+      },
+      create: {
+        videoId,
+        userId: 'user_123', // Get from auth context
+        currentTime,
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to save video progress:', error);
+    throw new Error('Failed to save progress');
+  }
+}
+```
+
+---
+
+## 🎨 PHASE 6: CUSTOMIZATION & STYLING
+
+### 6.1 CSS Variables for Theming
+
+```css
+/* styles/mux-player.css */
+
+/* Apple Design System Colors (from apple-saas-suite.mdc) */
+:root {
+  --mux-primary-color: #0071e3; /* Apple Blue */
+  --mux-secondary-color: #86868b; /* Apple Gray */
+  --mux-accent-color: #007aff; /* iOS Blue */
+  --mux-background: #000000; /* Black background */
+  --mux-controls-background: rgba(0, 0, 0, 0.8);
+}
+
+/* Apply to Mux Player */
+mux-player {
+  --media-primary-color: var(--mux-primary-color);
+  --media-secondary-color: var(--mux-secondary-color);
+  --media-control-background: var(--mux-controls-background);
+  --media-range-bar-color: var(--mux-primary-color);
+  --media-range-bar-buffer-color: var(--mux-secondary-color);
+  --media-range-bar-played-color: var(--mux-primary-color);
+}
+
+/* Custom player container */
+.video-player-container {
+  position: relative;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Responsive aspect ratio */
+.video-player-container::before {
+  content: '';
+  display: block;
+  padding-top: 56.25%; /* 16:9 aspect ratio */
+}
+
+.video-player-container mux-player {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+```
+
+---
+
+## 📊 PHASE 7: ANALYTICS & MONITORING
+
+### 7.1 Mux Analytics Integration
+
+Mux automatically tracks analytics when you pass `metadata` to the player. Access analytics via:
+
+1. **Mux Dashboard:** View real-time analytics at `https://dashboard.mux.com`
+2. **Mux Data API:** Query analytics programmatically
+
+```typescript
+// lib/mux-analytics.ts
+
+import Mux from '@mux/mux-node';
+
+const mux = new Mux(
+  process.env.MUX_TOKEN_ID!,
+  process.env.MUX_TOKEN_SECRET!
+);
+
+/**
+ * Get video analytics for a specific playback ID
+ */
+export async function getVideoAnalytics(playbackId: string, timeframe: '7d' | '30d' = '7d') {
+  try {
+    // Query metrics via Mux Data API
+    const metrics = await mux.data.metrics.overall({
+      timeframe: [timeframe],
+      filters: [`playback_id:${playbackId}`],
+    });
+
+    return metrics;
+  } catch (error) {
+    console.error('Failed to fetch analytics:', error);
+    throw error;
+  }
+}
+```
+
+---
+
+## ✅ CHECKLIST: IMPLEMENTATION STEPS
+
+### Setup
+- [ ] Install required packages (`@mux/mux-node`, `@mux/upchunk`, `@mux/mux-player-react`, `jsonwebtoken`)
+- [ ] Configure environment variables (MUX_TOKEN_ID, MUX_TOKEN_SECRET, MUX_SIGNING_KEY_ID, MUX_SIGNING_KEY_PRIVATE_KEY, MUX_WEBHOOK_SECRET)
+- [ ] Set up Mux webhook endpoint in Mux Dashboard
+- [ ] Create database schema for video tracking
+
+### Upload Pipeline
+- [ ] Implement `createUploadUrl()` server action
+- [ ] Create `VideoUploader` component with `@mux/upchunk`
+- [ ] Test direct upload with pause/resume functionality
+
+### Webhook Handler
+- [ ] Implement `/api/webhooks/mux` endpoint
+- [ ] Add signature verification
+- [ ] Handle `video.upload.asset_created` event
+- [ ] Handle `video.asset.ready` event
+- [ ] Handle `video.asset.errored` event
+- [ ] Update database on each event
+
+### Player Implementation
+- [ ] Create `MuxPlayerWrapper` component
+- [ ] Implement signed token generation
+- [ ] Add thumbnail/BlurHash support
+- [ ] Customize player styling with CSS variables
+
+### Resume Functionality
+- [ ] Implement `useVideoProgress` hook
+- [ ] Add LocalStorage persistence
+- [ ] Add server-side progress saving (optional)
+- [ ] Test resume across sessions
+
+### Testing
+- [ ] Test public playback
+- [ ] Test signed playback
+- [ ] Test upload → processing → ready flow
+- [ ] Test error handling
+- [ ] Test resume functionality
+- [ ] Test on mobile devices
+
+---
+
+## 🚨 COMMON PITFALLS & SOLUTIONS
+
+### Pitfall 1: Using `<video>` instead of `<MuxPlayer>`
+**Problem:** Direct MP4 playback doesn't support adaptive bitrate and kills mobile performance.
+
+**Solution:** Always use `<MuxPlayer>` which automatically handles HLS streaming.
+
+### Pitfall 2: Exposing Public Playback IDs for Paid Content
+**Problem:** Anyone with the Playback ID can access the video.
+
+**Solution:** Use `playback_policy: ['signed']` and generate JWT tokens on the server.
+
+### Pitfall 3: Showing Videos Before They're Ready
+**Problem:** Users see a black screen or error when video is still processing.
+
+**Solution:** Check `status === 'ready'` in your database before rendering the player. Use webhooks to update status.
+
+### Pitfall 4: Not Handling Webhook Signature Verification
+**Problem:** Malicious requests could trigger webhook handlers.
+
+**Solution:** Always verify the `mux-signature` header using HMAC SHA-256.
+
+### Pitfall 5: Not Saving Progress Frequently Enough
+**Problem:** Users lose their place if they close the browser.
+
+**Solution:** Save progress every 5 seconds and on pause/unload events.
+
+---
+
+## 📚 REFERENCE LINKS
+
+- [Mux Documentation](https://docs.mux.com)
+- [Mux Player React](https://github.com/muxinc/elements/tree/main/packages/mux-player-react)
+- [Mux UpChunk](https://github.com/muxinc/upchunk)
+- [Mux Webhooks](https://docs.mux.com/guides/video/webhooks)
+- [Mux Signed URLs](https://docs.mux.com/guides/video/secure-video-playback)
+- [Mux Analytics](https://docs.mux.com/guides/data)
+
+---
+
+**END OF DOCUMENTATION**

@@ -1,0 +1,1753 @@
+---
+alwaysApply: false
+---
+
+# IoT Control Engine - Source of Truth Documentation
+## Device Registry, MQTT Broker Architecture, and Shadow State Logic
+
+> **CRITICAL ARCHITECTURE PRINCIPLE: THE "ALWAYS ON" RULE**
+> 
+> - **Protocol:** HTTP is too heavy for small devices. Use **MQTT** (Message Queuing Telemetry Transport) over WebSockets.
+> - **The "Shadow" State:** Devices go offline. You cannot query a device directly. You query its "Device Shadow" (last known state) in your database.
+> - **TimeSeries Data:** Do not store sensor readings in standard Postgres tables. Use **TimescaleDB** or ClickHouse.
+
+---
+
+## Table of Contents
+
+1. [Critical Architecture Principles](#critical-architecture-principles)
+2. [Phase 1: The Device Registry](#phase-1-the-device-registry)
+3. [Phase 2: Command & Control (MQTT Broker)](#phase-2-command--control-mqtt-broker)
+4. [Phase 3: Device Shadow State Logic](#phase-3-device-shadow-state-logic)
+5. [Phase 4: Authentication & Provisioning (mTLS)](#phase-4-authentication--provisioning-mtls)
+6. [Phase 5: Heartbeat Monitor & Offline Detection](#phase-5-heartbeat-monitor--offline-detection)
+7. [Phase 6: Firmware OTA (Over-the-Air Updates)](#phase-6-firmware-ota-over-the-air-updates)
+8. [Phase 7: TimeSeries Data Storage](#phase-7-timeseries-data-storage)
+9. [Implementation Patterns](#implementation-patterns)
+
+---
+
+## Critical Architecture Principles
+
+### The "Shadow" State Rule
+
+**⚠️ DEVICES ARE OFFLINE BY DEFAULT**
+
+You cannot query a device directly. You query its "Device Shadow" (last known state) in your database.
+
+**Requirements:**
+- **Device Shadow Table:** Every device has a shadow record storing `reported_state` (what device says) and `desired_state` (what user wants)
+- **Delta Logic:** When `desired_state` ≠ `reported_state`, the system publishes a command to the device
+- **Last Known State:** The shadow is the source of truth for the UI, not the device itself
+- **Offline Handling:** If device is offline, commands are queued and sent when device reconnects
+
+### The MQTT Protocol Rule
+
+**⚠️ HTTP IS TOO HEAVY FOR IOT DEVICES**
+
+Use MQTT over WebSockets for all device communication.
+
+**Requirements:**
+- **Lightweight Protocol:** MQTT uses minimal bandwidth and battery power
+- **Persistent Connections:** Devices maintain a single WebSocket connection to the MQTT broker
+- **QoS Levels:** Use QoS 1 (at least once) for commands, QoS 0 (at most once) for telemetry
+- **Retained Messages:** Last known state messages are retained for devices that reconnect
+
+### The TimeSeries Rule
+
+**⚠️ SENSOR DATA IS NOT RELATIONAL DATA**
+
+Do not store sensor readings in standard Postgres tables. Use TimescaleDB or ClickHouse.
+
+**Requirements:**
+- **Hypertables:** Convert standard Postgres tables to TimescaleDB hypertables for time-series data
+- **Data Retention:** Implement automatic data retention policies (e.g., keep raw data for 30 days, aggregated data for 1 year)
+- **Compression:** Enable TimescaleDB compression for data older than 7 days
+- **Downsampling:** Aggregate high-frequency data (e.g., 1-second readings → 1-minute averages)
+
+---
+
+## Phase 1: The Device Registry
+
+*The Inventory.*
+
+### 1. Core Tables
+
+#### `devices` Table
+
+Stores the physical device inventory and metadata.
+
+```sql
+CREATE TABLE devices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK (type IN ('thermostat', 'camera', 'sensor', 'actuator', 'gateway')),
+    serial_number TEXT UNIQUE NOT NULL,
+    firmware_version TEXT NOT NULL DEFAULT '1.0.0',
+    hardware_version TEXT,
+    model TEXT,
+    manufacturer TEXT,
+    claimed_at TIMESTAMPTZ DEFAULT NOW(), -- When user claimed/registered device
+    last_seen_at TIMESTAMPTZ, -- Last heartbeat timestamp
+    status TEXT NOT NULL DEFAULT 'offline' CHECK (status IN ('online', 'offline', 'error', 'updating')),
+    location TEXT, -- Optional: room name, building, etc.
+    metadata JSONB DEFAULT '{}', -- Flexible device-specific metadata
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for common queries
+CREATE INDEX idx_devices_user_id ON devices(user_id);
+CREATE INDEX idx_devices_serial_number ON devices(serial_number);
+CREATE INDEX idx_devices_type ON devices(type);
+CREATE INDEX idx_devices_status ON devices(status);
+CREATE INDEX idx_devices_last_seen_at ON devices(last_seen_at) WHERE status = 'online';
+
+-- Auto-update updated_at timestamp
+CREATE TRIGGER update_devices_updated_at
+    BEFORE UPDATE ON devices
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+```
+
+**Key Fields:**
+- `serial_number`: Unique hardware identifier (used for device claiming)
+- `firmware_version`: Current firmware version (used for OTA updates)
+- `last_seen_at`: Timestamp of last heartbeat (used for offline detection)
+- `status`: Current device status (online/offline/error/updating)
+- `claimed_at`: When the device was linked to a user account
+
+---
+
+#### `device_shadows` Table
+
+Stores the "shadow" state (last known state) for each device. This is the source of truth for the UI.
+
+```sql
+CREATE TABLE device_shadows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id UUID NOT NULL UNIQUE REFERENCES devices(id) ON DELETE CASCADE,
+    reported_state JSONB NOT NULL DEFAULT '{}', -- What the device says its state is
+    desired_state JSONB NOT NULL DEFAULT '{}', -- What the user wants the state to be
+    reported_metadata JSONB DEFAULT '{}', -- Device-reported metadata (e.g., battery level, signal strength)
+    version INTEGER NOT NULL DEFAULT 1, -- Shadow version (increments on each update)
+    last_reported_at TIMESTAMPTZ, -- When device last reported its state
+    last_desired_at TIMESTAMPTZ, -- When desired state was last updated
+    delta JSONB, -- Computed delta: desired_state - reported_state (non-empty = pending command)
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_device_shadows_device_id ON device_shadows(device_id);
+CREATE INDEX idx_device_shadows_delta ON device_shadows USING GIN (delta) WHERE delta != '{}'::jsonb;
+
+-- Auto-update updated_at timestamp
+CREATE TRIGGER update_device_shadows_updated_at
+    BEFORE UPDATE ON device_shadows
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+```
+
+**Critical Architecture:**
+- **reported_state:** The device's last reported state (e.g., `{"temperature": 72, "mode": "cool"}`)
+- **desired_state:** The user's desired state (e.g., `{"temperature": 68, "mode": "cool"}`)
+- **delta:** Computed difference between desired and reported (non-empty = command pending)
+- **version:** Shadow version number (increments on each update, used for conflict resolution)
+
+**Example Shadow State:**
+```json
+{
+  "reported_state": {
+    "temperature": 72,
+    "mode": "cool",
+    "fan_speed": "auto"
+  },
+  "desired_state": {
+    "temperature": 68,
+    "mode": "cool",
+    "fan_speed": "high"
+  },
+  "delta": {
+    "temperature": 68,
+    "fan_speed": "high"
+  }
+}
+```
+
+---
+
+#### `device_certificates` Table
+
+Stores X.509 certificates for mTLS authentication.
+
+```sql
+CREATE TABLE device_certificates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id UUID NOT NULL UNIQUE REFERENCES devices(id) ON DELETE CASCADE,
+    certificate_pem TEXT NOT NULL, -- X.509 certificate in PEM format
+    private_key_pem TEXT NOT NULL, -- Private key (encrypted at rest)
+    ca_certificate_pem TEXT NOT NULL, -- CA certificate
+    certificate_serial TEXT UNIQUE NOT NULL, -- Certificate serial number
+    issued_at TIMESTAMPTZ DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL, -- Certificate expiration
+    revoked_at TIMESTAMPTZ, -- If certificate is revoked
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_device_certificates_device_id ON device_certificates(device_id);
+CREATE INDEX idx_device_certificates_serial ON device_certificates(certificate_serial);
+CREATE INDEX idx_device_certificates_expires ON device_certificates(expires_at) WHERE revoked_at IS NULL;
+```
+
+**Security Notes:**
+- Private keys must be encrypted at rest using application-level encryption
+- Certificates should have a maximum validity period (e.g., 1 year)
+- Revoked certificates must be checked on every connection attempt
+
+---
+
+## Phase 2: Command & Control (MQTT Broker)
+
+*Talking to metal.*
+
+### 1. MQTT Broker Selection
+
+**Recommended Brokers:**
+- **EMQX:** Open-source, high-performance, supports WebSockets
+- **AWS IoT Core:** Managed service, integrates with AWS ecosystem
+- **HiveMQ:** Enterprise-grade, supports clustering
+- **Mosquitto:** Lightweight, good for small deployments
+
+**Requirements:**
+- **WebSocket Support:** Must support MQTT over WebSockets (port 8083/443)
+- **TLS/SSL:** All connections must use TLS 1.2+
+- **Authentication:** Support for X.509 certificate authentication (mTLS)
+- **Retained Messages:** Support for retained messages (last known state)
+- **QoS Levels:** Support QoS 0, 1, and 2
+- **Persistence:** Message persistence for offline devices
+
+---
+
+### 2. MQTT Topic Architecture
+
+**Topic Naming Convention:**
+```
+devices/{device_id}/{message_type}
+```
+
+**Core Topics:**
+
+#### Device → Cloud (Telemetry)
+
+| Topic | Purpose | QoS | Retained |
+|-------|---------|-----|----------|
+| `devices/{id}/update` | Device reports state changes | 0 | Yes |
+| `devices/{id}/telemetry` | Sensor readings (temperature, humidity, etc.) | 0 | No |
+| `devices/{id}/heartbeat` | Device heartbeat (every 30s) | 0 | No |
+| `devices/{id}/error` | Device error messages | 1 | No |
+| `devices/{id}/ota/status` | OTA update status | 1 | No |
+
+#### Cloud → Device (Commands)
+
+| Topic | Purpose | QoS | Retained |
+|-------|---------|-----|----------|
+| `devices/{id}/command` | Commands to change device state | 1 | No |
+| `devices/{id}/shadow/get` | Request device shadow | 1 | No |
+| `devices/{id}/shadow/update` | Update desired state | 1 | No |
+| `devices/{id}/ota/start` | Start OTA update | 1 | No |
+| `devices/{id}/ota/cancel` | Cancel OTA update | 1 | No |
+
+**Topic Examples:**
+```
+devices/550e8400-e29b-41d4-a716-446655440000/update
+devices/550e8400-e29b-41d4-a716-446655440000/command
+devices/550e8400-e29b-41d4-a716-446655440000/telemetry
+```
+
+---
+
+### 3. The "Delta" Logic Flow
+
+**The Core Command & Control Pattern:**
+
+1. **User Action:** User clicks "Turn On" in the mobile app
+2. **API Update:** API updates `device_shadows.desired_state`
+3. **Delta Computation:** System computes delta (`desired_state - reported_state`)
+4. **MQTT Publish:** Server publishes delta to `devices/{id}/command`
+5. **Device Receives:** Device receives command, executes action
+6. **Device Reports:** Device publishes new state to `devices/{id}/update`
+7. **Shadow Update:** Server updates `device_shadows.reported_state`
+8. **Delta Cleared:** Delta becomes empty (desired = reported)
+
+**Implementation Pattern:**
+```typescript
+// Step 1: User updates desired state via API
+async function updateDesiredState(
+  deviceId: string,
+  desiredState: Record<string, any>
+) {
+  const shadow = await db.query(
+    `SELECT * FROM device_shadows WHERE device_id = $1`,
+    [deviceId]
+  );
+  
+  const currentDesired = shadow.rows[0].desired_state;
+  const newDesired = { ...currentDesired, ...desiredState };
+  
+  // Step 2: Update desired state in database
+  await db.query(
+    `UPDATE device_shadows 
+     SET desired_state = $1, 
+         last_desired_at = NOW(),
+         version = version + 1
+     WHERE device_id = $2`,
+    [JSON.stringify(newDesired), deviceId]
+  );
+  
+  // Step 3: Compute delta
+  const reported = shadow.rows[0].reported_state;
+  const delta = computeDelta(newDesired, reported);
+  
+  if (Object.keys(delta).length > 0) {
+    // Step 4: Update delta and publish command
+    await db.query(
+      `UPDATE device_shadows SET delta = $1 WHERE device_id = $2`,
+      [JSON.stringify(delta), deviceId]
+    );
+    
+    // Step 5: Publish to MQTT
+    await mqttClient.publish(
+      `devices/${deviceId}/command`,
+      JSON.stringify({
+        version: shadow.rows[0].version + 1,
+        state: { desired: newDesired },
+        delta: delta
+      }),
+      { qos: 1 }
+    );
+  }
+}
+
+// Helper: Compute delta (only changed fields)
+function computeDelta(desired: Record<string, any>, reported: Record<string, any>): Record<string, any> {
+  const delta: Record<string, any> = {};
+  
+  for (const key in desired) {
+    if (JSON.stringify(desired[key]) !== JSON.stringify(reported[key])) {
+      delta[key] = desired[key];
+    }
+  }
+  
+  return delta;
+}
+```
+
+**Device-Side Handler (Example - ESP32/Arduino):**
+```cpp
+void onMqttMessage(char* topic, byte* payload, unsigned int length) {
+  // Parse JSON payload
+  StaticJsonDocument<512> doc;
+  deserializeJson(doc, payload, length);
+  
+  // Extract delta
+  JsonObject delta = doc["delta"];
+  
+  // Apply delta to device state
+  if (delta.containsKey("temperature")) {
+    setTemperature(delta["temperature"]);
+  }
+  if (delta.containsKey("mode")) {
+    setMode(delta["mode"]);
+  }
+  
+  // Report new state back to cloud
+  reportState();
+}
+
+void reportState() {
+  StaticJsonDocument<256> doc;
+  doc["temperature"] = currentTemperature;
+  doc["mode"] = currentMode;
+  doc["timestamp"] = millis();
+  
+  String payload;
+  serializeJson(doc, payload);
+  
+  mqttClient.publish(
+    ("devices/" + deviceId + "/update").c_str(),
+    payload.c_str(),
+    true // retained
+  );
+}
+```
+
+---
+
+### 4. MQTT Message Payload Format
+
+**Standard Payload Structure:**
+```json
+{
+  "version": 42,
+  "timestamp": "2024-01-15T10:30:00Z",
+  "state": {
+    "reported": {
+      "temperature": 72,
+      "mode": "cool"
+    },
+    "desired": {
+      "temperature": 68,
+      "mode": "cool"
+    }
+  },
+  "delta": {
+    "temperature": 68
+  },
+  "metadata": {
+    "battery_level": 85,
+    "signal_strength": -65
+  }
+}
+```
+
+**Command Message (Cloud → Device):**
+```json
+{
+  "version": 43,
+  "timestamp": "2024-01-15T10:31:00Z",
+  "delta": {
+    "temperature": 68,
+    "fan_speed": "high"
+  }
+}
+```
+
+**Update Message (Device → Cloud):**
+```json
+{
+  "version": 43,
+  "timestamp": "2024-01-15T10:31:05Z",
+  "state": {
+    "reported": {
+      "temperature": 68,
+      "mode": "cool",
+      "fan_speed": "high"
+    }
+  },
+  "metadata": {
+    "battery_level": 84,
+    "signal_strength": -64
+  }
+}
+```
+
+---
+
+## Phase 3: Device Shadow State Logic
+
+### 1. Shadow State Machine
+
+**States:**
+- **In Sync:** `desired_state == reported_state` (delta is empty)
+- **Out of Sync:** `desired_state != reported_state` (delta is non-empty)
+- **Error:** Device reported an error or command failed
+- **Offline:** Device has not sent heartbeat in > 60 seconds
+
+**State Transitions:**
+```
+[In Sync] --(User changes desired)--> [Out of Sync]
+[Out of Sync] --(Device reports new state)--> [In Sync]
+[In Sync] --(No heartbeat > 60s)--> [Offline]
+[Offline] --(Heartbeat received)--> [In Sync]
+[Out of Sync] --(Device error)--> [Error]
+[Error] --(Device reports success)--> [In Sync]
+```
+
+---
+
+### 2. Shadow Update Handler
+
+**MQTT Subscriber for Device Updates:**
+```typescript
+// Subscribe to all device update topics
+mqttClient.subscribe('devices/+/update', { qos: 0 });
+
+mqttClient.on('message', async (topic, message) => {
+  const match = topic.match(/^devices\/([^\/]+)\/update$/);
+  if (!match) return;
+  
+  const deviceId = match[1];
+  const payload = JSON.parse(message.toString());
+  
+  // Update reported state
+  await db.query(
+    `UPDATE device_shadows
+     SET reported_state = $1,
+         reported_metadata = $2,
+         last_reported_at = NOW(),
+         version = $3,
+         updated_at = NOW()
+     WHERE device_id = $4`,
+    [
+      JSON.stringify(payload.state.reported),
+      JSON.stringify(payload.metadata || {}),
+      payload.version,
+      deviceId
+    ]
+  );
+  
+  // Recompute delta
+  const shadow = await db.query(
+    `SELECT desired_state, reported_state FROM device_shadows WHERE device_id = $1`,
+    [deviceId]
+  );
+  
+  const desired = shadow.rows[0].desired_state;
+  const reported = shadow.rows[0].reported_state;
+  const delta = computeDelta(desired, reported);
+  
+  // Update delta
+  await db.query(
+    `UPDATE device_shadows SET delta = $1 WHERE device_id = $2`,
+    [JSON.stringify(delta), deviceId]
+  );
+  
+  // Update device last_seen_at
+  await db.query(
+    `UPDATE devices SET last_seen_at = NOW(), status = 'online' WHERE id = $1`,
+    [deviceId]
+  );
+  
+  // If delta is non-empty, device hasn't applied desired state yet
+  if (Object.keys(delta).length > 0) {
+    // Re-publish command (device may have missed it)
+    await mqttClient.publish(
+      `devices/${deviceId}/command`,
+      JSON.stringify({
+        version: payload.version,
+        delta: delta
+      }),
+      { qos: 1 }
+    );
+  }
+});
+```
+
+---
+
+### 3. Shadow Query API
+
+**Get Device Shadow (REST API):**
+```typescript
+// GET /api/devices/:id/shadow
+async function getDeviceShadow(req: Request, res: Response) {
+  const { id } = req.params;
+  const userId = req.user.id;
+  
+  // Verify device ownership
+  const device = await db.query(
+    `SELECT * FROM devices WHERE id = $1 AND user_id = $2`,
+    [id, userId]
+  );
+  
+  if (device.rows.length === 0) {
+    return res.status(404).json({ error: 'Device not found' });
+  }
+  
+  // Get shadow
+  const shadow = await db.query(
+    `SELECT * FROM device_shadows WHERE device_id = $1`,
+    [id]
+  );
+  
+  if (shadow.rows.length === 0) {
+    // Create shadow if it doesn't exist
+    await db.query(
+      `INSERT INTO device_shadows (device_id, reported_state, desired_state)
+       VALUES ($1, '{}', '{}')`,
+      [id]
+    );
+    
+    return res.json({
+      device_id: id,
+      reported_state: {},
+      desired_state: {},
+      delta: {},
+      version: 1,
+      status: device.rows[0].status
+    });
+  }
+  
+  const shadowData = shadow.rows[0];
+  
+  res.json({
+    device_id: id,
+    reported_state: shadowData.reported_state,
+    desired_state: shadowData.desired_state,
+    delta: shadowData.delta,
+    version: shadowData.version,
+    last_reported_at: shadowData.last_reported_at,
+    last_desired_at: shadowData.last_desired_at,
+    status: device.rows[0].status,
+    last_seen_at: device.rows[0].last_seen_at
+  });
+}
+```
+
+---
+
+## Phase 4: Authentication & Provisioning (mTLS)
+
+### 1. Device Claiming Flow
+
+**The "QR Code" Provisioning Pattern:**
+
+1. **Manufacturing:** Device is manufactured with a unique `serial_number` and pre-loaded with a factory certificate
+2. **QR Code:** Device displays QR code containing: `{serial_number, claim_token, device_type}`
+3. **User Scans:** User scans QR code with mobile app
+4. **Claim Request:** App sends claim request to API: `POST /api/devices/claim`
+5. **Token Validation:** Server validates `claim_token` (one-time use, expires in 5 minutes)
+6. **Device Linking:** Server links `device_id` to `user_id` in `devices` table
+7. **Certificate Generation:** Server generates device-specific X.509 certificate
+8. **Certificate Delivery:** Server returns certificate to app, app sends to device via Bluetooth/WiFi
+9. **Device Activation:** Device connects to MQTT broker using new certificate
+
+**Implementation:**
+```typescript
+// POST /api/devices/claim
+async function claimDevice(req: Request, res: Response) {
+  const { serial_number, claim_token } = req.body;
+  const userId = req.user.id;
+  
+  // Validate claim token (stored in Redis with TTL)
+  const validToken = await redis.get(`claim_token:${serial_number}`);
+  if (validToken !== claim_token) {
+    return res.status(401).json({ error: 'Invalid claim token' });
+  }
+  
+  // Check if device exists
+  let device = await db.query(
+    `SELECT * FROM devices WHERE serial_number = $1`,
+    [serial_number]
+  );
+  
+  if (device.rows.length === 0) {
+    // Create device record
+    device = await db.query(
+      `INSERT INTO devices (serial_number, user_id, type, claimed_at)
+       VALUES ($1, $2, $3, NOW())
+       RETURNING *`,
+      [serial_number, userId, req.body.device_type]
+    );
+  } else {
+    // Update existing device
+    if (device.rows[0].user_id !== null) {
+      return res.status(409).json({ error: 'Device already claimed' });
+    }
+    
+    device = await db.query(
+      `UPDATE devices 
+       SET user_id = $1, claimed_at = NOW()
+       WHERE serial_number = $2
+       RETURNING *`,
+      [userId, serial_number]
+    );
+  }
+  
+  const deviceId = device.rows[0].id;
+  
+  // Generate X.509 certificate
+  const certificate = await generateDeviceCertificate(deviceId, serial_number);
+  
+  // Store certificate
+  await db.query(
+    `INSERT INTO device_certificates 
+     (device_id, certificate_pem, private_key_pem, ca_certificate_pem, 
+      certificate_serial, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [
+      deviceId,
+      certificate.cert,
+      encrypt(certificate.key), // Encrypt private key
+      certificate.ca,
+      certificate.serial,
+      certificate.expiresAt
+    ]
+  );
+  
+  // Create device shadow
+  await db.query(
+    `INSERT INTO device_shadows (device_id, reported_state, desired_state)
+     VALUES ($1, '{}', '{}')`,
+    [deviceId]
+  );
+  
+  // Delete claim token (one-time use)
+  await redis.del(`claim_token:${serial_number}`);
+  
+  res.json({
+    device_id: deviceId,
+    certificate: {
+      cert: certificate.cert,
+      key: certificate.key,
+      ca: certificate.ca
+    },
+    mqtt_endpoint: process.env.MQTT_BROKER_URL,
+    mqtt_port: 8883
+  });
+}
+
+// Helper: Generate X.509 certificate
+async function generateDeviceCertificate(
+  deviceId: string,
+  serialNumber: string
+): Promise<CertificateBundle> {
+  // Use a library like 'node-forge' or 'pem' to generate certificates
+  const cert = forge.pki.createCertificate();
+  cert.publicKey = forge.pki.rsa.generateKeyPair(2048).publicKey;
+  cert.serialNumber = generateSerialNumber();
+  cert.validity.notBefore = new Date();
+  cert.validity.notAfter = new Date();
+  cert.validity.notAfter.setFullYear(cert.validity.notAfter.getFullYear() + 1);
+  
+  cert.setSubject([
+    { name: 'CN', value: `device-${deviceId}` },
+    { name: 'O', value: 'IoT Platform' },
+    { name: 'OU', value: 'Devices' }
+  ]);
+  
+  cert.setIssuer(caCertificate.subject.attributes);
+  cert.sign(caPrivateKey);
+  
+  return {
+    cert: forge.pki.certificateToPem(cert),
+    key: forge.pki.privateKeyToPem(privateKey),
+    ca: forge.pki.certificateToPem(caCertificate),
+    serial: cert.serialNumber,
+    expiresAt: cert.validity.notAfter
+  };
+}
+```
+
+---
+
+### 2. MQTT Broker Authentication (mTLS)
+
+**EMQX Configuration (example):**
+```yaml
+# emqx.conf
+listeners.ssl.default {
+  bind = 8883
+  ssl_options.cacertfile = "/etc/emqx/certs/ca.pem"
+  ssl_options.certfile = "/etc/emqx/certs/server.pem"
+  ssl_options.keyfile = "/etc/emqx/certs/server.key"
+  ssl_options.verify = verify_peer
+  ssl_options.fail_if_no_peer_cert = true
+}
+
+# Authentication: X.509 certificate
+authentication {
+  mechanism = x509
+  backend = http
+  http.url = "http://api:3000/api/mqtt/auth"
+}
+```
+
+**Authentication Endpoint:**
+```typescript
+// POST /api/mqtt/auth
+// Called by MQTT broker to authenticate device
+async function authenticateDevice(req: Request, res: Response) {
+  // Extract certificate from request (set by MQTT broker)
+  const certPem = req.headers['x-ssl-cert'];
+  const cert = forge.pki.certificateFromPem(certPem);
+  
+  // Look up device by certificate serial
+  const deviceCert = await db.query(
+    `SELECT dc.*, d.id as device_id, d.user_id, d.status
+     FROM device_certificates dc
+     JOIN devices d ON dc.device_id = d.id
+     WHERE dc.certificate_serial = $1
+       AND dc.revoked_at IS NULL
+       AND dc.expires_at > NOW()`,
+    [cert.serialNumber]
+  );
+  
+  if (deviceCert.rows.length === 0) {
+    return res.status(401).json({ result: 'deny' });
+  }
+  
+  // Verify certificate chain
+  const isValid = verifyCertificateChain(cert, caCertificate);
+  if (!isValid) {
+    return res.status(401).json({ result: 'deny' });
+  }
+  
+  // Authorize: Device can only publish/subscribe to its own topics
+  const deviceId = deviceCert.rows[0].device_id;
+  
+  res.json({
+    result: 'allow',
+    device_id: deviceId,
+    topics: [
+      `devices/${deviceId}/update`,
+      `devices/${deviceId}/telemetry`,
+      `devices/${deviceId}/heartbeat`,
+      `devices/${deviceId}/error`,
+      `devices/${deviceId}/ota/status`,
+      `devices/${deviceId}/command`,
+      `devices/${deviceId}/shadow/get`,
+      `devices/${deviceId}/shadow/update`,
+      `devices/${deviceId}/ota/start`,
+      `devices/${deviceId}/ota/cancel`
+    ]
+  });
+}
+```
+
+---
+
+## Phase 5: Heartbeat Monitor & Offline Detection
+
+### 1. The Heartbeat System
+
+**Requirements:**
+- **Heartbeat Interval:** Devices send heartbeat every 30 seconds
+- **Offline Threshold:** If no heartbeat received for > 60 seconds, mark device as offline
+- **UI Status:** Display "Online" (green dot) or "Offline" (grey dot) in UI
+- **Reconnection:** When device reconnects, process any pending commands
+
+**Device Heartbeat (Device → Cloud):**
+```cpp
+// Device code (ESP32/Arduino)
+void sendHeartbeat() {
+  StaticJsonDocument<128> doc;
+  doc["timestamp"] = millis();
+  doc["uptime"] = millis() / 1000;
+  doc["free_heap"] = ESP.getFreeHeap();
+  
+  String payload;
+  serializeJson(doc, payload);
+  
+  mqttClient.publish(
+    ("devices/" + deviceId + "/heartbeat").c_str(),
+    payload.c_str(),
+    0 // QoS 0
+  );
+}
+
+// Send heartbeat every 30 seconds
+void loop() {
+  static unsigned long lastHeartbeat = 0;
+  
+  if (millis() - lastHeartbeat > 30000) {
+    sendHeartbeat();
+    lastHeartbeat = millis();
+  }
+  
+  mqttClient.loop();
+}
+```
+
+---
+
+### 2. Offline Detection Service
+
+**Background Worker (Cron Job):**
+```typescript
+// Run every 30 seconds
+async function checkDeviceStatus() {
+  const offlineThreshold = 60; // seconds
+  
+  // Find devices that haven't sent heartbeat in > 60 seconds
+  const offlineDevices = await db.query(
+    `UPDATE devices
+     SET status = 'offline'
+     WHERE status = 'online'
+       AND (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '${offlineThreshold} seconds')
+     RETURNING id, user_id`
+  );
+  
+  // Update device shadows for offline devices
+  for (const device of offlineDevices.rows) {
+    await db.query(
+      `UPDATE device_shadows 
+       SET updated_at = NOW()
+       WHERE device_id = $1`,
+      [device.id]
+    );
+    
+    // Emit event for real-time UI updates
+    await emitEvent('device.offline', {
+      device_id: device.id,
+      user_id: device.user_id
+    });
+  }
+  
+  // Find devices that came back online
+  const onlineDevices = await db.query(
+    `UPDATE devices
+     SET status = 'online'
+     WHERE status = 'offline'
+       AND last_seen_at IS NOT NULL
+       AND last_seen_at > NOW() - INTERVAL '${offlineThreshold} seconds'
+     RETURNING id, user_id`
+  );
+  
+  for (const device of onlineDevices.rows) {
+    await emitEvent('device.online', {
+      device_id: device.id,
+      user_id: device.user_id
+    });
+    
+    // Check for pending commands
+    const shadow = await db.query(
+      `SELECT delta FROM device_shadows WHERE device_id = $1`,
+      [device.id]
+    );
+    
+    if (shadow.rows[0] && Object.keys(shadow.rows[0].delta).length > 0) {
+      // Re-publish pending command
+      await mqttClient.publish(
+        `devices/${device.id}/command`,
+        JSON.stringify({
+          version: shadow.rows[0].version,
+          delta: shadow.rows[0].delta
+        }),
+        { qos: 1 }
+      );
+    }
+  }
+}
+
+// Schedule cron job (using node-cron)
+cron.schedule('*/30 * * * * *', checkDeviceStatus); // Every 30 seconds
+```
+
+---
+
+### 3. Heartbeat Message Handler
+
+**MQTT Subscriber:**
+```typescript
+mqttClient.subscribe('devices/+/heartbeat', { qos: 0 });
+
+mqttClient.on('message', async (topic, message) => {
+  const match = topic.match(/^devices\/([^\/]+)\/heartbeat$/);
+  if (!match) return;
+  
+  const deviceId = match[1];
+  const payload = JSON.parse(message.toString());
+  
+  // Update last_seen_at
+  await db.query(
+    `UPDATE devices 
+     SET last_seen_at = NOW(), 
+         status = 'online',
+         updated_at = NOW()
+     WHERE id = $1`,
+    [deviceId]
+  );
+  
+  // Update device metadata if provided
+  if (payload.free_heap) {
+    await db.query(
+      `UPDATE device_shadows 
+       SET reported_metadata = jsonb_set(
+         COALESCE(reported_metadata, '{}'),
+         '{free_heap}',
+         to_jsonb($1::int)
+       )
+       WHERE device_id = $2`,
+      [payload.free_heap, deviceId]
+    );
+  }
+});
+```
+
+---
+
+### 4. UI Status Indicator
+
+**Real-time Status API:**
+```typescript
+// GET /api/devices/:id/status
+async function getDeviceStatus(req: Request, res: Response) {
+  const { id } = req.params;
+  const userId = req.user.id;
+  
+  const device = await db.query(
+    `SELECT d.status, d.last_seen_at, ds.delta
+     FROM devices d
+     LEFT JOIN device_shadows ds ON d.id = ds.device_id
+     WHERE d.id = $1 AND d.user_id = $2`,
+    [id, userId]
+  );
+  
+  if (device.rows.length === 0) {
+    return res.status(404).json({ error: 'Device not found' });
+  }
+  
+  const data = device.rows[0];
+  const isOnline = data.status === 'online';
+  const hasPendingCommand = data.delta && Object.keys(data.delta).length > 0;
+  
+  res.json({
+    status: data.status, // 'online' | 'offline' | 'error' | 'updating'
+    is_online: isOnline,
+    last_seen_at: data.last_seen_at,
+    has_pending_command: hasPendingCommand,
+    indicator: isOnline ? 'green' : 'grey' // For UI dot color
+  });
+}
+```
+
+**WebSocket for Real-time Updates:**
+```typescript
+// WebSocket connection for real-time status updates
+io.on('connection', (socket) => {
+  socket.on('subscribe:device', async (deviceId: string) => {
+    // Verify device ownership
+    const device = await db.query(
+      `SELECT user_id FROM devices WHERE id = $1`,
+      [deviceId]
+    );
+    
+    if (device.rows[0].user_id !== socket.user.id) {
+      return socket.emit('error', 'Unauthorized');
+    }
+    
+    socket.join(`device:${deviceId}`);
+  });
+});
+
+// Emit status updates when device goes online/offline
+async function emitEvent(event: string, data: any) {
+  io.to(`device:${data.device_id}`).emit(event, data);
+}
+```
+
+---
+
+## Phase 6: Firmware OTA (Over-the-Air Updates)
+
+### 1. OTA Update Flow
+
+**The Complete OTA Process:**
+
+1. **Firmware Upload:** Admin uploads firmware binary file to S3/Blob Storage
+2. **OTA Record:** Create record in `firmware_updates` table
+3. **Device Notification:** Publish OTA start command to `devices/{id}/ota/start`
+4. **Device Download:** Device downloads firmware from signed URL
+5. **Device Verification:** Device verifies firmware signature
+6. **Device Install:** Device installs firmware and reboots
+7. **Device Report:** Device reports new firmware version via `devices/{id}/update`
+8. **OTA Complete:** Update `firmware_updates` record with status
+
+---
+
+### 2. Database Schema
+
+#### `firmware_updates` Table
+
+```sql
+CREATE TABLE firmware_updates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    firmware_version TEXT NOT NULL,
+    firmware_url TEXT NOT NULL, -- Signed S3 URL
+    firmware_hash TEXT NOT NULL, -- SHA256 hash
+    firmware_size BIGINT NOT NULL, -- Size in bytes
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'downloading', 'installing', 'completed', 'failed')),
+    error_message TEXT,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_firmware_updates_device_id ON firmware_updates(device_id);
+CREATE INDEX idx_firmware_updates_status ON firmware_updates(status);
+```
+
+#### `firmware_binaries` Table
+
+```sql
+CREATE TABLE firmware_binaries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    version TEXT NOT NULL UNIQUE,
+    device_type TEXT NOT NULL,
+    file_path TEXT NOT NULL, -- S3 path
+    file_hash TEXT NOT NULL, -- SHA256 hash
+    file_size BIGINT NOT NULL,
+    release_notes TEXT,
+    is_stable BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_firmware_binaries_version ON firmware_binaries(version);
+CREATE INDEX idx_firmware_binaries_device_type ON firmware_binaries(device_type);
+```
+
+---
+
+### 3. OTA Update API
+
+**Upload Firmware:**
+```typescript
+// POST /api/firmware/upload
+async function uploadFirmware(req: Request, res: Response) {
+  const { version, device_type, release_notes, is_stable } = req.body;
+  const file = req.file; // Multer middleware
+  
+  // Calculate hash
+  const hash = crypto.createHash('sha256');
+  hash.update(file.buffer);
+  const fileHash = hash.digest('hex');
+  
+  // Upload to S3
+  const s3Key = `firmware/${device_type}/${version}.bin`;
+  await s3.putObject({
+    Bucket: process.env.S3_BUCKET,
+    Key: s3Key,
+    Body: file.buffer,
+    ContentType: 'application/octet-stream'
+  });
+  
+  // Create signed URL (valid for 24 hours)
+  const signedUrl = await s3.getSignedUrl('getObject', {
+    Bucket: process.env.S3_BUCKET,
+    Key: s3Key,
+    Expires: 86400 // 24 hours
+  });
+  
+  // Store firmware binary record
+  await db.query(
+    `INSERT INTO firmware_binaries 
+     (version, device_type, file_path, file_hash, file_size, release_notes, is_stable)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [version, device_type, s3Key, fileHash, file.size, release_notes, is_stable]
+  );
+  
+  res.json({
+    firmware_id: result.rows[0].id,
+    version,
+    file_hash: fileHash,
+    signed_url: signedUrl
+  });
+}
+```
+
+**Start OTA Update:**
+```typescript
+// POST /api/devices/:id/ota/start
+async function startOTAUpdate(req: Request, res: Response) {
+  const { id } = req.params;
+  const { firmware_version } = req.body;
+  const userId = req.user.id;
+  
+  // Verify device ownership
+  const device = await db.query(
+    `SELECT * FROM devices WHERE id = $1 AND user_id = $2`,
+    [id, userId]
+  );
+  
+  if (device.rows.length === 0) {
+    return res.status(404).json({ error: 'Device not found' });
+  }
+  
+  // Get firmware binary
+  const firmware = await db.query(
+    `SELECT * FROM firmware_binaries 
+     WHERE version = $1 AND device_type = $2`,
+    [firmware_version, device.rows[0].type]
+  );
+  
+  if (firmware.rows.length === 0) {
+    return res.status(404).json({ error: 'Firmware not found' });
+  }
+  
+  // Generate signed download URL
+  const signedUrl = await s3.getSignedUrl('getObject', {
+    Bucket: process.env.S3_BUCKET,
+    Key: firmware.rows[0].file_path,
+    Expires: 3600 // 1 hour
+  });
+  
+  // Create OTA update record
+  const otaUpdate = await db.query(
+    `INSERT INTO firmware_updates 
+     (device_id, firmware_version, firmware_url, firmware_hash, firmware_size, status, started_at)
+     VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
+     RETURNING *`,
+    [
+      id,
+      firmware_version,
+      signedUrl,
+      firmware.rows[0].file_hash,
+      firmware.rows[0].file_size
+    ]
+  );
+  
+  // Update device status
+  await db.query(
+    `UPDATE devices SET status = 'updating' WHERE id = $1`,
+    [id]
+  );
+  
+  // Publish OTA start command
+  await mqttClient.publish(
+    `devices/${id}/ota/start`,
+    JSON.stringify({
+      version: firmware_version,
+      url: signedUrl,
+      hash: firmware.rows[0].file_hash,
+      size: firmware.rows[0].file_size
+    }),
+    { qos: 1 }
+  );
+  
+  res.json({
+    ota_update_id: otaUpdate.rows[0].id,
+    status: 'pending',
+    firmware_version
+  });
+}
+```
+
+---
+
+### 4. Device OTA Handler
+
+**Device-Side Code (ESP32/Arduino):**
+```cpp
+void onOtaStart(char* topic, byte* payload, unsigned int length) {
+  StaticJsonDocument<512> doc;
+  deserializeJson(doc, payload, length);
+  
+  String firmwareUrl = doc["url"];
+  String firmwareHash = doc["hash"];
+  int firmwareSize = doc["size"];
+  String firmwareVersion = doc["version"];
+  
+  // Report OTA status: downloading
+  reportOtaStatus("downloading", "");
+  
+  // Download firmware
+  HTTPClient http;
+  http.begin(firmwareUrl);
+  int httpCode = http.GET();
+  
+  if (httpCode != HTTP_CODE_OK) {
+    reportOtaStatus("failed", "Download failed");
+    return;
+  }
+  
+  // Verify size
+  int contentLength = http.getSize();
+  if (contentLength != firmwareSize) {
+    reportOtaStatus("failed", "Size mismatch");
+    return;
+  }
+  
+  // Download and verify hash
+  WiFiClient* stream = http.getStreamPtr();
+  SHA256 sha256;
+  uint8_t hash[32];
+  
+  // Create update
+  Update.begin(firmwareSize);
+  
+  uint8_t buffer[1024];
+  int bytesRead = 0;
+  
+  while (http.connected() && bytesRead < firmwareSize) {
+    int len = stream->readBytes(buffer, min(1024, firmwareSize - bytesRead));
+    Update.write(buffer, len);
+    sha256.update(buffer, len);
+    bytesRead += len;
+  }
+  
+  Update.end();
+  http.end();
+  
+  // Verify hash
+  sha256.finalize(hash, 32);
+  String computedHash = bytesToHex(hash, 32);
+  
+  if (computedHash != firmwareHash) {
+    reportOtaStatus("failed", "Hash mismatch");
+    return;
+  }
+  
+  // Report installing
+  reportOtaStatus("installing", "");
+  
+  // Reboot to apply update
+  if (Update.isFinished()) {
+    reportOtaStatus("completed", "");
+    delay(1000);
+    ESP.restart();
+  } else {
+    reportOtaStatus("failed", "Update not finished");
+  }
+}
+
+void reportOtaStatus(String status, String error) {
+  StaticJsonDocument<256> doc;
+  doc["status"] = status;
+  doc["error"] = error;
+  doc["timestamp"] = millis();
+  
+  String payload;
+  serializeJson(doc, payload);
+  
+  mqttClient.publish(
+    ("devices/" + deviceId + "/ota/status").c_str(),
+    payload.c_str(),
+    1 // QoS 1
+  );
+}
+```
+
+---
+
+### 5. OTA Status Handler (Cloud)
+
+**MQTT Subscriber:**
+```typescript
+mqttClient.subscribe('devices/+/ota/status', { qos: 1 });
+
+mqttClient.on('message', async (topic, message) => {
+  const match = topic.match(/^devices\/([^\/]+)\/ota\/status$/);
+  if (!match) return;
+  
+  const deviceId = match[1];
+  const payload = JSON.parse(message.toString());
+  
+  // Update OTA record
+  await db.query(
+    `UPDATE firmware_updates
+     SET status = $1,
+         error_message = $2,
+         updated_at = NOW()
+     WHERE device_id = $3
+       AND status IN ('pending', 'downloading', 'installing')
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [payload.status, payload.error || null, deviceId]
+  );
+  
+  if (payload.status === 'completed') {
+    // Update device firmware version (will be reported in next update message)
+    await db.query(
+      `UPDATE firmware_updates
+       SET completed_at = NOW()
+       WHERE device_id = $1
+         AND status = 'completed'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [deviceId]
+    );
+    
+    // Device will report new firmware version in next update message
+  } else if (payload.status === 'failed') {
+    // Reset device status
+    await db.query(
+      `UPDATE devices SET status = 'error' WHERE id = $1`,
+      [deviceId]
+    );
+  }
+});
+```
+
+**Update Firmware Version on Device Report:**
+```typescript
+// When device reports new state after OTA
+mqttClient.on('message', async (topic, message) => {
+  if (topic.match(/^devices\/([^\/]+)\/update$/)) {
+    const payload = JSON.parse(message.toString());
+    
+    // Check if firmware_version is in metadata
+    if (payload.metadata && payload.metadata.firmware_version) {
+      await db.query(
+        `UPDATE devices 
+         SET firmware_version = $1, status = 'online'
+         WHERE id = $2`,
+        [payload.metadata.firmware_version, deviceId]
+      );
+    }
+  }
+});
+```
+
+---
+
+## Phase 7: TimeSeries Data Storage
+
+### 1. TimescaleDB Setup
+
+**Install TimescaleDB Extension:**
+```sql
+-- Enable TimescaleDB extension
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+
+-- Create hypertable for sensor readings
+CREATE TABLE sensor_readings (
+    time TIMESTAMPTZ NOT NULL,
+    device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    sensor_type TEXT NOT NULL, -- 'temperature', 'humidity', 'pressure', etc.
+    value DOUBLE PRECISION NOT NULL,
+    unit TEXT, -- 'celsius', 'fahrenheit', 'percent', etc.
+    metadata JSONB DEFAULT '{}'
+);
+
+-- Convert to hypertable (partitioned by time)
+SELECT create_hypertable('sensor_readings', 'time');
+
+-- Indexes
+CREATE INDEX idx_sensor_readings_device_time ON sensor_readings(device_id, time DESC);
+CREATE INDEX idx_sensor_readings_sensor_type ON sensor_readings(sensor_type, time DESC);
+
+-- Enable compression for data older than 7 days
+ALTER TABLE sensor_readings SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'device_id, sensor_type',
+    timescaledb.compress_orderby = 'time DESC'
+);
+
+-- Add compression policy (compress data older than 7 days)
+SELECT add_compression_policy('sensor_readings', INTERVAL '7 days');
+
+-- Add retention policy (drop data older than 1 year)
+SELECT add_retention_policy('sensor_readings', INTERVAL '1 year');
+```
+
+---
+
+### 2. Telemetry Message Handler
+
+**MQTT Subscriber for Telemetry:**
+```typescript
+mqttClient.subscribe('devices/+/telemetry', { qos: 0 });
+
+mqttClient.on('message', async (topic, message) => {
+  const match = topic.match(/^devices\/([^\/]+)\/telemetry$/);
+  if (!match) return;
+  
+  const deviceId = match[1];
+  const payload = JSON.parse(message.toString());
+  
+  // Insert into TimescaleDB
+  const readings = payload.readings || []; // Array of sensor readings
+  
+  for (const reading of readings) {
+    await db.query(
+      `INSERT INTO sensor_readings 
+       (time, device_id, sensor_type, value, unit, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        new Date(payload.timestamp || Date.now()),
+        deviceId,
+        reading.type,
+        reading.value,
+        reading.unit,
+        JSON.stringify(reading.metadata || {})
+      ]
+    );
+  }
+});
+```
+
+**Example Telemetry Payload:**
+```json
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "readings": [
+    {
+      "type": "temperature",
+      "value": 72.5,
+      "unit": "fahrenheit"
+    },
+    {
+      "type": "humidity",
+      "value": 45.2,
+      "unit": "percent"
+    },
+    {
+      "type": "pressure",
+      "value": 1013.25,
+      "unit": "hPa"
+    }
+  ]
+}
+```
+
+---
+
+### 3. TimeSeries Query API
+
+**Get Sensor Readings:**
+```typescript
+// GET /api/devices/:id/telemetry
+async function getTelemetry(req: Request, res: Response) {
+  const { id } = req.params;
+  const { sensor_type, start_time, end_time, interval } = req.query;
+  const userId = req.user.id;
+  
+  // Verify device ownership
+  const device = await db.query(
+    `SELECT * FROM devices WHERE id = $1 AND user_id = $2`,
+    [id, userId]
+  );
+  
+  if (device.rows.length === 0) {
+    return res.status(404).json({ error: 'Device not found' });
+  }
+  
+  let query = `
+    SELECT 
+      time_bucket($1::interval, time) AS bucket,
+      sensor_type,
+      AVG(value) AS avg_value,
+      MIN(value) AS min_value,
+      MAX(value) AS max_value,
+      COUNT(*) AS count
+    FROM sensor_readings
+    WHERE device_id = $2
+      AND time >= $3
+      AND time <= $4
+  `;
+  
+  const params = [
+    interval || '1 hour', // Default: 1 hour buckets
+    id,
+    start_time || new Date(Date.now() - 24 * 60 * 60 * 1000), // Default: last 24 hours
+    end_time || new Date()
+  ];
+  
+  if (sensor_type) {
+    query += ` AND sensor_type = $5`;
+    params.push(sensor_type);
+  }
+  
+  query += `
+    GROUP BY bucket, sensor_type
+    ORDER BY bucket DESC, sensor_type
+  `;
+  
+  const result = await db.query(query, params);
+  
+  res.json({
+    device_id: id,
+    readings: result.rows
+  });
+}
+```
+
+**Get Latest Reading:**
+```typescript
+// GET /api/devices/:id/telemetry/latest
+async function getLatestTelemetry(req: Request, res: Response) {
+  const { id } = req.params;
+  const userId = req.user.id;
+  
+  // Verify device ownership
+  const device = await db.query(
+    `SELECT * FROM devices WHERE id = $1 AND user_id = $2`,
+    [id, userId]
+  );
+  
+  if (device.rows.length === 0) {
+    return res.status(404).json({ error: 'Device not found' });
+  }
+  
+  const result = await db.query(
+    `SELECT DISTINCT ON (sensor_type)
+       sensor_type, value, unit, time
+     FROM sensor_readings
+     WHERE device_id = $1
+     ORDER BY sensor_type, time DESC`,
+    [id]
+  );
+  
+  res.json({
+    device_id: id,
+    latest_readings: result.rows
+  });
+}
+```
+
+---
+
+## Implementation Patterns
+
+### 1. MQTT Client Setup (Node.js)
+
+```typescript
+import mqtt from 'mqtt';
+
+const mqttClient = mqtt.connect(process.env.MQTT_BROKER_URL, {
+  clientId: `iot-backend-${process.pid}`,
+  clean: true,
+  reconnectPeriod: 1000,
+  connectTimeout: 30000,
+  username: process.env.MQTT_USERNAME,
+  password: process.env.MQTT_PASSWORD
+});
+
+mqttClient.on('connect', () => {
+  console.log('Connected to MQTT broker');
+  
+  // Subscribe to all device topics
+  mqttClient.subscribe('devices/+/update', { qos: 0 });
+  mqttClient.subscribe('devices/+/telemetry', { qos: 0 });
+  mqttClient.subscribe('devices/+/heartbeat', { qos: 0 });
+  mqttClient.subscribe('devices/+/ota/status', { qos: 1 });
+  mqttClient.subscribe('devices/+/error', { qos: 1 });
+});
+
+mqttClient.on('error', (error) => {
+  console.error('MQTT error:', error);
+});
+
+mqttClient.on('message', async (topic, message) => {
+  // Handle messages (see handlers above)
+});
+```
+
+---
+
+### 2. Device Shadow API Endpoints
+
+```typescript
+// GET /api/devices/:id/shadow
+router.get('/devices/:id/shadow', authenticateUser, getDeviceShadow);
+
+// PATCH /api/devices/:id/shadow
+router.patch('/devices/:id/shadow', authenticateUser, updateDesiredState);
+
+// GET /api/devices
+router.get('/devices', authenticateUser, listDevices);
+
+// POST /api/devices/claim
+router.post('/devices/claim', authenticateUser, claimDevice);
+
+// GET /api/devices/:id/status
+router.get('/devices/:id/status', authenticateUser, getDeviceStatus);
+```
+
+---
+
+### 3. Error Handling
+
+**Device Error Handler:**
+```typescript
+mqttClient.subscribe('devices/+/error', { qos: 1 });
+
+mqttClient.on('message', async (topic, message) => {
+  const match = topic.match(/^devices\/([^\/]+)\/error$/);
+  if (!match) return;
+  
+  const deviceId = match[1];
+  const payload = JSON.parse(message.toString());
+  
+  // Update device status
+  await db.query(
+    `UPDATE devices SET status = 'error' WHERE id = $1`,
+    [deviceId]
+  );
+  
+  // Log error
+  await db.query(
+    `INSERT INTO device_errors (device_id, error_code, error_message, metadata)
+     VALUES ($1, $2, $3, $4)`,
+    [
+      deviceId,
+      payload.error_code,
+      payload.error_message,
+      JSON.stringify(payload.metadata || {})
+    ]
+  );
+  
+  // Alert user
+  await emitEvent('device.error', {
+    device_id: deviceId,
+    error: payload
+  });
+});
+```
+
+---
+
+### 4. WebSocket Real-time Updates
+
+```typescript
+import { Server } from 'socket.io';
+
+const io = new Server(server, {
+  cors: {
+    origin: process.env.FRONTEND_URL,
+    credentials: true
+  }
+});
+
+// Authenticate WebSocket connections
+io.use(async (socket, next) => {
+  const token = socket.handshake.auth.token;
+  const user = await verifyToken(token);
+  socket.user = user;
+  next();
+});
+
+io.on('connection', (socket) => {
+  // Subscribe to device updates
+  socket.on('subscribe:device', async (deviceId: string) => {
+    // Verify ownership
+    const device = await db.query(
+      `SELECT user_id FROM devices WHERE id = $1`,
+      [deviceId]
+    );
+    
+    if (device.rows[0].user_id !== socket.user.id) {
+      return socket.emit('error', 'Unauthorized');
+    }
+    
+    socket.join(`device:${deviceId}`);
+  });
+  
+  // Unsubscribe
+  socket.on('unsubscribe:device', (deviceId: string) => {
+    socket.leave(`device:${deviceId}`);
+  });
+});
+
+// Emit events to connected clients
+async function emitDeviceEvent(deviceId: string, event: string, data: any) {
+  io.to(`device:${deviceId}`).emit(event, data);
+}
+```
+
+---
+
+## Summary
+
+This document defines the complete architecture for an IoT control engine with:
+
+1. **Device Registry:** Core tables for devices, shadows, and certificates
+2. **MQTT Broker:** Lightweight protocol for device communication
+3. **Shadow State Logic:** Last known state management (devices go offline)
+4. **mTLS Authentication:** X.509 certificate-based device authentication
+5. **Heartbeat Monitor:** Offline detection (60-second threshold)
+6. **Firmware OTA:** Over-the-air update flow
+7. **TimeSeries Storage:** TimescaleDB for sensor data
+
+**Key Principles:**
+- Devices are offline by default - query the shadow, not the device
+- MQTT over WebSockets for lightweight communication
+- TimescaleDB for time-series data (not standard Postgres tables)
+- Delta logic: desired_state ≠ reported_state = pending command

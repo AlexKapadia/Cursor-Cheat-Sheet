@@ -1,0 +1,1247 @@
+---
+alwaysApply: false
+---
+## Critical Architecture Principles
+
+### The "Sync" Rule
+
+**⚠️ NEVER TRUST THE FRONTEND FOR USER CREATION**
+
+Authentication and data ownership are **separate concerns**:
+
+- **Clerk handles:** *Who you are* (authentication, identity, sessions)
+- **Your Database handles:** *What you own* (user data, relationships, permissions)
+
+**The Webhook Sync:** You **MUST** have a webhook endpoint (`/api/webhooks/clerk`) that listens for `user.created` and `user.updated` events and synchronizes the user into your Postgres/Supabase database. **Never** allow the frontend to create user records directly.
+
+### The "Separation of Concerns" Principle
+
+- **Identity Provider (Clerk):** Manages authentication, sessions, MFA, social logins
+- **Application Database:** Manages user profiles, business data, relationships
+- **Session Claims:** Use Clerk's JWT claims for organization context (`org_id`, `org_role`)
+
+---
+
+## Phase 1: Middleware & Protection
+
+### 1. Next.js Middleware Configuration
+
+**File: `middleware.ts` (root of Next.js app)**
+
+```typescript
+import { authMiddleware } from '@clerk/nextjs';
+
+export default authMiddleware({
+  // Public routes that don't require authentication
+  publicRoutes: [
+    '/',
+    '/pricing',
+    '/sign-in(.*)',
+    '/sign-up(.*)',
+    '/api/webhooks(.*)', // Webhook endpoints must be public
+    '/api/public(.*)'
+  ],
+
+  // Protected routes that require authentication
+  protectedRoutes: [
+    '/dashboard(.*)',
+    '/api/trpc(.*)',
+    '/api/protected(.*)',
+    '/settings(.*)',
+    '/profile(.*)'
+  ],
+
+  // Redirect logic
+  afterAuth(auth, req) {
+    const { userId, redirectToSignIn } = auth;
+    const { pathname } = req.nextUrl;
+
+    // If user is not authenticated and trying to access protected route
+    if (!userId && pathname.startsWith('/dashboard')) {
+      return redirectToSignIn();
+    }
+
+    // If user is authenticated and trying to access sign-in page
+    if (userId && pathname.startsWith('/sign-in')) {
+      return Response.redirect(new URL('/dashboard', req.url));
+    }
+
+    // Allow the request to proceed
+    return null;
+  }
+});
+
+export const config = {
+  matcher: [
+    // Skip Next.js internals and static files
+    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
+    // Always run for API routes
+    '/(api|trpc)(.*)'
+  ]
+};
+```
+
+**Alternative: Manual Middleware (More Control)**
+
+```typescript
+// middleware.ts
+import { auth } from '@clerk/nextjs';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+const publicRoutes = ['/', '/pricing', '/sign-in', '/sign-up'];
+const protectedRoutes = ['/dashboard', '/api/trpc', '/settings'];
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const { userId } = auth();
+
+  // Check if route is public
+  const isPublicRoute = publicRoutes.some(route => 
+    pathname === route || pathname.startsWith(route)
+  );
+
+  // Check if route is protected
+  const isProtectedRoute = protectedRoutes.some(route => 
+    pathname.startsWith(route)
+  );
+
+  // Redirect unauthenticated users from protected routes
+  if (isProtectedRoute && !userId) {
+    const signInUrl = new URL('/sign-in', request.url);
+    signInUrl.searchParams.set('redirect_url', pathname);
+    return NextResponse.redirect(signInUrl);
+  }
+
+  // Redirect authenticated users away from sign-in
+  if (pathname.startsWith('/sign-in') && userId) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+  ],
+};
+```
+
+### 2. Multi-Tenancy (Organizations)
+
+**Clerk Organizations Setup:**
+
+1. **Enable Organizations in Clerk Dashboard:**
+   - Go to Clerk Dashboard → Organizations
+   - Enable "Organizations" feature
+   - Configure organization roles (e.g., `admin`, `member`, `viewer`)
+
+2. **Session Claims Configuration:**
+
+```typescript
+// app/api/auth/session-claims/route.ts
+import { clerkClient } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
+
+export async function POST(request: Request) {
+  const { userId, orgId } = await request.json();
+
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Get organization membership
+  const memberships = await clerkClient.users.getOrganizationMembershipList({
+    userId
+  });
+
+  // Find active organization membership
+  const activeMembership = memberships.data.find(
+    membership => membership.organization.id === orgId
+  );
+
+  if (!activeMembership) {
+    return NextResponse.json({ error: 'Not a member' }, { status: 403 });
+  }
+
+  // Set session claims
+  await clerkClient.users.setMetadata(userId, {
+    publicMetadata: {
+      org_id: orgId,
+      org_role: activeMembership.role
+    }
+  });
+
+  return NextResponse.json({ success: true });
+}
+```
+
+**Backend Organization Check (API Routes):**
+
+```typescript
+// lib/auth.ts
+import { auth, currentUser } from '@clerk/nextjs/server';
+
+export async function getAuthContext() {
+  const { userId } = auth();
+  
+  if (!userId) {
+    throw new Error('Unauthorized');
+  }
+
+  const user = await currentUser();
+  const orgId = user?.publicMetadata?.org_id as string | undefined;
+  const orgRole = user?.publicMetadata?.org_role as string | undefined;
+
+  return {
+    userId,
+    orgId,
+    orgRole,
+    isAdmin: orgRole === 'admin',
+    isMember: orgRole === 'member' || orgRole === 'admin'
+  };
+}
+
+// Usage in API route
+// app/api/protected/route.ts
+import { getAuthContext } from '@/lib/auth';
+import { NextResponse } from 'next/server';
+
+export async function GET() {
+  try {
+    const { userId, orgId, orgRole, isAdmin } = await getAuthContext();
+
+    // Check organization access
+    if (!orgId) {
+      return NextResponse.json(
+        { error: 'No organization selected' },
+        { status: 403 }
+      );
+    }
+
+    // Role-based access control
+    if (!isAdmin) {
+      return NextResponse.json(
+        { error: 'Admin access required' },
+        { status: 403 }
+      );
+    }
+
+    // Your protected logic here
+    return NextResponse.json({ data: 'Protected data' });
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    );
+  }
+}
+```
+
+---
+
+## Phase 2: User Synchronization (The Webhook)
+
+### 1. Webhook Endpoint Setup
+
+**⚠️ CRITICAL: Webhook Signature Verification**
+
+**File: `app/api/webhooks/clerk/route.ts`**
+
+```typescript
+import { Webhook } from 'svix';
+import { headers } from 'next/headers';
+import { WebhookEvent } from '@clerk/nextjs/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY! // Use service role key for admin access
+);
+
+export async function POST(req: Request) {
+  // Get the Svix headers for verification
+  const headerPayload = await headers();
+  const svix_id = headerPayload.get('svix-id');
+  const svix_timestamp = headerPayload.get('svix-timestamp');
+  const svix_signature = headerPayload.get('svix-signature');
+
+  // If there are no headers, error out
+  if (!svix_id || !svix_timestamp || !svix_signature) {
+    return new Response('Error occurred -- no svix headers', {
+      status: 400
+    });
+  }
+
+  // Get the body
+  const payload = await req.json();
+  const body = JSON.stringify(payload);
+
+  // Create a new Svix instance with your webhook secret
+  const wh = new Webhook(process.env.CLERK_WEBHOOK_SECRET!);
+
+  let evt: WebhookEvent;
+
+  // Verify the payload with the headers
+  try {
+    evt = wh.verify(body, {
+      'svix-id': svix_id,
+      'svix-timestamp': svix_timestamp,
+      'svix-signature': svix_signature
+    }) as WebhookEvent;
+  } catch (err) {
+    console.error('Error verifying webhook:', err);
+    return new Response('Error occurred', {
+      status: 400
+    });
+  }
+
+  // Handle the webhook
+  const eventType = evt.type;
+
+  if (eventType === 'user.created') {
+    const { id, email_addresses, first_name, last_name, image_url, created_at } = evt.data;
+
+    // Insert user into your database
+    const { error } = await supabase
+      .from('users')
+      .insert({
+        clerk_id: id,
+        email: email_addresses[0]?.email_address,
+        first_name: first_name || null,
+        last_name: last_name || null,
+        avatar_url: image_url || null,
+        created_at: new Date(created_at).toISOString()
+      });
+
+    if (error) {
+      console.error('Error creating user:', error);
+      return new Response('Error creating user', { status: 500 });
+    }
+  }
+
+  if (eventType === 'user.updated') {
+    const { id, email_addresses, first_name, last_name, image_url } = evt.data;
+
+    // Update user in your database
+    const { error } = await supabase
+      .from('users')
+      .update({
+        email: email_addresses[0]?.email_address,
+        first_name: first_name || null,
+        last_name: last_name || null,
+        avatar_url: image_url || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('clerk_id', id);
+
+    if (error) {
+      console.error('Error updating user:', error);
+      return new Response('Error updating user', { status: 500 });
+    }
+  }
+
+  if (eventType === 'user.deleted') {
+    const { id } = evt.data;
+
+    // Soft delete or hard delete user
+    const { error } = await supabase
+      .from('users')
+      .delete()
+      .eq('clerk_id', id);
+
+    if (error) {
+      console.error('Error deleting user:', error);
+      return new Response('Error deleting user', { status: 500 });
+    }
+  }
+
+  // Organization events
+  if (eventType === 'organizationMembership.created') {
+    const { organization, public_user_data } = evt.data;
+
+    // Create organization membership record
+    const { error } = await supabase
+      .from('organization_memberships')
+      .insert({
+        clerk_org_id: organization.id,
+        clerk_user_id: public_user_data.user_id,
+        role: evt.data.role,
+        created_at: new Date().toISOString()
+      });
+
+    if (error) {
+      console.error('Error creating membership:', error);
+      return new Response('Error creating membership', { status: 500 });
+    }
+  }
+
+  if (eventType === 'organizationMembership.updated') {
+    const { organization, public_user_data, role } = evt.data;
+
+    // Update organization membership
+    const { error } = await supabase
+      .from('organization_memberships')
+      .update({
+        role: role,
+        updated_at: new Date().toISOString()
+      })
+      .eq('clerk_org_id', organization.id)
+      .eq('clerk_user_id', public_user_data.user_id);
+
+    if (error) {
+      console.error('Error updating membership:', error);
+      return new Response('Error updating membership', { status: 500 });
+    }
+  }
+
+  if (eventType === 'organizationMembership.deleted') {
+    const { organization, public_user_data } = evt.data;
+
+    // Delete organization membership
+    const { error } = await supabase
+      .from('organization_memberships')
+      .delete()
+      .eq('clerk_org_id', organization.id)
+      .eq('clerk_user_id', public_user_data.user_id);
+
+    if (error) {
+      console.error('Error deleting membership:', error);
+      return new Response('Error deleting membership', { status: 500 });
+    }
+  }
+
+  return new Response('', { status: 200 });
+}
+```
+
+### 2. Database Schema for User Sync
+
+**PostgreSQL/Supabase Tables:**
+
+```sql
+-- Users table (synced from Clerk)
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  clerk_id TEXT UNIQUE NOT NULL, -- Clerk user ID
+  
+  -- User Profile
+  email TEXT UNIQUE NOT NULL,
+  first_name TEXT,
+  last_name TEXT,
+  avatar_url TEXT,
+  
+  -- Application-specific fields
+  onboarding_completed BOOLEAN DEFAULT false,
+  preferences JSONB DEFAULT '{}',
+  
+  -- Timestamps
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ -- Soft delete
+);
+
+CREATE INDEX idx_users_clerk_id ON users(clerk_id);
+CREATE INDEX idx_users_email ON users(email);
+
+-- Organizations table (synced from Clerk)
+CREATE TABLE organizations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  clerk_org_id TEXT UNIQUE NOT NULL, -- Clerk organization ID
+  
+  -- Organization Profile
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE,
+  image_url TEXT,
+  
+  -- Metadata
+  metadata JSONB DEFAULT '{}',
+  
+  -- Timestamps
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_organizations_clerk_org_id ON organizations(clerk_org_id);
+
+-- Organization Memberships (synced from Clerk)
+CREATE TABLE organization_memberships (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  
+  -- Clerk references
+  clerk_org_id TEXT NOT NULL,
+  clerk_user_id TEXT NOT NULL,
+  
+  -- Role
+  role TEXT NOT NULL DEFAULT 'member', -- 'admin', 'member', 'viewer'
+  
+  -- Timestamps
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  UNIQUE(organization_id, user_id)
+);
+
+CREATE INDEX idx_org_memberships_org_id ON organization_memberships(organization_id);
+CREATE INDEX idx_org_memberships_user_id ON organization_memberships(user_id);
+CREATE INDEX idx_org_memberships_clerk_refs ON organization_memberships(clerk_org_id, clerk_user_id);
+```
+
+### 3. Environment Variables
+
+```bash
+# .env.local
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+CLERK_WEBHOOK_SECRET=whsec_... # Get this from Clerk Dashboard → Webhooks
+
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=https://...
+SUPABASE_SERVICE_ROLE_KEY=eyJ... # Service role key for admin operations
+```
+
+---
+
+## Phase 3: Frontend UX (User Button)
+
+### 1. Custom UserButton Component
+
+**File: `components/UserButton.tsx`**
+
+```typescript
+'use client';
+
+import { UserButton as ClerkUserButton } from '@clerk/nextjs';
+import { useTheme } from 'next-themes';
+
+export function UserButton() {
+  const { theme } = useTheme();
+
+  return (
+    <ClerkUserButton
+      appearance={{
+        elements: {
+          // Match your design system (apple-design.mdc)
+          rootBox: 'shadow-none',
+          avatarBox: 'w-10 h-10',
+          userButtonPopoverCard: 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg',
+          userButtonPopoverActionButton: 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800',
+          userButtonPopoverActionButtonText: 'text-sm font-medium',
+          userButtonPopoverFooter: 'hidden', // Hide "Manage account" link if needed
+        },
+        variables: {
+          colorPrimary: '#007AFF', // Apple blue
+          colorText: '#1D1D1F',
+          colorTextSecondary: '#86868B',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+          fontSize: '14px',
+          borderRadius: '8px',
+        }
+      }}
+      afterSignOutUrl="/"
+    />
+  );
+}
+```
+
+**Alternative: Fully Custom User Menu**
+
+```typescript
+'use client';
+
+import { useUser, useClerk } from '@clerk/nextjs';
+import { useState } from 'react';
+import Image from 'next/image';
+
+export function CustomUserButton() {
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const [isOpen, setIsOpen] = useState(false);
+
+  if (!user) return null;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+      >
+        <Image
+          src={user.imageUrl || '/default-avatar.png'}
+          alt={user.fullName || 'User'}
+          width={32}
+          height={32}
+          className="rounded-full"
+        />
+      </button>
+
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-10"
+            onClick={() => setIsOpen(false)}
+          />
+
+          {/* Dropdown Menu */}
+          <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-200 dark:border-gray-800 z-20">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                {user.fullName || user.emailAddresses[0]?.emailAddress}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {user.emailAddresses[0]?.emailAddress}
+              </p>
+            </div>
+
+            <div className="p-2">
+              <a
+                href="/settings"
+                className="block px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md"
+              >
+                Settings
+              </a>
+              <a
+                href="/profile"
+                className="block px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md"
+              >
+                Profile
+              </a>
+            </div>
+
+            <div className="p-2 border-t border-gray-200 dark:border-gray-800">
+              <button
+                onClick={() => signOut()}
+                className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## Phase 4: Backend Protection (tRPC & Server Actions)
+
+### 1. tRPC Protected Procedure
+
+**File: `server/trpc/trpc.ts`**
+
+```typescript
+import { initTRPC, TRPCError } from '@trpc/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
+import { z } from 'zod';
+
+export const t = initTRPC.context<{
+  userId?: string;
+  orgId?: string;
+  orgRole?: string;
+}>().create();
+
+// Public procedure (no authentication required)
+export const publicProcedure = t.procedure;
+
+// Protected procedure (authentication required)
+export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
+  const { userId } = auth();
+
+  if (!userId) {
+    throw new TRPCError({
+      code: 'UNAUTHORIZED',
+      message: 'You must be signed in to access this resource'
+    });
+  }
+
+  const user = await currentUser();
+  const orgId = user?.publicMetadata?.org_id as string | undefined;
+  const orgRole = user?.publicMetadata?.org_role as string | undefined;
+
+  return next({
+    ctx: {
+      ...ctx,
+      userId,
+      orgId,
+      orgRole
+    }
+  });
+});
+
+// Organization admin procedure
+export const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  if (ctx.orgRole !== 'admin') {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Admin access required'
+    });
+  }
+
+  return next({ ctx });
+});
+
+// Usage example
+export const appRouter = t.router({
+  // Public endpoint
+  getPublicData: publicProcedure.query(() => {
+    return { message: 'This is public data' };
+  }),
+
+  // Protected endpoint
+  getProfile: protectedProcedure.query(async ({ ctx }) => {
+    // ctx.userId is guaranteed to exist
+    return {
+      userId: ctx.userId,
+      orgId: ctx.orgId,
+      orgRole: ctx.orgRole
+    };
+  }),
+
+  // Admin-only endpoint
+  deleteUser: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Only admins can delete users
+      // ctx.orgRole is guaranteed to be 'admin'
+      // Your deletion logic here
+      return { success: true };
+    })
+});
+```
+
+### 2. Server Actions Protection
+
+**File: `lib/actions.ts`**
+
+```typescript
+'use server';
+
+import { auth, currentUser } from '@clerk/nextjs/server';
+import { redirect } from 'next/navigation';
+
+// Helper to get authenticated context
+export async function getAuthenticatedContext() {
+  const { userId } = auth();
+
+  if (!userId) {
+    redirect('/sign-in');
+  }
+
+  const user = await currentUser();
+  const orgId = user?.publicMetadata?.org_id as string | undefined;
+  const orgRole = user?.publicMetadata?.org_role as string | undefined;
+
+  return {
+    userId,
+    orgId,
+    orgRole,
+    isAdmin: orgRole === 'admin',
+    isMember: orgRole === 'member' || orgRole === 'admin'
+  };
+}
+
+// Protected server action
+export async function updateProfile(formData: FormData) {
+  const { userId } = await getAuthenticatedContext();
+
+  const firstName = formData.get('firstName') as string;
+  const lastName = formData.get('lastName') as string;
+
+  // Update user profile in database
+  // Your database update logic here
+
+  return { success: true };
+}
+
+// Admin-only server action
+export async function deleteOrganization(orgId: string) {
+  const { userId, isAdmin } = await getAuthenticatedContext();
+
+  if (!isAdmin) {
+    throw new Error('Admin access required');
+  }
+
+  // Delete organization logic
+  // Your deletion logic here
+
+  return { success: true };
+}
+```
+
+### 3. Zod Schema Validation with Auth
+
+**File: `lib/validations.ts`**
+
+```typescript
+import { z } from 'zod';
+
+// User profile schema
+export const updateProfileSchema = z.object({
+  firstName: z.string().min(1).max(50),
+  lastName: z.string().min(1).max(50),
+  email: z.string().email()
+});
+
+// Organization creation schema
+export const createOrganizationSchema = z.object({
+  name: z.string().min(1).max(100),
+  slug: z.string().min(1).max(50).regex(/^[a-z0-9-]+$/)
+});
+
+// Usage in tRPC procedure
+export const updateProfileProcedure = protectedProcedure
+  .input(updateProfileSchema)
+  .mutation(async ({ ctx, input }) => {
+    // input is validated by Zod
+    // ctx.userId is guaranteed by protectedProcedure
+    // Your update logic here
+    return { success: true };
+  });
+```
+
+---
+
+## Phase 5: Organization Context Provider
+
+### 1. Organization Context Hook
+
+**File: `contexts/OrganizationContext.tsx`**
+
+```typescript
+'use client';
+
+import { createContext, useContext, useEffect, useState } from 'react';
+import { useOrganization, useOrganizationList } from '@clerk/nextjs';
+
+interface OrganizationContextType {
+  currentOrg: ReturnType<typeof useOrganization>['organization'] | null;
+  setActiveOrg: ReturnType<typeof useOrganizationList>['setActive'];
+  isLoading: boolean;
+}
+
+const OrganizationContext = createContext<OrganizationContextType | undefined>(undefined);
+
+export function OrganizationProvider({ children }: { children: React.ReactNode }) {
+  const { organization, isLoaded: orgLoaded } = useOrganization();
+  const { setActive, isLoaded: listLoaded } = useOrganizationList();
+
+  const isLoading = !orgLoaded || !listLoaded;
+
+  return (
+    <OrganizationContext.Provider
+      value={{
+        currentOrg: organization,
+        setActiveOrg: setActive,
+        isLoading
+      }}
+    >
+      {children}
+    </OrganizationContext.Provider>
+  );
+}
+
+export function useOrganizationContext() {
+  const context = useContext(OrganizationContext);
+  if (context === undefined) {
+    throw new Error('useOrganizationContext must be used within OrganizationProvider');
+  }
+  return context;
+}
+```
+
+### 2. Organization Switcher Component
+
+**File: `components/OrganizationSwitcher.tsx`**
+
+```typescript
+'use client';
+
+import { useOrganizationList, useOrganization } from '@clerk/nextjs';
+import { useState } from 'react';
+
+export function OrganizationSwitcher() {
+  const { organizationList, isLoaded, setActive } = useOrganizationList();
+  const { organization } = useOrganization();
+  const [isOpen, setIsOpen] = useState(false);
+
+  if (!isLoaded) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+      >
+        <span className="font-medium">
+          {organization?.name || 'No Organization'}
+        </span>
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-10"
+            onClick={() => setIsOpen(false)}
+          />
+          <div className="absolute top-full mt-2 w-64 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-200 dark:border-gray-800 z-20">
+            <div className="p-2">
+              {organizationList?.map((org) => (
+                <button
+                  key={org.organization.id}
+                  onClick={() => {
+                    setActive({ organization: org.organization.id });
+                    setIsOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                    organization?.id === org.organization.id
+                      ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  {org.organization.name}
+                </button>
+              ))}
+              <button
+                onClick={() => {
+                  // Navigate to create organization page
+                  window.location.href = '/organizations/new';
+                }}
+                className="w-full text-left px-3 py-2 rounded-md text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                + Create Organization
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## Phase 6: Row-Level Security (RLS) Policies
+
+### 1. Supabase RLS Policies
+
+**Users Table Policies:**
+
+```sql
+-- Enable RLS
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+-- Users can read their own profile
+CREATE POLICY "Users can read own profile"
+  ON users
+  FOR SELECT
+  USING (clerk_id = auth.jwt() ->> 'sub');
+
+-- Users can update their own profile
+CREATE POLICY "Users can update own profile"
+  ON users
+  FOR UPDATE
+  USING (clerk_id = auth.jwt() ->> 'sub');
+
+-- Service role can do everything (for webhooks)
+CREATE POLICY "Service role full access"
+  ON users
+  FOR ALL
+  USING (auth.role() = 'service_role');
+```
+
+**Organizations Table Policies:**
+
+```sql
+-- Enable RLS
+ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
+
+-- Users can read organizations they're members of
+CREATE POLICY "Users can read own organizations"
+  ON organizations
+  FOR SELECT
+  USING (
+    id IN (
+      SELECT organization_id
+      FROM organization_memberships
+      WHERE user_id IN (
+        SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+      )
+    )
+  );
+
+-- Only admins can update organizations
+CREATE POLICY "Admins can update organizations"
+  ON organizations
+  FOR UPDATE
+  USING (
+    id IN (
+      SELECT organization_id
+      FROM organization_memberships
+      WHERE user_id IN (
+        SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+      )
+      AND role = 'admin'
+    )
+  );
+```
+
+**Organization Memberships Policies:**
+
+```sql
+-- Enable RLS
+ALTER TABLE organization_memberships ENABLE ROW LEVEL SECURITY;
+
+-- Users can read memberships in their organizations
+CREATE POLICY "Users can read own memberships"
+  ON organization_memberships
+  FOR SELECT
+  USING (
+    organization_id IN (
+      SELECT organization_id
+      FROM organization_memberships
+      WHERE user_id IN (
+        SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+      )
+    )
+  );
+
+-- Only admins can create/update/delete memberships
+CREATE POLICY "Admins can manage memberships"
+  ON organization_memberships
+  FOR ALL
+  USING (
+    organization_id IN (
+      SELECT organization_id
+      FROM organization_memberships
+      WHERE user_id IN (
+        SELECT id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+      )
+      AND role = 'admin'
+    )
+  );
+```
+
+---
+
+## Phase 7: Error Handling & Edge Cases
+
+### 1. Webhook Retry Logic
+
+```typescript
+// app/api/webhooks/clerk/route.ts
+export async function POST(req: Request) {
+  try {
+    // ... webhook verification and processing ...
+    
+    return new Response('', { status: 200 });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    
+    // Return 500 to trigger Clerk's retry mechanism
+    return new Response('Internal Server Error', { status: 500 });
+  }
+}
+```
+
+### 2. User Sync Conflict Resolution
+
+```typescript
+// Handle case where user already exists
+if (eventType === 'user.created') {
+  const { id, email_addresses } = evt.data;
+
+  // Check if user already exists
+  const { data: existingUser } = await supabase
+    .from('users')
+    .select('id')
+    .eq('clerk_id', id)
+    .single();
+
+  if (existingUser) {
+    // User already exists, update instead
+    await supabase
+      .from('users')
+      .update({
+        email: email_addresses[0]?.email_address,
+        updated_at: new Date().toISOString()
+      })
+      .eq('clerk_id', id);
+  } else {
+    // Create new user
+    await supabase
+      .from('users')
+      .insert({
+        clerk_id: id,
+        email: email_addresses[0]?.email_address
+      });
+  }
+}
+```
+
+### 3. Organization Context Fallback
+
+```typescript
+// lib/auth.ts
+export async function getAuthContext() {
+  const { userId } = auth();
+  
+  if (!userId) {
+    throw new Error('Unauthorized');
+  }
+
+  const user = await currentUser();
+  const orgId = user?.publicMetadata?.org_id as string | undefined;
+  const orgRole = user?.publicMetadata?.org_role as string | undefined;
+
+  // Fallback: Get organization from database if not in session claims
+  if (!orgId) {
+    const { data: membership } = await supabase
+      .from('organization_memberships')
+      .select('organization_id, role')
+      .eq('user_id', userId)
+      .single();
+
+    if (membership) {
+      return {
+        userId,
+        orgId: membership.organization_id,
+        orgRole: membership.role,
+        isAdmin: membership.role === 'admin'
+      };
+    }
+  }
+
+  return {
+    userId,
+    orgId,
+    orgRole,
+    isAdmin: orgRole === 'admin'
+  };
+}
+```
+
+---
+
+## Security Considerations
+
+### 1. Webhook Security
+
+- **Always verify webhook signatures** using `svix`
+- **Never trust webhook payloads** without verification
+- **Use service role keys** for database operations in webhooks
+- **Log all webhook events** for audit purposes
+
+### 2. Session Security
+
+- **Use HTTPS** in production
+- **Set secure cookie flags** (Clerk handles this automatically)
+- **Implement session timeout** policies
+- **Monitor for suspicious activity**
+
+### 3. Database Security
+
+- **Enable RLS** on all tables
+- **Use parameterized queries** to prevent SQL injection
+- **Limit service role key usage** to server-side only
+- **Regular security audits** of RLS policies
+
+### 4. API Security
+
+- **Rate limiting** on authentication endpoints
+- **CORS configuration** for API routes
+- **Input validation** using Zod schemas
+- **Error messages** should not leak sensitive information
+
+---
+
+## Testing Strategy
+
+### 1. Unit Tests
+
+```typescript
+// __tests__/auth.test.ts
+import { getAuthContext } from '@/lib/auth';
+import { auth, currentUser } from '@clerk/nextjs/server';
+
+jest.mock('@clerk/nextjs/server');
+
+describe('getAuthContext', () => {
+  it('should throw error if user is not authenticated', async () => {
+    (auth as jest.Mock).mockReturnValue({ userId: null });
+    
+    await expect(getAuthContext()).rejects.toThrow('Unauthorized');
+  });
+
+  it('should return user context when authenticated', async () => {
+    (auth as jest.Mock).mockReturnValue({ userId: 'user_123' });
+    (currentUser as jest.Mock).mockResolvedValue({
+      publicMetadata: {
+        org_id: 'org_123',
+        org_role: 'admin'
+      }
+    });
+
+    const context = await getAuthContext();
+    expect(context.userId).toBe('user_123');
+    expect(context.orgId).toBe('org_123');
+    expect(context.isAdmin).toBe(true);
+  });
+});
+```
+
+### 2. Integration Tests
+
+- Test webhook endpoint with valid/invalid signatures
+- Test middleware redirects for protected routes
+- Test organization context switching
+- Test RLS policies with different user roles
+
+### 3. E2E Tests
+
+- User sign-up flow
+- User sign-in flow
+- Organization creation
+- Role-based access control
+- Webhook synchronization
+
+---
+
+## Performance Optimizations
+
+1. **Cache user data** in Redis to reduce database queries
+2. **Batch webhook processing** for high-volume events
+3. **Lazy load organization data** in frontend
+4. **Index database columns** used in RLS policies
+5. **Use connection pooling** for database connections
+
+---
+
+## Deployment Checklist
+
+- [ ] Set `CLERK_WEBHOOK_SECRET` in production environment
+- [ ] Configure webhook URL in Clerk Dashboard
+- [ ] Enable RLS on all database tables
+- [ ] Test webhook endpoint with Clerk's test events
+- [ ] Verify middleware redirects work correctly
+- [ ] Test organization switching functionality
+- [ ] Verify session claims are properly set
+- [ ] Monitor webhook delivery in Clerk Dashboard
+- [ ] Set up error alerting for webhook failures
+- [ ] Document organization roles and permissions
+
+---
+
+**END OF DOCUMENTATION**

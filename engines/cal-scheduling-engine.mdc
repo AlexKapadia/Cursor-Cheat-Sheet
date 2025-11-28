@@ -1,0 +1,1436 @@
+# Cal.com Scheduling Engine
+## Source of Truth: Headless Booking Flow, Availability Logic, and Calendar Sync
+
+> **CRITICAL ARCHITECTURE PRINCIPLE: THE "HEADLESS" RULE**
+> 
+> - **Not an Iframe:** Do not embed the Cal.com iframe. Use the **Atom Components** (`@calcom/atoms`) or the Platform API to build a custom booking flow that matches your app design (`apple-saas-suite.mdc`).
+> - **The "Managed User" Model:** Your users are "Managed Users" inside your Cal.com Platform instance. Generate an Access Token for them so they can connect their Google Calendars.
+> - **Design System Integration:** All UI components must follow the Apple Design System (`apple-saas-suite.mdc`) - white cards, rounded corners, glass effects, and SF Pro typography.
+
+---
+
+## Table of Contents
+
+1. [Critical Architecture](#critical-architecture)
+2. [Phase 1: The Availability Engine](#phase-1-the-availability-engine)
+3. [Phase 2: The Booking Flow](#phase-2-the-booking-flow)
+4. [Phase 3: Round Robin Logic](#phase-3-round-robin-logic)
+5. [Phase 4: Timezone Management](#phase-4-timezone-management)
+6. [Phase 5: Webhook Integration](#phase-5-webhook-integration)
+7. [Phase 6: UI Components (Apple Design)](#phase-6-ui-components-apple-design)
+8. [Implementation Checklist](#implementation-checklist)
+
+---
+
+## Critical Architecture
+
+### The "Headless" Rule
+
+**NEVER do this:**
+```tsx
+// ❌ WRONG: Embedding iframe loses design control
+<iframe src="https://cal.com/username/meeting" />
+```
+
+**ALWAYS do this:**
+```tsx
+// ✅ CORRECT: Use Atom Components or API
+import { useSlots, Connect } from "@calcom/atoms";
+
+function BookingFlow() {
+  const { slots } = useSlots({ startTime, endTime, eventTypeId });
+  // Render custom UI matching apple-saas-suite.mdc
+}
+```
+
+### The "Managed User" Model
+
+Your application manages users, but they need calendar access through Cal.com:
+
+1. **User Registration:** User signs up in your app
+2. **Access Token Generation:** Generate a Cal.com Access Token for the user
+3. **Calendar Connection:** User connects Google Calendar via OAuth
+4. **Automatic Sync:** Cal.com reads busy slots and prevents double-booking
+
+---
+
+## Phase 1: The Availability Engine
+
+*Finding time.*
+
+### 1.1 Platform Setup
+
+#### Initial Configuration
+
+```typescript
+// lib/calcom/config.ts
+export const CALCOM_CONFIG = {
+  apiKey: process.env.CALCOM_API_KEY!,
+  baseUrl: process.env.CALCOM_BASE_URL || 'https://api.cal.com/v2',
+  platformUrl: process.env.CALCOM_PLATFORM_URL || 'https://app.cal.com',
+};
+
+export interface CalComClient {
+  apiKey: string;
+  baseUrl: string;
+}
+
+export function createCalComClient(): CalComClient {
+  return {
+    apiKey: CALCOM_CONFIG.apiKey,
+    baseUrl: CALCOM_CONFIG.baseUrl,
+  };
+}
+```
+
+### 1.2 Connecting Calendars (OAuth Flow)
+
+#### Step 1: Create OAuth Client
+
+```typescript
+// lib/calcom/oauth.ts
+export async function createGoogleOAuthClient(userId: string) {
+  const client = createCalComClient();
+  
+  const response = await fetch(`${client.baseUrl}/oauth-clients/google`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${client.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/calcom/callback`,
+      userId, // Your internal user ID
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to create OAuth client');
+  }
+
+  const data = await response.json();
+  return {
+    authUrl: data.authUrl,
+    clientId: data.clientId,
+  };
+}
+```
+
+#### Step 2: User Redirects and Grants Permission
+
+```tsx
+// components/calendar/ConnectCalendarButton.tsx
+'use client';
+
+import { useState } from 'react';
+import { Connect } from '@calcom/atoms';
+
+export function ConnectCalendarButton({ userId }: { userId: string }) {
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  const handleConnect = async () => {
+    setIsConnecting(true);
+    try {
+      const { authUrl } = await createGoogleOAuthClient(userId);
+      window.location.href = authUrl;
+    } catch (error) {
+      console.error('Failed to initiate OAuth:', error);
+      setIsConnecting(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleConnect}
+      disabled={isConnecting}
+      className="
+        px-6 py-3
+        bg-[#0071E3]
+        hover:bg-[#0077ED]
+        active:bg-[#0051A5]
+        text-white
+        rounded-xl
+        font-ui
+        text-body
+        transition-colors
+        disabled:opacity-50
+        disabled:cursor-not-allowed
+      "
+    >
+      {isConnecting ? 'Connecting...' : 'Connect Google Calendar'}
+    </button>
+  );
+}
+```
+
+#### Step 3: OAuth Callback Handler
+
+```typescript
+// app/api/calcom/callback/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const code = searchParams.get('code');
+  const state = searchParams.get('state'); // Contains userId
+
+  if (!code || !state) {
+    return NextResponse.redirect('/calendar?error=oauth_failed');
+  }
+
+  // Exchange code for access token
+  const client = createCalComClient();
+  const response = await fetch(`${client.baseUrl}/oauth-clients/google/callback`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${client.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ code, state }),
+  });
+
+  if (!response.ok) {
+    return NextResponse.redirect('/calendar?error=token_exchange_failed');
+  }
+
+  const data = await response.json();
+  
+  // Store the connection in your database
+  await db.query(
+    'UPDATE users SET calcom_calendar_connected = true, calcom_access_token = $1 WHERE id = $2',
+    [data.accessToken, state]
+  );
+
+  return NextResponse.redirect('/calendar?success=connected');
+}
+```
+
+### 1.3 Fetching Available Slots
+
+#### Using the `useSlots` Hook
+
+```tsx
+// components/booking/SlotPicker.tsx
+'use client';
+
+import { useSlots } from '@calcom/atoms';
+import { useState, useMemo } from 'react';
+import { formatSlotTime } from '@/lib/calcom/timezone';
+
+interface SlotPickerProps {
+  eventTypeId: string;
+  startDate: Date;
+  endDate: Date;
+  viewerTimeZone: string;
+  onSlotSelect: (slot: { start: Date; end: Date }) => void;
+}
+
+export function SlotPicker({
+  eventTypeId,
+  startDate,
+  endDate,
+  viewerTimeZone,
+  onSlotSelect,
+}: SlotPickerProps) {
+  const { slots, isLoading, error } = useSlots({
+    startTime: startDate.toISOString(),
+    endTime: endDate.toISOString(),
+    eventTypeId,
+  });
+
+  // Format slots in viewer's timezone
+  const formattedSlots = useMemo(() => {
+    if (!slots) return [];
+    
+    return slots.map(slot => ({
+      ...slot,
+      start: new Date(slot.start),
+      end: new Date(slot.end),
+      displayTime: formatSlotTime(new Date(slot.start), viewerTimeZone),
+    }));
+  }, [slots, viewerTimeZone]);
+
+  if (isLoading) {
+    return (
+      <div className="p-8 text-center">
+        <div className="text-caption text-[#86868B]">Loading available times...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8 text-center">
+        <div className="text-body text-[#1D1D1F]">Failed to load slots</div>
+        <div className="text-caption text-[#86868B] mt-2">{error.message}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-3 gap-3 p-6">
+      {formattedSlots.map((slot, index) => (
+        <button
+          key={index}
+          onClick={() => onSlotSelect({ start: slot.start, end: slot.end })}
+          className="
+            px-4 py-3
+            bg-[#F2F2F7]
+            hover:bg-white
+            focus:bg-white
+            focus:ring-2
+            focus:ring-[#0071E3]
+            rounded-xl
+            border-0
+            font-ui
+            text-body
+            text-[#1D1D1F]
+            transition-all
+          "
+        >
+          {slot.displayTime}
+        </button>
+      ))}
+    </div>
+  );
+}
+```
+
+#### Alternative: Direct API Call
+
+```typescript
+// lib/calcom/slots.ts
+export async function fetchAvailableSlots(
+  eventTypeId: string,
+  startTime: Date,
+  endTime: Date,
+  accessToken?: string
+) {
+  const client = createCalComClient();
+  
+  const response = await fetch(
+    `${client.baseUrl}/slots?eventTypeId=${eventTypeId}&startTime=${startTime.toISOString()}&endTime=${endTime.toISOString()}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${accessToken || client.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch slots');
+  }
+
+  const data = await response.json();
+  return data.slots.map((slot: any) => ({
+    start: new Date(slot.start),
+    end: new Date(slot.end),
+  }));
+}
+```
+
+---
+
+## Phase 2: The Booking Flow
+
+*Closing the deal.*
+
+### 2.1 Creating a Booking
+
+#### API Call Structure
+
+```typescript
+// lib/calcom/bookings.ts
+export interface CreateBookingPayload {
+  start: string; // ISO 8601
+  end: string; // ISO 8601
+  eventTypeId: string;
+  attendee: {
+    email: string;
+    name: string;
+    timeZone: string; // IANA timezone (e.g., "America/New_York")
+  };
+  metadata?: Record<string, any>; // Custom metadata
+  notes?: string; // Additional notes
+}
+
+export interface BookingResponse {
+  id: string;
+  uid: string;
+  startTime: string;
+  endTime: string;
+  status: 'ACCEPTED' | 'PENDING' | 'REJECTED' | 'CANCELLED';
+  eventType: {
+    id: string;
+    title: string;
+    slug: string;
+  };
+  attendees: Array<{
+    email: string;
+    name: string;
+    timeZone: string;
+  }>;
+  location?: string; // Zoom/Google Meet link
+  description?: string;
+}
+
+export async function createBooking(
+  payload: CreateBookingPayload,
+  accessToken?: string
+): Promise<BookingResponse> {
+  const client = createCalComClient();
+
+  const response = await fetch(`${client.baseUrl}/bookings`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken || client.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Failed to create booking');
+  }
+
+  return response.json();
+}
+```
+
+#### React Component: Booking Form
+
+```tsx
+// components/booking/BookingForm.tsx
+'use client';
+
+import { useState } from 'react';
+import { createBooking } from '@/lib/calcom/bookings';
+import { SlotPicker } from './SlotPicker';
+
+interface BookingFormProps {
+  eventTypeId: string;
+  viewerTimeZone: string;
+}
+
+export function BookingForm({ eventTypeId, viewerTimeZone }: BookingFormProps) {
+  const [selectedSlot, setSelectedSlot] = useState<{ start: Date; end: Date } | null>(null);
+  const [attendeeEmail, setAttendeeEmail] = useState('');
+  const [attendeeName, setAttendeeName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedSlot) {
+      setError('Please select a time slot');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const booking = await createBooking({
+        start: selectedSlot.start.toISOString(),
+        end: selectedSlot.end.toISOString(),
+        eventTypeId,
+        attendee: {
+          email: attendeeEmail,
+          name: attendeeName,
+          timeZone: viewerTimeZone,
+        },
+      });
+
+      // Update local database
+      await fetch('/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          calcomBookingId: booking.id,
+          calcomUid: booking.uid,
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+          status: booking.status,
+          attendeeEmail,
+          attendeeName,
+        }),
+      });
+
+      // Redirect to confirmation
+      window.location.href = `/booking/confirmed?uid=${booking.uid}`;
+    } catch (err: any) {
+      setError(err.message || 'Failed to create booking');
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Slot Picker */}
+      <div className="bg-white rounded-[24px] p-6 shadow-sm">
+        <h3 className="text-h3 font-display text-[#1D1D1F] mb-4">Select a Time</h3>
+        <SlotPicker
+          eventTypeId={eventTypeId}
+          startDate={new Date()}
+          endDate={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)} // 30 days
+          viewerTimeZone={viewerTimeZone}
+          onSlotSelect={setSelectedSlot}
+        />
+        {selectedSlot && (
+          <div className="mt-4 text-caption text-[#86868B]">
+            Selected: {formatSlotTime(selectedSlot.start, viewerTimeZone)}
+          </div>
+        )}
+      </div>
+
+      {/* Attendee Information */}
+      <div className="bg-white rounded-[24px] p-6 shadow-sm space-y-4">
+        <h3 className="text-h3 font-display text-[#1D1D1F]">Your Information</h3>
+        
+        <div>
+          <label className="block text-caption text-[#86868B] mb-2">Name</label>
+          <input
+            type="text"
+            value={attendeeName}
+            onChange={(e) => setAttendeeName(e.target.value)}
+            required
+            className="
+              w-full px-4 py-3
+              bg-[#F2F2F7]
+              rounded-xl
+              border-0
+              focus:bg-white
+              focus:ring-2
+              focus:ring-[#0071E3]
+              font-ui
+              text-body
+              text-[#1D1D1F]
+            "
+          />
+        </div>
+
+        <div>
+          <label className="block text-caption text-[#86868B] mb-2">Email</label>
+          <input
+            type="email"
+            value={attendeeEmail}
+            onChange={(e) => setAttendeeEmail(e.target.value)}
+            required
+            className="
+              w-full px-4 py-3
+              bg-[#F2F2F7]
+              rounded-xl
+              border-0
+              focus:bg-white
+              focus:ring-2
+              focus:ring-[#0071E3]
+              font-ui
+              text-body
+              text-[#1D1D1F]
+            "
+          />
+        </div>
+      </div>
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 rounded-xl p-4 text-body text-red-600">
+          {error}
+        </div>
+      )}
+
+      {/* Submit Button */}
+      <button
+        type="submit"
+        disabled={isSubmitting || !selectedSlot}
+        className="
+          w-full px-6 py-4
+          bg-[#0071E3]
+          hover:bg-[#0077ED]
+          active:bg-[#0051A5]
+          disabled:opacity-50
+          disabled:cursor-not-allowed
+          text-white
+          rounded-xl
+          font-ui
+          text-body
+          font-semibold
+          transition-colors
+        "
+      >
+        {isSubmitting ? 'Booking...' : 'Confirm Booking'}
+      </button>
+    </form>
+  );
+}
+```
+
+### 2.2 What Cal.com Handles Automatically
+
+After creating a booking, Cal.com automatically:
+
+1. **Email Confirmation:** Sends confirmation email to attendee
+2. **Calendar Invite (ICS):** Generates and sends .ics file
+3. **Video Link:** Creates Zoom/Google Meet link if configured
+4. **Reminders:** Sends reminder emails before the event
+5. **Cancellation Links:** Provides cancellation links in emails
+
+---
+
+## Phase 3: Round Robin Logic
+
+*Distributing bookings across team members.*
+
+### 3.1 Setting Up Round Robin Event Type
+
+#### Step 1: Create Team Event Type in Cal.com Dashboard
+
+1. Navigate to Cal.com Dashboard → Event Types
+2. Create a new Event Type (e.g., "Sales Consultation")
+3. Set **Scheduling Type** to "Round Robin"
+4. Add team members who should receive bookings
+5. Configure availability windows for each member
+
+#### Step 2: API Configuration
+
+```typescript
+// lib/calcom/round-robin.ts
+export interface RoundRobinEventType {
+  id: string;
+  title: string;
+  slug: string;
+  schedulingType: 'ROUND_ROBIN';
+  teamMembers: Array<{
+    userId: string;
+    email: string;
+    name: string;
+  }>;
+  routingForm?: {
+    formId: string;
+    fields: Array<{
+      fieldId: string;
+      attribute: string; // e.g., "expertise", "language"
+    }>;
+  };
+}
+
+export async function createRoundRobinEventType(
+  payload: {
+    title: string;
+    slug: string;
+    duration: number; // minutes
+    teamMemberIds: string[];
+    routingFormId?: string;
+  }
+): Promise<RoundRobinEventType> {
+  const client = createCalComClient();
+
+  const response = await fetch(`${client.baseUrl}/event-types`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${client.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      ...payload,
+      schedulingType: 'ROUND_ROBIN',
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to create round robin event type');
+  }
+
+  return response.json();
+}
+```
+
+### 3.2 Routing Form Integration
+
+For advanced routing (e.g., route Spanish speakers to Spanish-speaking team members):
+
+```tsx
+// components/booking/RoutingForm.tsx
+'use client';
+
+interface RoutingFormProps {
+  onRoute: (attributes: Record<string, string>) => void;
+}
+
+export function RoutingForm({ onRoute }: RoutingFormProps) {
+  const [language, setLanguage] = useState('');
+  const [expertise, setExpertise] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onRoute({ language, expertise });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="block text-caption text-[#86868B] mb-2">Preferred Language</label>
+        <select
+          value={language}
+          onChange={(e) => setLanguage(e.target.value)}
+          className="
+            w-full px-4 py-3
+            bg-[#F2F2F7]
+            rounded-xl
+            border-0
+            focus:bg-white
+            focus:ring-2
+            focus:ring-[#0071E3]
+            font-ui
+            text-body
+          "
+        >
+          <option value="">Select language</option>
+          <option value="en">English</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-caption text-[#86868B] mb-2">Area of Expertise</label>
+        <select
+          value={expertise}
+          onChange={(e) => setExpertise(e.target.value)}
+          className="
+            w-full px-4 py-3
+            bg-[#F2F2F7]
+            rounded-xl
+            border-0
+            focus:bg-white
+            focus:ring-2
+            focus:ring-[#0071E3]
+            font-ui
+            text-body
+          "
+        >
+          <option value="">Select expertise</option>
+          <option value="sales">Sales</option>
+          <option value="support">Support</option>
+          <option value="technical">Technical</option>
+        </select>
+      </div>
+
+      <button
+        type="submit"
+        className="
+          w-full px-6 py-3
+          bg-[#0071E3]
+          hover:bg-[#0077ED]
+          text-white
+          rounded-xl
+          font-ui
+          text-body
+        "
+      >
+        Continue to Booking
+      </button>
+    </form>
+  );
+}
+```
+
+### 3.3 Round Robin Booking Flow
+
+```typescript
+// lib/calcom/round-robin-booking.ts
+export async function createRoundRobinBooking(
+  eventTypeId: string,
+  attendee: {
+    email: string;
+    name: string;
+    timeZone: string;
+  },
+  preferredSlot: { start: Date; end: Date },
+  routingAttributes?: Record<string, string>
+) {
+  // Cal.com automatically selects the next available team member
+  // based on:
+  // 1. Round-robin order
+  // 2. Team member availability
+  // 3. Routing form attributes (if provided)
+
+  const booking = await createBooking({
+    start: preferredSlot.start.toISOString(),
+    end: preferredSlot.end.toISOString(),
+    eventTypeId,
+    attendee,
+    metadata: {
+      routingAttributes, // Passed to Cal.com for routing
+    },
+  });
+
+  return booking;
+}
+```
+
+---
+
+## Phase 4: Timezone Management
+
+*Displaying slots in the viewer's timezone, not the host's.*
+
+### 4.1 Timezone Detection
+
+```typescript
+// lib/calcom/timezone.ts
+export function detectViewerTimeZone(): string {
+  // Use Intl API to detect browser timezone
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+export function isValidTimeZone(timezone: string): boolean {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+```
+
+### 4.2 Formatting Slots in Viewer's Timezone
+
+```typescript
+// lib/calcom/timezone.ts
+export function formatSlotTime(
+  slotTime: Date,
+  viewerTimeZone: string,
+  options?: {
+    includeDate?: boolean;
+    hour12?: boolean;
+  }
+): string {
+  const { includeDate = false, hour12 = true } = options || {};
+
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: viewerTimeZone,
+    ...(includeDate && {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    }),
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12,
+  });
+
+  return formatter.format(slotTime);
+}
+
+// Example usage:
+// formatSlotTime(new Date('2024-12-25T15:00:00Z'), 'America/New_York')
+// → "10:00 AM" (if slot is 3 PM UTC, it's 10 AM EST)
+
+// formatSlotTime(new Date('2024-12-25T15:00:00Z'), 'America/New_York', { includeDate: true })
+// → "Wed, Dec 25, 10:00 AM"
+```
+
+### 4.3 Timezone-Aware Slot Display Component
+
+```tsx
+// components/booking/TimezoneAwareSlotGrid.tsx
+'use client';
+
+import { useMemo } from 'react';
+import { formatSlotTime } from '@/lib/calcom/timezone';
+
+interface Slot {
+  start: string;
+  end: string;
+}
+
+interface TimezoneAwareSlotGridProps {
+  slots: Slot[];
+  viewerTimeZone: string;
+  onSlotSelect: (slot: { start: Date; end: Date }) => void;
+}
+
+export function TimezoneAwareSlotGrid({
+  slots,
+  viewerTimeZone,
+  onSlotSelect,
+}: TimezoneAwareSlotGridProps) {
+  const formattedSlots = useMemo(() => {
+    return slots.map(slot => {
+      const startDate = new Date(slot.start);
+      const endDate = new Date(slot.end);
+      
+      return {
+        start: startDate,
+        end: endDate,
+        displayTime: formatSlotTime(startDate, viewerTimeZone),
+        displayDate: formatSlotTime(startDate, viewerTimeZone, { includeDate: true }),
+      };
+    });
+  }, [slots, viewerTimeZone]);
+
+  // Group slots by date
+  const slotsByDate = useMemo(() => {
+    const grouped: Record<string, typeof formattedSlots> = {};
+    
+    formattedSlots.forEach(slot => {
+      const dateKey = slot.start.toLocaleDateString('en-US', {
+        timeZone: viewerTimeZone,
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey].push(slot);
+    });
+    
+    return grouped;
+  }, [formattedSlots, viewerTimeZone]);
+
+  return (
+    <div className="space-y-6">
+      {Object.entries(slotsByDate).map(([date, dateSlots]) => (
+        <div key={date} className="bg-white rounded-[24px] p-6 shadow-sm">
+          <h4 className="text-h3 font-display text-[#1D1D1F] mb-4">{date}</h4>
+          <div className="grid grid-cols-3 gap-3">
+            {dateSlots.map((slot, index) => (
+              <button
+                key={index}
+                onClick={() => onSlotSelect({ start: slot.start, end: slot.end })}
+                className="
+                  px-4 py-3
+                  bg-[#F2F2F7]
+                  hover:bg-white
+                  focus:bg-white
+                  focus:ring-2
+                  focus:ring-[#0071E3]
+                  rounded-xl
+                  border-0
+                  font-ui
+                  text-body
+                  text-[#1D1D1F]
+                  transition-all
+                "
+              >
+                {slot.displayTime}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+### 4.4 Timezone Display Helper
+
+```tsx
+// components/booking/TimezoneDisplay.tsx
+'use client';
+
+export function TimezoneDisplay({ timeZone }: { timeZone: string }) {
+  const timeZoneName = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      timeZoneName: 'short',
+    });
+    
+    // Extract timezone name from formatted string
+    const parts = formatter.formatToParts(new Date());
+    const tzPart = parts.find(part => part.type === 'timeZoneName');
+    return tzPart?.value || timeZone;
+  }, [timeZone]);
+
+  return (
+    <div className="text-caption text-[#86868B]">
+      All times shown in {timeZoneName}
+    </div>
+  );
+}
+```
+
+---
+
+## Phase 5: Webhook Integration
+
+*Syncing booking status with your database.*
+
+### 5.1 Webhook Endpoint Setup
+
+```typescript
+// app/api/webhooks/calcom/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { verifyWebhookSignature } from '@/lib/calcom/webhooks';
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.text();
+    const signature = request.headers.get('calcom-signature');
+
+    // Verify webhook signature
+    if (!verifyWebhookSignature(body, signature)) {
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+    }
+
+    const event = JSON.parse(body);
+    
+    // Handle different event types
+    switch (event.type) {
+      case 'BOOKING_CREATED':
+        await handleBookingCreated(event.data);
+        break;
+      case 'BOOKING_RESCHEDULED':
+        await handleBookingRescheduled(event.data);
+        break;
+      case 'BOOKING_CANCELLED':
+        await handleBookingCancelled(event.data);
+        break;
+      default:
+        console.log('Unhandled event type:', event.type);
+    }
+
+    return NextResponse.json({ received: true });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
+  }
+}
+
+async function handleBookingCreated(data: any) {
+  // Update your local database
+  await db.query(
+    `INSERT INTO appointments (
+      calcom_booking_id,
+      calcom_uid,
+      start_time,
+      end_time,
+      status,
+      attendee_email,
+      attendee_name,
+      event_type_id
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    ON CONFLICT (calcom_uid) DO UPDATE SET
+      status = EXCLUDED.status,
+      updated_at = NOW()`,
+    [
+      data.id,
+      data.uid,
+      data.startTime,
+      data.endTime,
+      data.status,
+      data.attendees[0]?.email,
+      data.attendees[0]?.name,
+      data.eventType.id,
+    ]
+  );
+}
+
+async function handleBookingRescheduled(data: any) {
+  await db.query(
+    `UPDATE appointments
+     SET start_time = $1, end_time = $2, updated_at = NOW()
+     WHERE calcom_uid = $3`,
+    [data.startTime, data.endTime, data.uid]
+  );
+}
+
+async function handleBookingCancelled(data: any) {
+  await db.query(
+    `UPDATE appointments
+     SET status = 'CANCELLED', updated_at = NOW()
+     WHERE calcom_uid = $1`,
+    [data.uid]
+  );
+}
+```
+
+### 5.2 Webhook Signature Verification
+
+```typescript
+// lib/calcom/webhooks.ts
+import crypto from 'crypto';
+
+export function verifyWebhookSignature(
+  body: string,
+  signature: string | null,
+  secret: string = process.env.CALCOM_WEBHOOK_SECRET!
+): boolean {
+  if (!signature) {
+    return false;
+  }
+
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(body)
+    .digest('hex');
+
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expectedSignature)
+  );
+}
+```
+
+### 5.3 Database Schema for Appointments
+
+```sql
+-- app/schema/appointments.sql
+CREATE TABLE appointments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  calcom_booking_id TEXT NOT NULL,
+  calcom_uid TEXT UNIQUE NOT NULL,
+  event_type_id TEXT NOT NULL,
+  start_time TIMESTAMPTZ NOT NULL,
+  end_time TIMESTAMPTZ NOT NULL,
+  status TEXT NOT NULL DEFAULT 'PENDING', -- PENDING, ACCEPTED, CANCELLED, REJECTED
+  attendee_email TEXT NOT NULL,
+  attendee_name TEXT NOT NULL,
+  location TEXT, -- Zoom/Google Meet link
+  description TEXT,
+  metadata JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_appointments_calcom_uid ON appointments(calcom_uid);
+CREATE INDEX idx_appointments_status ON appointments(status);
+CREATE INDEX idx_appointments_start_time ON appointments(start_time);
+```
+
+---
+
+## Phase 6: UI Components (Apple Design)
+
+*Matching your app's design system.*
+
+### 6.1 Complete Booking Page
+
+```tsx
+// app/booking/[eventTypeSlug]/page.tsx
+'use client';
+
+import { useEffect, useState } from 'react';
+import { BookingForm } from '@/components/booking/BookingForm';
+import { TimezoneDisplay } from '@/components/booking/TimezoneDisplay';
+import { detectViewerTimeZone } from '@/lib/calcom/timezone';
+
+export default function BookingPage({ params }: { params: { eventTypeSlug: string } }) {
+  const [viewerTimeZone, setViewerTimeZone] = useState<string>('UTC');
+  const [eventTypeId, setEventTypeId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Detect viewer's timezone
+    setViewerTimeZone(detectViewerTimeZone());
+
+    // Fetch event type ID from slug
+    fetch(`/api/event-types/${params.eventTypeSlug}`)
+      .then(res => res.json())
+      .then(data => setEventTypeId(data.id));
+  }, [params.eventTypeSlug]);
+
+  if (!eventTypeId) {
+    return (
+      <div className="min-h-screen bg-[#F5F5F7] flex items-center justify-center">
+        <div className="text-body text-[#86868B]">Loading...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F5F5F7] py-12">
+      <div className="max-w-4xl mx-auto px-6">
+        {/* Header */}
+        <div className="bg-white rounded-[24px] p-8 shadow-sm mb-6">
+          <h1 className="text-h1 font-display text-[#1D1D1F] mb-2">
+            Book a Meeting
+          </h1>
+          <p className="text-body text-[#86868B]">
+            Select a time that works for you
+          </p>
+          <div className="mt-4">
+            <TimezoneDisplay timeZone={viewerTimeZone} />
+          </div>
+        </div>
+
+        {/* Booking Form */}
+        <BookingForm
+          eventTypeId={eventTypeId}
+          viewerTimeZone={viewerTimeZone}
+        />
+      </div>
+    </div>
+  );
+}
+```
+
+### 6.2 Booking Confirmation Page
+
+```tsx
+// app/booking/confirmed/page.tsx
+'use client';
+
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+
+export default function BookingConfirmedPage() {
+  const searchParams = useSearchParams();
+  const uid = searchParams.get('uid');
+  const [booking, setBooking] = useState<any>(null);
+
+  useEffect(() => {
+    if (uid) {
+      fetch(`/api/bookings/${uid}`)
+        .then(res => res.json())
+        .then(data => setBooking(data));
+    }
+  }, [uid]);
+
+  if (!booking) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F5F5F7] flex items-center justify-center">
+      <div className="bg-white rounded-[24px] p-12 shadow-sm max-w-2xl w-full text-center">
+        <div className="w-16 h-16 bg-[#0071E3] rounded-full flex items-center justify-center mx-auto mb-6">
+          <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        
+        <h1 className="text-h1 font-display text-[#1D1D1F] mb-4">
+          Booking Confirmed!
+        </h1>
+        
+        <p className="text-body text-[#86868B] mb-8">
+          We've sent a confirmation email to {booking.attendeeEmail}
+        </p>
+
+        <div className="bg-[#F2F2F7] rounded-xl p-6 text-left space-y-3">
+          <div>
+            <div className="text-caption text-[#86868B]">Event</div>
+            <div className="text-body text-[#1D1D1F]">{booking.eventType.title}</div>
+          </div>
+          <div>
+            <div className="text-caption text-[#86868B]">Date & Time</div>
+            <div className="text-body text-[#1D1D1F]">
+              {new Date(booking.startTime).toLocaleString()}
+            </div>
+          </div>
+          {booking.location && (
+            <div>
+              <div className="text-caption text-[#86868B]">Meeting Link</div>
+              <a
+                href={booking.location}
+                className="text-body text-[#0071E3] hover:underline"
+              >
+                {booking.location}
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## Implementation Checklist
+
+### Setup Phase
+
+- [ ] Install `@calcom/atoms` package: `npm install @calcom/atoms`
+- [ ] Set up Cal.com Platform account and get API key
+- [ ] Configure environment variables:
+  - `CALCOM_API_KEY`
+  - `CALCOM_BASE_URL`
+  - `CALCOM_PLATFORM_URL`
+  - `CALCOM_WEBHOOK_SECRET`
+- [ ] Create database table for `appointments`
+- [ ] Set up webhook endpoint at `/api/webhooks/calcom`
+
+### Calendar Connection
+
+- [ ] Implement OAuth flow for Google Calendar
+- [ ] Create `ConnectCalendarButton` component
+- [ ] Set up OAuth callback handler
+- [ ] Store access tokens securely in database
+
+### Availability Engine
+
+- [ ] Implement `useSlots` hook integration
+- [ ] Create `SlotPicker` component with Apple design
+- [ ] Implement timezone detection
+- [ ] Create `TimezoneAwareSlotGrid` component
+- [ ] Test slot fetching for different timezones
+
+### Booking Flow
+
+- [ ] Create `BookingForm` component
+- [ ] Implement `createBooking` API function
+- [ ] Set up local database sync
+- [ ] Create booking confirmation page
+- [ ] Test end-to-end booking flow
+
+### Round Robin
+
+- [ ] Set up Round Robin event type in Cal.com dashboard
+- [ ] Implement routing form (if needed)
+- [ ] Test round robin distribution
+
+### Webhooks
+
+- [ ] Implement webhook signature verification
+- [ ] Handle `BOOKING_CREATED` event
+- [ ] Handle `BOOKING_RESCHEDULED` event
+- [ ] Handle `BOOKING_CANCELLED` event
+- [ ] Test webhook delivery
+
+### UI/UX
+
+- [ ] Apply Apple Design System styles
+- [ ] Ensure all components match `apple-saas-suite.mdc`
+- [ ] Test responsive design
+- [ ] Add loading states
+- [ ] Add error handling
+
+---
+
+## Critical Implementation Notes
+
+### 1. Never Trust Client Timezone
+
+**ALWAYS detect timezone on the server or use browser API:**
+
+```typescript
+// ✅ CORRECT: Use Intl API
+const viewerTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+// ❌ WRONG: Don't rely on client-provided timezone without validation
+const viewerTimeZone = req.body.timeZone; // Could be manipulated
+```
+
+### 2. Atomic Booking Creation
+
+When creating a booking, always update your local database in the same transaction:
+
+```typescript
+// ✅ CORRECT: Update both Cal.com and local DB
+const calcomBooking = await createBooking(payload);
+await db.query('INSERT INTO appointments (...) VALUES (...)', [calcomBooking.id, ...]);
+
+// ❌ WRONG: Only updating Cal.com
+await createBooking(payload); // Local DB is out of sync
+```
+
+### 3. Webhook Idempotency
+
+Handle webhook retries gracefully:
+
+```typescript
+// ✅ CORRECT: Use ON CONFLICT for idempotency
+await db.query(
+  `INSERT INTO appointments (...) VALUES (...)
+   ON CONFLICT (calcom_uid) DO UPDATE SET status = EXCLUDED.status`,
+  [...]
+);
+```
+
+### 4. Error Handling
+
+Always handle Cal.com API errors:
+
+```typescript
+try {
+  const booking = await createBooking(payload);
+} catch (error) {
+  if (error.status === 409) {
+    // Slot already booked
+    return { error: 'This time slot is no longer available' };
+  }
+  if (error.status === 400) {
+    // Invalid payload
+    return { error: 'Invalid booking request' };
+  }
+  // Log and handle other errors
+  console.error('Booking error:', error);
+  return { error: 'Failed to create booking. Please try again.' };
+}
+```
+
+---
+
+## Summary: The "Headless" Checklist
+
+- [x] Use `@calcom/atoms` or Platform API (not iframe)
+- [x] Implement OAuth flow for calendar connection
+- [x] Use `useSlots` hook to fetch available times
+- [x] Display slots in viewer's timezone using `Intl.DateTimeFormat`
+- [x] Create bookings via `POST /v2/bookings`
+- [x] Set up webhooks for booking status sync
+- [x] Update local database on webhook events
+- [x] Apply Apple Design System to all components
+- [x] Implement Round Robin event types for team distribution
+- [x] Handle timezone conversion correctly (UTC storage, local display)
+- [x] Verify webhook signatures
+- [x] Implement error handling and retries
+
+---
+
+## APPENDIX: Useful Cal.com API Endpoints
+
+### Event Types
+
+```typescript
+// GET /v2/event-types
+// List all event types
+
+// GET /v2/event-types/{id}
+// Get specific event type
+
+// POST /v2/event-types
+// Create new event type
+```
+
+### Bookings
+
+```typescript
+// GET /v2/bookings
+// List bookings (with filters)
+
+// GET /v2/bookings/{id}
+// Get specific booking
+
+// POST /v2/bookings
+// Create booking
+
+// PATCH /v2/bookings/{id}
+// Update booking (reschedule)
+
+// DELETE /v2/bookings/{id}
+// Cancel booking
+```
+
+### Availability
+
+```typescript
+// GET /v2/slots
+// Get available slots for event type
+
+// GET /v2/availability
+// Get user availability
+```
+
+---
+
+**END OF DOCUMENTATION**

@@ -1,0 +1,2667 @@
+---
+alwaysApply: false
+---
+
+# Workflow Automation Engine - Source of Truth
+## DAG Execution Logic, Webhook Ingestion, and Retry Policies
+
+> **Core Philosophy:** "Stateless execution with idempotent retries. Each step is independent and can be retried without side effects."
+
+This document defines the complete architecture for a workflow automation platform (n8n/Zapier-style) with DAG execution, webhook ingestion, and robust retry mechanisms.
+
+---
+
+## Table of Contents
+
+1. [Critical Architecture Principles](#critical-architecture-principles)
+2. [Database Schema](#database-schema)
+3. [Trigger Engine](#trigger-engine)
+4. [Worker Engine (Redis + BullMQ)](#worker-engine-redis--bullmq)
+5. [Node Processor](#node-processor)
+6. [Variable Substitution System](#variable-substitution-system)
+7. [JavaScript Sandbox Execution](#javascript-sandbox-execution)
+8. [Retry Policies & Dead Letter Queue](#retry-policies--dead-letter-queue)
+9. [Frontend Graph Visualization (React Flow)](#frontend-graph-visualization-react-flow)
+10. [Execution State Management](#execution-state-management)
+11. [Error Handling & Monitoring](#error-handling--monitoring)
+
+---
+
+## Critical Architecture Principles
+
+### ⚠️ THE "STATELESS" RULE
+
+**The "Step" Model:**
+- A workflow is a JSON array of "Nodes"
+- Each node takes `input` and produces `output`
+- Nodes are connected via `edges` that define data flow
+
+**Stateless Execution:**
+- The Worker that executes Step 2 does **NOT** know about Step 1
+- It only knows the `context` object passed to it
+- Context contains: `execution_id`, `workflow_id`, `node_id`, `input_data`, `previous_outputs`
+
+**Idempotency:**
+- If a workflow crashes at Step 3, we must be able to retry **only** Step 3
+- We **MUST NOT** re-run Step 1 (which might be "Charge Credit Card")
+- Each node execution is stored independently in the database
+- Failed nodes can be retried without affecting completed nodes
+
+**Execution Context Isolation:**
+- Each node execution receives a **snapshot** of data, not a reference
+- Node outputs are stored immediately after execution
+- No shared mutable state between nodes
+
+---
+
+## Database Schema
+
+### Core Tables
+
+#### `workflows`
+
+```sql
+CREATE TABLE workflows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  trigger_type VARCHAR(50) NOT NULL, -- 'webhook', 'schedule', 'app_event', 'manual'
+  trigger_config JSONB, -- Webhook URL, cron expression, event filters, etc.
+  nodes JSONB NOT NULL, -- Array of node definitions
+  edges JSONB NOT NULL, -- Array of edge definitions (connections)
+  is_active BOOLEAN DEFAULT true,
+  version INTEGER DEFAULT 1,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  created_by UUID REFERENCES users(id),
+  
+  CONSTRAINT valid_trigger_type CHECK (trigger_type IN ('webhook', 'schedule', 'app_event', 'manual', 'polling'))
+);
+```
+
+**Node Schema:**
+```typescript
+interface Node {
+  id: string; // Unique within workflow (e.g., "node_1", "node_2")
+  type: string; // 'HTTP_REQUEST', 'DELAY', 'CONDITION', 'TRANSFORM', 'DATABASE_QUERY', etc.
+  name: string; // Human-readable name
+  position: { x: number; y: number }; // For frontend rendering
+  config: Record<string, any>; // Type-specific configuration
+  credentials?: {
+    type: string; // 'api_key', 'oauth2', 'basic_auth'
+    credential_id: string; // Reference to credentials table
+  };
+}
+```
+
+**Edge Schema:**
+```typescript
+interface Edge {
+  id: string; // Unique edge ID
+  source: string; // Source node ID
+  target: string; // Target node ID
+  sourceHandle?: string; // Output port (for multiple outputs)
+  targetHandle?: string; // Input port (for multiple inputs)
+  condition?: {
+    type: 'always' | 'if_true' | 'if_false';
+    expression?: string; // JavaScript expression for conditional edges
+  };
+}
+```
+
+#### `executions`
+
+```sql
+CREATE TABLE executions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workflow_id UUID NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  status VARCHAR(50) NOT NULL DEFAULT 'pending', -- 'pending', 'running', 'success', 'failed', 'cancelled'
+  trigger_data JSONB, -- Initial data from trigger (webhook payload, schedule context, etc.)
+  started_at TIMESTAMP,
+  finished_at TIMESTAMP,
+  error_message TEXT,
+  error_stack TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  
+  CONSTRAINT valid_status CHECK (status IN ('pending', 'running', 'success', 'failed', 'cancelled'))
+);
+
+CREATE INDEX idx_executions_workflow_id ON executions(workflow_id);
+CREATE INDEX idx_executions_status ON executions(status);
+CREATE INDEX idx_executions_created_at ON executions(created_at DESC);
+```
+
+#### `node_executions`
+
+```sql
+CREATE TABLE node_executions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  execution_id UUID NOT NULL REFERENCES executions(id) ON DELETE CASCADE,
+  workflow_id UUID NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  node_id VARCHAR(255) NOT NULL, -- References node.id in workflow.nodes
+  status VARCHAR(50) NOT NULL DEFAULT 'pending', -- 'pending', 'running', 'success', 'failed', 'skipped'
+  input_data JSONB, -- Snapshot of input data at execution time
+  output_data JSONB, -- Result after execution
+  error_message TEXT,
+  error_stack TEXT,
+  started_at TIMESTAMP,
+  finished_at TIMESTAMP,
+  retry_count INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  
+  CONSTRAINT valid_node_status CHECK (status IN ('pending', 'running', 'success', 'failed', 'skipped')),
+  CONSTRAINT unique_execution_node UNIQUE (execution_id, node_id)
+);
+
+CREATE INDEX idx_node_executions_execution_id ON node_executions(execution_id);
+CREATE INDEX idx_node_executions_status ON node_executions(status);
+CREATE INDEX idx_node_executions_workflow_node ON node_executions(workflow_id, node_id);
+```
+
+#### `execution_logs`
+
+```sql
+CREATE TABLE execution_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  execution_id UUID NOT NULL REFERENCES executions(id) ON DELETE CASCADE,
+  node_execution_id UUID REFERENCES node_executions(id) ON DELETE CASCADE,
+  level VARCHAR(20) NOT NULL, -- 'info', 'warn', 'error', 'debug'
+  message TEXT NOT NULL,
+  metadata JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_execution_logs_execution_id ON execution_logs(execution_id);
+CREATE INDEX idx_execution_logs_created_at ON execution_logs(created_at DESC);
+```
+
+#### `webhook_endpoints`
+
+```sql
+CREATE TABLE webhook_endpoints (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workflow_id UUID NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  path VARCHAR(255) NOT NULL UNIQUE, -- e.g., '/hooks/abc123'
+  method VARCHAR(10) DEFAULT 'POST', -- 'GET', 'POST', 'PUT', 'DELETE'
+  headers_required JSONB, -- Required headers for validation
+  secret_token VARCHAR(255), -- For webhook signature verification
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW(),
+  
+  CONSTRAINT valid_method CHECK (method IN ('GET', 'POST', 'PUT', 'DELETE', 'PATCH'))
+);
+
+CREATE INDEX idx_webhook_endpoints_path ON webhook_endpoints(path);
+CREATE INDEX idx_webhook_endpoints_workflow_id ON webhook_endpoints(workflow_id);
+```
+
+#### `polling_configs`
+
+```sql
+CREATE TABLE polling_configs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workflow_id UUID NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  node_id VARCHAR(255) NOT NULL, -- The polling node ID
+  api_type VARCHAR(100) NOT NULL, -- 'gmail', 'slack', 'github', etc.
+  last_seen_id VARCHAR(255), -- Last processed ID (email ID, message ID, etc.)
+  last_polled_at TIMESTAMP,
+  poll_interval_seconds INTEGER DEFAULT 300, -- Default 5 minutes
+  is_active BOOLEAN DEFAULT true,
+  config JSONB, -- API-specific configuration
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_polling_configs_workflow_id ON polling_configs(workflow_id);
+CREATE INDEX idx_polling_configs_last_polled_at ON polling_configs(last_polled_at);
+```
+
+---
+
+## Trigger Engine
+
+### Webhook Ingestion
+
+#### Webhook URL Generation
+
+```typescript
+// services/webhook-service.ts
+import crypto from 'crypto';
+
+export class WebhookService {
+  /**
+   * Generate a unique webhook path for a workflow
+   */
+  async createWebhookEndpoint(workflowId: string): Promise<string> {
+    // Generate a secure random path
+    const path = `/hooks/${crypto.randomBytes(16).toString('hex')}`;
+    
+    await db.webhook_endpoints.create({
+      data: {
+        workflow_id: workflowId,
+        path: path,
+        method: 'POST',
+        is_active: true,
+      },
+    });
+    
+    return path;
+  }
+
+  /**
+   * Handle incoming webhook request
+   */
+  async handleWebhookRequest(
+    path: string,
+    method: string,
+    headers: Record<string, string>,
+    body: any
+  ): Promise<{ executionId: string; status: 'created' | 'rejected' }> {
+    // Find webhook endpoint
+    const endpoint = await db.webhook_endpoints.findUnique({
+      where: { path },
+      include: { workflow: true },
+    });
+
+    if (!endpoint || !endpoint.is_active || !endpoint.workflow.is_active) {
+      throw new Error('Webhook endpoint not found or inactive');
+    }
+
+    // Verify webhook signature (if configured)
+    if (endpoint.secret_token) {
+      const isValid = this.verifyWebhookSignature(
+        endpoint.secret_token,
+        body,
+        headers['x-webhook-signature']
+      );
+      if (!isValid) {
+        throw new Error('Invalid webhook signature');
+      }
+    }
+
+    // Validate required headers
+    if (endpoint.headers_required) {
+      for (const [key, value] of Object.entries(endpoint.headers_required)) {
+        if (headers[key] !== value) {
+          throw new Error(`Missing or invalid required header: ${key}`);
+        }
+      }
+    }
+
+    // Create execution
+    const execution = await db.executions.create({
+      data: {
+        workflow_id: endpoint.workflow_id,
+        status: 'pending',
+        trigger_data: {
+          method,
+          headers,
+          body,
+          timestamp: new Date().toISOString(),
+        },
+      },
+    });
+
+    // Push to Redis queue
+    await this.queueExecution(execution.id, endpoint.workflow_id);
+
+    return { executionId: execution.id, status: 'created' };
+  }
+
+  /**
+   * Verify webhook signature (HMAC-SHA256)
+   */
+  private verifyWebhookSignature(
+    secret: string,
+    payload: any,
+    signature: string
+  ): boolean {
+    const hmac = crypto.createHmac('sha256', secret);
+    const payloadString = typeof payload === 'string' 
+      ? payload 
+      : JSON.stringify(payload);
+    const expectedSignature = hmac.update(payloadString).digest('hex');
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
+  }
+}
+```
+
+#### Webhook API Route Handler
+
+```typescript
+// api/webhooks/[path]/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { WebhookService } from '@/services/webhook-service';
+
+const webhookService = new WebhookService();
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { path: string } }
+) {
+  try {
+    const path = `/hooks/${params.path}`;
+    const method = request.method;
+    const headers = Object.fromEntries(request.headers.entries());
+    const body = await request.json();
+
+    const result = await webhookService.handleWebhookRequest(
+      path,
+      method,
+      headers,
+      body
+    );
+
+    return NextResponse.json(
+      { 
+        success: true, 
+        executionId: result.executionId,
+        message: 'Workflow execution queued' 
+      },
+      { status: 202 } // Accepted
+    );
+  } catch (error: any) {
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: error.message 
+      },
+      { status: 400 }
+    );
+  }
+}
+```
+
+### Polling (The "Check" Loop)
+
+For APIs without webhooks (e.g., "Check for new Gmail emails").
+
+```typescript
+// services/polling-service.ts
+export class PollingService {
+  /**
+   * Main polling loop (runs every 5 minutes via cron)
+   */
+  async runPollingCycle(): Promise<void> {
+    const activeConfigs = await db.polling_configs.findMany({
+      where: {
+        is_active: true,
+      },
+      include: {
+        workflow: {
+          where: { is_active: true },
+        },
+      },
+    });
+
+    for (const config of activeConfigs) {
+      if (!config.workflow) continue;
+
+      try {
+        await this.pollWorkflow(config);
+      } catch (error) {
+        console.error(`Polling failed for workflow ${config.workflow_id}:`, error);
+        // Log error but continue with other workflows
+      }
+    }
+  }
+
+  /**
+   * Poll a specific workflow
+   */
+  private async pollWorkflow(config: PollingConfig): Promise<void> {
+    const { api_type, last_seen_id, config: apiConfig } = config;
+
+    // Get the appropriate API client
+    const apiClient = this.getApiClient(api_type, apiConfig);
+
+    // Fetch latest items
+    const items = await apiClient.fetchLatest({
+      sinceId: last_seen_id,
+      limit: 10,
+    });
+
+    if (items.length === 0) {
+      // No new items, update last_polled_at
+      await db.polling_configs.update({
+        where: { id: config.id },
+        data: { last_polled_at: new Date() },
+      });
+      return;
+    }
+
+    // Process each new item
+    for (const item of items) {
+      // Check if we've already processed this item
+      if (item.id === last_seen_id) {
+        continue;
+      }
+
+      // Create execution for this item
+      const execution = await db.executions.create({
+        data: {
+          workflow_id: config.workflow_id,
+          status: 'pending',
+          trigger_data: {
+            type: 'polling',
+            api_type: api_type,
+            item: item,
+            polled_at: new Date().toISOString(),
+          },
+        },
+      });
+
+      // Queue execution
+      await this.queueExecution(execution.id, config.workflow_id);
+
+      // Update last_seen_id
+      await db.polling_configs.update({
+        where: { id: config.id },
+        data: {
+          last_seen_id: item.id,
+          last_polled_at: new Date(),
+        },
+      });
+    }
+  }
+
+  /**
+   * Get API client for specific service
+   */
+  private getApiClient(apiType: string, config: any): PollingApiClient {
+    switch (apiType) {
+      case 'gmail':
+        return new GmailPollingClient(config);
+      case 'slack':
+        return new SlackPollingClient(config);
+      case 'github':
+        return new GitHubPollingClient(config);
+      default:
+        throw new Error(`Unsupported API type: ${apiType}`);
+    }
+  }
+}
+```
+
+#### Cron Job Setup
+
+```typescript
+// cron/polling.ts
+import cron from 'node-cron';
+import { PollingService } from '@/services/polling-service';
+
+const pollingService = new PollingService();
+
+// Run every 5 minutes
+cron.schedule('*/5 * * * *', async () => {
+  console.log('Running polling cycle...');
+  await pollingService.runPollingCycle();
+});
+```
+
+### Scheduled Workflows
+
+```typescript
+// services/schedule-service.ts
+import cron from 'node-cron';
+import { WorkflowService } from './workflow-service';
+
+export class ScheduleService {
+  private cronJobs: Map<string, cron.ScheduledTask> = new Map();
+
+  /**
+   * Register a scheduled workflow
+   */
+  async registerScheduledWorkflow(workflowId: string, cronExpression: string): Promise<void> {
+    // Remove existing job if any
+    this.unregisterScheduledWorkflow(workflowId);
+
+    const workflowService = new WorkflowService();
+
+    const job = cron.schedule(cronExpression, async () => {
+      try {
+        // Create execution
+        const execution = await db.executions.create({
+          data: {
+            workflow_id: workflowId,
+            status: 'pending',
+            trigger_data: {
+              type: 'schedule',
+              cron_expression: cronExpression,
+              triggered_at: new Date().toISOString(),
+            },
+          },
+        });
+
+        // Queue execution
+        await workflowService.queueExecution(execution.id, workflowId);
+      } catch (error) {
+        console.error(`Scheduled workflow ${workflowId} failed:`, error);
+      }
+    });
+
+    this.cronJobs.set(workflowId, job);
+  }
+
+  /**
+   * Unregister a scheduled workflow
+   */
+  unregisterScheduledWorkflow(workflowId: string): void {
+    const job = this.cronJobs.get(workflowId);
+    if (job) {
+      job.stop();
+      this.cronJobs.delete(workflowId);
+    }
+  }
+
+  /**
+   * Load all active scheduled workflows on startup
+   */
+  async loadScheduledWorkflows(): Promise<void> {
+    const workflows = await db.workflows.findMany({
+      where: {
+        is_active: true,
+        trigger_type: 'schedule',
+      },
+    });
+
+    for (const workflow of workflows) {
+      const cronExpression = workflow.trigger_config?.cron_expression;
+      if (cronExpression) {
+        await this.registerScheduledWorkflow(workflow.id, cronExpression);
+      }
+    }
+  }
+}
+```
+
+---
+
+## Worker Engine (Redis + BullMQ)
+
+### Queue Setup
+
+```typescript
+// queues/workflow-queue.ts
+import { Queue, Worker, Job } from 'bullmq';
+import Redis from 'ioredis';
+
+const connection = new Redis({
+  host: process.env.REDIS_HOST || 'localhost',
+  port: parseInt(process.env.REDIS_PORT || '6379'),
+  password: process.env.REDIS_PASSWORD,
+  maxRetriesPerRequest: null,
+});
+
+// Execution queue
+export const executionQueue = new Queue('workflow-execution', {
+  connection,
+  defaultJobOptions: {
+    attempts: 1, // We handle retries at the node level, not job level
+    removeOnComplete: {
+      age: 3600, // Keep completed jobs for 1 hour
+      count: 1000,
+    },
+    removeOnFail: {
+      age: 86400, // Keep failed jobs for 24 hours
+    },
+  },
+});
+
+// Node execution queue
+export const nodeExecutionQueue = new Queue('node-execution', {
+  connection,
+  defaultJobOptions: {
+    attempts: 1,
+    removeOnComplete: {
+      age: 3600,
+      count: 5000,
+    },
+    removeOnFail: {
+      age: 86400,
+    },
+  },
+});
+```
+
+### Execution Orchestrator
+
+```typescript
+// workers/execution-orchestrator.ts
+import { Worker, Job } from 'bullmq';
+import { executionQueue, nodeExecutionQueue } from '@/queues/workflow-queue';
+import { NodeProcessor } from './node-processor';
+
+export class ExecutionOrchestrator {
+  private nodeProcessor: NodeProcessor;
+
+  constructor() {
+    this.nodeProcessor = new NodeProcessor();
+    this.setupWorkers();
+  }
+
+  /**
+   * Queue a new execution
+   */
+  async queueExecution(executionId: string, workflowId: string): Promise<void> {
+    await executionQueue.add('execute-workflow', {
+      executionId,
+      workflowId,
+    });
+  }
+
+  /**
+   * Setup worker to process executions
+   */
+  private setupWorkers(): void {
+    // Main execution worker
+    const executionWorker = new Worker(
+      'workflow-execution',
+      async (job: Job) => {
+        const { executionId, workflowId } = job.data;
+        await this.executeWorkflow(executionId, workflowId);
+      },
+      {
+        connection: executionQueue.opts.connection,
+        concurrency: 10, // Process 10 workflows concurrently
+      }
+    );
+
+    // Node execution worker
+    const nodeWorker = new Worker(
+      'node-execution',
+      async (job: Job) => {
+        const { executionId, workflowId, nodeId } = job.data;
+        await this.executeNode(executionId, workflowId, nodeId);
+      },
+      {
+        connection: nodeExecutionQueue.opts.connection,
+        concurrency: 50, // Process 50 nodes concurrently
+      }
+    );
+
+    // Error handling
+    executionWorker.on('failed', (job, err) => {
+      console.error(`Execution ${job?.data.executionId} failed:`, err);
+      this.handleExecutionFailure(job?.data.executionId, err);
+    });
+
+    nodeWorker.on('failed', (job, err) => {
+      console.error(`Node execution failed:`, err);
+      this.handleNodeExecutionFailure(job?.data, err);
+    });
+  }
+
+  /**
+   * Execute a workflow (orchestrate node execution)
+   */
+  private async executeWorkflow(executionId: string, workflowId: string): Promise<void> {
+    // Update execution status
+    await db.executions.update({
+      where: { id: executionId },
+      data: {
+        status: 'running',
+        started_at: new Date(),
+      },
+    });
+
+    // Load workflow
+    const workflow = await db.workflows.findUnique({
+      where: { id: workflowId },
+    });
+
+    if (!workflow || !workflow.is_active) {
+      throw new Error('Workflow not found or inactive');
+    }
+
+    // Get execution data
+    const execution = await db.executions.findUnique({
+      where: { id: executionId },
+    });
+
+    // Find entry nodes (nodes with no incoming edges)
+    const entryNodes = this.findEntryNodes(workflow.nodes, workflow.edges);
+
+    // Queue entry nodes for execution
+    for (const node of entryNodes) {
+      await this.queueNodeExecution(executionId, workflowId, node.id, execution.trigger_data);
+    }
+  }
+
+  /**
+   * Find entry nodes (nodes with no incoming edges)
+   */
+  private findEntryNodes(nodes: Node[], edges: Edge[]): Node[] {
+    const nodesWithIncomingEdges = new Set(
+      edges.map(edge => edge.target)
+    );
+    return nodes.filter(node => !nodesWithIncomingEdges.has(node.id));
+  }
+
+  /**
+   * Queue a node for execution
+   */
+  private async queueNodeExecution(
+    executionId: string,
+    workflowId: string,
+    nodeId: string,
+    inputData: any
+  ): Promise<void> {
+    // Create node execution record
+    await db.node_executions.create({
+      data: {
+        execution_id: executionId,
+        workflow_id: workflowId,
+        node_id: nodeId,
+        status: 'pending',
+        input_data: inputData,
+      },
+    });
+
+    // Queue job
+    await nodeExecutionQueue.add('execute-node', {
+      executionId,
+      workflowId,
+      nodeId,
+    });
+  }
+
+  /**
+   * Execute a single node
+   */
+  private async executeNode(
+    executionId: string,
+    workflowId: string,
+    nodeId: string
+  ): Promise<void> {
+    // Load node execution
+    const nodeExecution = await db.node_executions.findUnique({
+      where: {
+        execution_id_node_id: {
+          execution_id: executionId,
+          node_id: nodeId,
+        },
+      },
+    });
+
+    if (!nodeExecution) {
+      throw new Error(`Node execution not found: ${nodeId}`);
+    }
+
+    // Check if already completed
+    if (nodeExecution.status === 'success') {
+      return; // Already completed, skip
+    }
+
+    // Update status to running
+    await db.node_executions.update({
+      where: { id: nodeExecution.id },
+      data: {
+        status: 'running',
+        started_at: new Date(),
+      },
+    });
+
+    // Load workflow to get node definition
+    const workflow = await db.workflows.findUnique({
+      where: { id: workflowId },
+    });
+
+    const node = workflow.nodes.find(n => n.id === nodeId);
+    if (!node) {
+      throw new Error(`Node not found: ${nodeId}`);
+    }
+
+    // Build execution context
+    const context = await this.buildExecutionContext(executionId, workflowId, nodeId);
+
+    try {
+      // Execute node
+      const output = await this.nodeProcessor.executeNode(node, context);
+
+      // Store output
+      await db.node_executions.update({
+        where: { id: nodeExecution.id },
+        data: {
+          status: 'success',
+          output_data: output,
+          finished_at: new Date(),
+        },
+      });
+
+      // Queue next nodes
+      await this.queueNextNodes(executionId, workflowId, nodeId, workflow.edges);
+
+      // Check if workflow is complete
+      await this.checkWorkflowCompletion(executionId, workflowId);
+
+    } catch (error: any) {
+      // Handle node execution failure
+      await this.handleNodeFailure(nodeExecution.id, error, node);
+    }
+  }
+
+  /**
+   * Build execution context for a node
+   */
+  private async buildExecutionContext(
+    executionId: string,
+    workflowId: string,
+    nodeId: string
+  ): Promise<ExecutionContext> {
+    // Get all previous node executions
+    const previousExecutions = await db.node_executions.findMany({
+      where: {
+        execution_id: executionId,
+        status: 'success',
+      },
+    });
+
+    // Build outputs map
+    const outputs: Record<string, any> = {};
+    for (const exec of previousExecutions) {
+      outputs[exec.node_id] = exec.output_data;
+    }
+
+    // Get current node input data
+    const nodeExecution = await db.node_executions.findUnique({
+      where: {
+        execution_id_node_id: {
+          execution_id: executionId,
+          node_id: nodeId,
+        },
+      },
+    });
+
+    return {
+      executionId,
+      workflowId,
+      nodeId,
+      inputData: nodeExecution.input_data,
+      previousOutputs: outputs,
+      triggerData: (await db.executions.findUnique({
+        where: { id: executionId },
+      })).trigger_data,
+    };
+  }
+
+  /**
+   * Queue next nodes after current node completes
+   */
+  private async queueNextNodes(
+    executionId: string,
+    workflowId: string,
+    currentNodeId: string,
+    edges: Edge[]
+  ): Promise<void> {
+    // Find edges where current node is the source
+    const nextEdges = edges.filter(edge => edge.source === currentNodeId);
+
+    for (const edge of nextEdges) {
+      // Check edge condition (if any)
+      if (edge.condition) {
+        const shouldExecute = await this.evaluateEdgeCondition(
+          executionId,
+          edge.condition
+        );
+        if (!shouldExecute) {
+          // Mark target node as skipped
+          await db.node_executions.upsert({
+            where: {
+              execution_id_node_id: {
+                execution_id: executionId,
+                node_id: edge.target,
+              },
+            },
+            create: {
+              execution_id: executionId,
+              workflow_id: workflowId,
+              node_id: edge.target,
+              status: 'skipped',
+              input_data: {},
+            },
+            update: {
+              status: 'skipped',
+            },
+          });
+          continue;
+        }
+      }
+
+      // Check if all prerequisite nodes are complete
+      const allPrerequisitesComplete = await this.checkPrerequisites(
+        executionId,
+        edge.target,
+        edges
+      );
+
+      if (allPrerequisitesComplete) {
+        // Get input data for next node
+        const inputData = await this.prepareNodeInput(executionId, edge.target, edges);
+
+        // Create or update node execution
+        await db.node_executions.upsert({
+          where: {
+            execution_id_node_id: {
+              execution_id: executionId,
+              node_id: edge.target,
+            },
+          },
+          create: {
+            execution_id: executionId,
+            workflow_id: workflowId,
+            node_id: edge.target,
+            status: 'pending',
+            input_data: inputData,
+          },
+          update: {
+            status: 'pending', // Reset to pending if retrying
+            input_data: inputData,
+          },
+        });
+
+        // Queue node execution
+        await nodeExecutionQueue.add('execute-node', {
+          executionId,
+          workflowId,
+          nodeId: edge.target,
+        });
+      }
+    }
+  }
+
+  /**
+   * Check if all prerequisite nodes are complete
+   */
+  private async checkPrerequisites(
+    executionId: string,
+    nodeId: string,
+    edges: Edge[]
+  ): Promise<boolean> {
+    // Find all edges that point to this node
+    const incomingEdges = edges.filter(edge => edge.target === nodeId);
+
+    if (incomingEdges.length === 0) {
+      return true; // No prerequisites
+    }
+
+    // Get all prerequisite node IDs
+    const prerequisiteNodeIds = incomingEdges.map(edge => edge.source);
+
+    // Check if all prerequisites are complete
+    const prerequisites = await db.node_executions.findMany({
+      where: {
+        execution_id: executionId,
+        node_id: { in: prerequisiteNodeIds },
+      },
+    });
+
+    // All prerequisites must be successful
+    return prerequisites.every(exec => exec.status === 'success');
+  }
+
+  /**
+   * Prepare input data for a node based on incoming edges
+   */
+  private async prepareNodeInput(
+    executionId: string,
+    nodeId: string,
+    edges: Edge[]
+  ): Promise<any> {
+    // Find incoming edges
+    const incomingEdges = edges.filter(edge => edge.target === nodeId);
+
+    if (incomingEdges.length === 0) {
+      // No incoming edges, use trigger data
+      const execution = await db.executions.findUnique({
+        where: { id: executionId },
+      });
+      return execution.trigger_data;
+    }
+
+    // Merge outputs from all source nodes
+    const inputData: any = {};
+
+    for (const edge of incomingEdges) {
+      const sourceExecution = await db.node_executions.findUnique({
+        where: {
+          execution_id_node_id: {
+            execution_id: executionId,
+            node_id: edge.source,
+          },
+        },
+      });
+
+      if (sourceExecution && sourceExecution.output_data) {
+        // Merge based on edge configuration
+        if (edge.sourceHandle && edge.targetHandle) {
+          // Specific port mapping
+          inputData[edge.targetHandle] = sourceExecution.output_data[edge.sourceHandle];
+        } else {
+          // Merge entire output
+          Object.assign(inputData, sourceExecution.output_data);
+        }
+      }
+    }
+
+    return inputData;
+  }
+
+  /**
+   * Evaluate edge condition
+   */
+  private async evaluateEdgeCondition(
+    executionId: string,
+    condition: EdgeCondition
+  ): Promise<boolean> {
+    if (condition.type === 'always') {
+      return true;
+    }
+
+    // Get execution context for condition evaluation
+    const context = await this.buildExecutionContext(executionId, '', '');
+
+    // Use JavaScript sandbox to evaluate condition
+    const result = await this.nodeProcessor.evaluateCondition(
+      condition.expression,
+      context
+    );
+
+    if (condition.type === 'if_true') {
+      return result === true;
+    } else if (condition.type === 'if_false') {
+      return result === false;
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if workflow execution is complete
+   */
+  private async checkWorkflowCompletion(
+    executionId: string,
+    workflowId: string
+  ): Promise<void> {
+    const workflow = await db.workflows.findUnique({
+      where: { id: workflowId },
+    });
+
+    // Get all node executions
+    const nodeExecutions = await db.node_executions.findMany({
+      where: { execution_id: executionId },
+    });
+
+    // Check if all nodes are in terminal state (success, failed, or skipped)
+    const allTerminal = nodeExecutions.every(
+      exec => ['success', 'failed', 'skipped'].includes(exec.status)
+    );
+
+    if (!allTerminal) {
+      return; // Still running
+    }
+
+    // Check if any node failed
+    const hasFailures = nodeExecutions.some(exec => exec.status === 'failed');
+
+    // Update execution status
+    await db.executions.update({
+      where: { id: executionId },
+      data: {
+        status: hasFailures ? 'failed' : 'success',
+        finished_at: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Handle node execution failure
+   */
+  private async handleNodeFailure(
+    nodeExecutionId: string,
+    error: Error,
+    node: Node
+  ): Promise<void> {
+    const nodeExecution = await db.node_executions.findUnique({
+      where: { id: nodeExecutionId },
+    });
+
+    const retryCount = nodeExecution.retry_count + 1;
+    const maxRetries = node.config?.max_retries || 5;
+
+    if (retryCount < maxRetries) {
+      // Retry with exponential backoff
+      const delay = this.calculateRetryDelay(retryCount);
+
+      await db.node_executions.update({
+        where: { id: nodeExecutionId },
+        data: {
+          status: 'pending',
+          retry_count: retryCount,
+          error_message: error.message,
+          error_stack: error.stack,
+        },
+      });
+
+      // Queue retry with delay
+      await nodeExecutionQueue.add(
+        'execute-node',
+        {
+          executionId: nodeExecution.execution_id,
+          workflowId: nodeExecution.workflow_id,
+          nodeId: nodeExecution.node_id,
+        },
+        {
+          delay: delay * 1000, // Convert to milliseconds
+        }
+      );
+    } else {
+      // Max retries exceeded, mark as failed and send to DLQ
+      await db.node_executions.update({
+        where: { id: nodeExecutionId },
+        data: {
+          status: 'failed',
+          retry_count: retryCount,
+          error_message: error.message,
+          error_stack: error.stack,
+          finished_at: new Date(),
+        },
+      });
+
+      // Send to Dead Letter Queue
+      await this.sendToDeadLetterQueue(nodeExecution, error);
+
+      // Mark workflow as failed
+      await db.executions.update({
+        where: { id: nodeExecution.execution_id },
+        data: {
+          status: 'failed',
+          finished_at: new Date(),
+        },
+      });
+    }
+  }
+
+  /**
+   * Calculate retry delay with exponential backoff
+   */
+  private calculateRetryDelay(retryCount: number): number {
+    // Exponential backoff: 1s, 5s, 30s, 2m, 5m
+    const delays = [1, 5, 30, 120, 300];
+    return delays[Math.min(retryCount - 1, delays.length - 1)];
+  }
+
+  /**
+   * Send failed execution to Dead Letter Queue
+   */
+  private async sendToDeadLetterQueue(
+    nodeExecution: NodeExecution,
+    error: Error
+  ): Promise<void> {
+    // Store in DLQ table or send to monitoring service
+    await db.dead_letter_queue.create({
+      data: {
+        execution_id: nodeExecution.execution_id,
+        node_execution_id: nodeExecution.id,
+        workflow_id: nodeExecution.workflow_id,
+        node_id: nodeExecution.node_id,
+        error_message: error.message,
+        error_stack: error.stack,
+        input_data: nodeExecution.input_data,
+        retry_count: nodeExecution.retry_count,
+      },
+    });
+
+    // Send alert/notification
+    await this.sendFailureAlert(nodeExecution, error);
+  }
+
+  /**
+   * Send failure alert
+   */
+  private async sendFailureAlert(
+    nodeExecution: NodeExecution,
+    error: Error
+  ): Promise<void> {
+    // Integrate with your alerting system (email, Slack, PagerDuty, etc.)
+    console.error('Workflow execution failed:', {
+      executionId: nodeExecution.execution_id,
+      nodeId: nodeExecution.node_id,
+      error: error.message,
+    });
+  }
+
+  /**
+   * Handle execution failure
+   */
+  private async handleExecutionFailure(
+    executionId: string,
+    error: Error
+  ): Promise<void> {
+    await db.executions.update({
+      where: { id: executionId },
+      data: {
+        status: 'failed',
+        error_message: error.message,
+        error_stack: error.stack,
+        finished_at: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Handle node execution failure (worker level)
+   */
+  private async handleNodeExecutionFailure(
+    data: { executionId: string; workflowId: string; nodeId: string },
+    error: Error
+  ): Promise<void> {
+    // This is called when the worker itself fails (not the node execution)
+    // Log and potentially retry
+    console.error('Node execution worker failed:', data, error);
+  }
+}
+```
+
+---
+
+## Node Processor
+
+The Node Processor executes individual nodes based on their type.
+
+```typescript
+// workers/node-processor.ts
+import axios, { AxiosRequestConfig } from 'axios';
+import { VariableSubstitutor } from './variable-substitutor';
+import { JavaScriptSandbox } from './javascript-sandbox';
+
+export interface ExecutionContext {
+  executionId: string;
+  workflowId: string;
+  nodeId: string;
+  inputData: any;
+  previousOutputs: Record<string, any>;
+  triggerData: any;
+}
+
+export class NodeProcessor {
+  private variableSubstitutor: VariableSubstitutor;
+  private jsSandbox: JavaScriptSandbox;
+
+  constructor() {
+    this.variableSubstitutor = new VariableSubstitutor();
+    this.jsSandbox = new JavaScriptSandbox();
+  }
+
+  /**
+   * Execute a node based on its type
+   */
+  async executeNode(node: Node, context: ExecutionContext): Promise<any> {
+    // Substitute variables in node config
+    const resolvedConfig = this.variableSubstitutor.substitute(
+      node.config,
+      context
+    );
+
+    // Execute based on node type
+    switch (node.type) {
+      case 'HTTP_REQUEST':
+        return await this.executeHttpRequest(node, resolvedConfig, context);
+
+      case 'DELAY':
+        return await this.executeDelay(node, resolvedConfig, context);
+
+      case 'CONDITION':
+        return await this.executeCondition(node, resolvedConfig, context);
+
+      case 'TRANSFORM':
+        return await this.executeTransform(node, resolvedConfig, context);
+
+      case 'DATABASE_QUERY':
+        return await this.executeDatabaseQuery(node, resolvedConfig, context);
+
+      case 'WEBHOOK_RESPONSE':
+        return await this.executeWebhookResponse(node, resolvedConfig, context);
+
+      case 'LOOP':
+        return await this.executeLoop(node, resolvedConfig, context);
+
+      case 'MERGE':
+        return await this.executeMerge(node, resolvedConfig, context);
+
+      default:
+        throw new Error(`Unsupported node type: ${node.type}`);
+    }
+  }
+
+  /**
+   * Execute HTTP Request node
+   */
+  private async executeHttpRequest(
+    node: Node,
+    config: any,
+    context: ExecutionContext
+  ): Promise<any> {
+    const {
+      method = 'GET',
+      url,
+      headers = {},
+      body,
+      params,
+      timeout = 30000,
+      followRedirects = true,
+      ignoreSSL = false,
+    } = config;
+
+    // Get credentials if configured
+    const authConfig = await this.getAuthConfig(node, config);
+
+    const axiosConfig: AxiosRequestConfig = {
+      method: method.toUpperCase(),
+      url: this.variableSubstitutor.substituteString(url, context),
+      headers: {
+        ...headers,
+        ...authConfig.headers,
+      },
+      params: params ? this.variableSubstitutor.substitute(params, context) : undefined,
+      data: body ? this.variableSubstitutor.substitute(body, context) : undefined,
+      timeout,
+      maxRedirects: followRedirects ? 5 : 0,
+      validateStatus: (status) => status < 500, // Don't throw on 4xx
+      httpsAgent: ignoreSSL ? new (require('https').Agent)({ rejectUnauthorized: false }) : undefined,
+    };
+
+    try {
+      const response = await axios(axiosConfig);
+
+      return {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+        data: response.data,
+        config: {
+          method,
+          url,
+        },
+      };
+    } catch (error: any) {
+      // Handle axios errors
+      if (error.response) {
+        // Server responded with error status
+        throw new Error(
+          `HTTP ${error.response.status}: ${error.response.statusText}`
+        );
+      } else if (error.request) {
+        // Request made but no response
+        throw new Error('No response from server');
+      } else {
+        // Error setting up request
+        throw new Error(error.message);
+      }
+    }
+  }
+
+  /**
+   * Execute Delay node
+   */
+  private async executeDelay(
+    node: Node,
+    config: any,
+    context: ExecutionContext
+  ): Promise<any> {
+    const { duration, unit = 'seconds' } = config;
+
+    const durationMs = this.convertToMilliseconds(duration, unit);
+
+    await new Promise(resolve => setTimeout(resolve, durationMs));
+
+    return {
+      delayed: true,
+      duration: duration,
+      unit: unit,
+      delayedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Execute Condition node
+   */
+  private async executeCondition(
+    node: Node,
+    config: any,
+    context: ExecutionContext
+  ): Promise<any> {
+    const { expression } = config;
+
+    if (!expression) {
+      throw new Error('Condition expression is required');
+    }
+
+    const result = await this.jsSandbox.evaluate(expression, {
+      ...context.inputData,
+      ...context.previousOutputs,
+      $trigger: context.triggerData,
+    });
+
+    return {
+      condition: expression,
+      result: Boolean(result),
+      evaluatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Execute Transform node (JavaScript transformation)
+   */
+  private async executeTransform(
+    node: Node,
+    config: any,
+    context: ExecutionContext
+  ): Promise<any> {
+    const { code } = config;
+
+    if (!code) {
+      throw new Error('Transform code is required');
+    }
+
+    // Execute in sandbox
+    const result = await this.jsSandbox.execute(code, {
+      input: context.inputData,
+      previous: context.previousOutputs,
+      trigger: context.triggerData,
+    });
+
+    return result;
+  }
+
+  /**
+   * Execute Database Query node
+   */
+  private async executeDatabaseQuery(
+    node: Node,
+    config: any,
+    context: ExecutionContext
+  ): Promise<any> {
+    const { query, database_type, connection_string } = config;
+
+    // Resolve connection string (may contain variables)
+    const resolvedConnectionString = this.variableSubstitutor.substituteString(
+      connection_string,
+      context
+    );
+
+    // Resolve query (may contain variables)
+    const resolvedQuery = this.variableSubstitutor.substituteString(
+      query,
+      context
+    );
+
+    // Execute query based on database type
+    switch (database_type) {
+      case 'postgresql':
+        return await this.executePostgresQuery(resolvedQuery, resolvedConnectionString);
+      case 'mysql':
+        return await this.executeMysqlQuery(resolvedQuery, resolvedConnectionString);
+      case 'mongodb':
+        return await this.executeMongoQuery(resolvedQuery, resolvedConnectionString);
+      default:
+        throw new Error(`Unsupported database type: ${database_type}`);
+    }
+  }
+
+  /**
+   * Execute Webhook Response node (for webhook workflows)
+   */
+  private async executeWebhookResponse(
+    node: Node,
+    config: any,
+    context: ExecutionContext
+  ): Promise<any> {
+    const { status_code = 200, body, headers = {} } = config;
+
+    // Store response to be sent when workflow completes
+    await db.webhook_responses.create({
+      data: {
+        execution_id: context.executionId,
+        status_code,
+        body: this.variableSubstitutor.substitute(body, context),
+        headers: this.variableSubstitutor.substitute(headers, context),
+      },
+    });
+
+    return {
+      responseQueued: true,
+      statusCode: status_code,
+    };
+  }
+
+  /**
+   * Execute Loop node (iterate over array)
+   */
+  private async executeLoop(
+    node: Node,
+    config: any,
+    context: ExecutionContext
+  ): Promise<any> {
+    const { array_path, loop_node_id } = config;
+
+    // Get array from input data
+    const array = this.variableSubstitutor.getNestedValue(
+      context.inputData,
+      array_path
+    );
+
+    if (!Array.isArray(array)) {
+      throw new Error(`Path ${array_path} does not point to an array`);
+    }
+
+    const results = [];
+
+    for (let i = 0; i < array.length; i++) {
+      const item = array[i];
+
+      // Create sub-execution for loop iteration
+      const subContext: ExecutionContext = {
+        ...context,
+        inputData: {
+          ...context.inputData,
+          $item: item,
+          $index: i,
+          $total: array.length,
+        },
+      };
+
+      // Execute loop node with item
+      // This would queue a new node execution for the loop_node_id
+      // For now, we'll just collect the item
+      results.push(item);
+    }
+
+    return {
+      looped: true,
+      itemCount: array.length,
+      results: results,
+    };
+  }
+
+  /**
+   * Execute Merge node (combine multiple inputs)
+   */
+  private async executeMerge(
+    node: Node,
+    config: any,
+    context: ExecutionContext
+  ): Promise<any> {
+    const { mode = 'merge' } = config; // 'merge', 'append', 'overwrite'
+
+    // Merge all previous outputs
+    let merged: any = {};
+
+    for (const [nodeId, output] of Object.entries(context.previousOutputs)) {
+      if (mode === 'merge') {
+        merged = { ...merged, ...output };
+      } else if (mode === 'append') {
+        // Append to arrays
+        for (const [key, value] of Object.entries(output)) {
+          if (Array.isArray(merged[key])) {
+            merged[key].push(value);
+          } else {
+            merged[key] = [value];
+          }
+        }
+      } else if (mode === 'overwrite') {
+        merged = { ...output }; // Use last output
+      }
+    }
+
+    return merged;
+  }
+
+  /**
+   * Get authentication configuration for node
+   */
+  private async getAuthConfig(node: Node, config: any): Promise<any> {
+    if (!node.credentials) {
+      return {};
+    }
+
+    // Load credentials from secure storage
+    const credentials = await db.credentials.findUnique({
+      where: { id: node.credentials.credential_id },
+    });
+
+    if (!credentials) {
+      throw new Error(`Credentials not found: ${node.credentials.credential_id}`);
+    }
+
+    switch (node.credentials.type) {
+      case 'api_key':
+        return {
+          headers: {
+            [credentials.config.header_name || 'Authorization']:
+              `${credentials.config.prefix || 'Bearer'} ${credentials.config.api_key}`,
+          },
+        };
+
+      case 'oauth2':
+        // Refresh token if needed
+        const accessToken = await this.refreshOAuthToken(credentials);
+        return {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        };
+
+      case 'basic_auth':
+        const authString = Buffer.from(
+          `${credentials.config.username}:${credentials.config.password}`
+        ).toString('base64');
+        return {
+          headers: {
+            Authorization: `Basic ${authString}`,
+          },
+        };
+
+      default:
+        return {};
+    }
+  }
+
+  /**
+   * Refresh OAuth2 token if expired
+   */
+  private async refreshOAuthToken(credentials: any): Promise<string> {
+    // Check if token is expired
+    const expiresAt = new Date(credentials.config.expires_at);
+    if (expiresAt > new Date()) {
+      return credentials.config.access_token;
+    }
+
+    // Refresh token
+    const response = await axios.post(credentials.config.token_url, {
+      grant_type: 'refresh_token',
+      refresh_token: credentials.config.refresh_token,
+      client_id: credentials.config.client_id,
+      client_secret: credentials.config.client_secret,
+    });
+
+    // Update credentials
+    await db.credentials.update({
+      where: { id: credentials.id },
+      data: {
+        config: {
+          ...credentials.config,
+          access_token: response.data.access_token,
+          expires_at: new Date(
+            Date.now() + response.data.expires_in * 1000
+          ).toISOString(),
+        },
+      },
+    });
+
+    return response.data.access_token;
+  }
+
+  /**
+   * Convert duration to milliseconds
+   */
+  private convertToMilliseconds(duration: number, unit: string): number {
+    const multipliers: Record<string, number> = {
+      milliseconds: 1,
+      seconds: 1000,
+      minutes: 60 * 1000,
+      hours: 60 * 60 * 1000,
+      days: 24 * 60 * 60 * 1000,
+    };
+
+    return duration * (multipliers[unit] || 1000);
+  }
+
+  /**
+   * Execute PostgreSQL query
+   */
+  private async executePostgresQuery(query: string, connectionString: string): Promise<any> {
+    const { Pool } = require('pg');
+    const pool = new Pool({ connectionString });
+
+    try {
+      const result = await pool.query(query);
+      return {
+        rows: result.rows,
+        rowCount: result.rowCount,
+      };
+    } finally {
+      await pool.end();
+    }
+  }
+
+  /**
+   * Execute MySQL query
+   */
+  private async executeMysqlQuery(query: string, connectionString: string): Promise<any> {
+    const mysql = require('mysql2/promise');
+    const connection = await mysql.createConnection(connectionString);
+
+    try {
+      const [rows] = await connection.execute(query);
+      return {
+        rows: rows,
+        rowCount: Array.isArray(rows) ? rows.length : 0,
+      };
+    } finally {
+      await connection.end();
+    }
+  }
+
+  /**
+   * Execute MongoDB query
+   */
+  private async executeMongoQuery(query: string, connectionString: string): Promise<any> {
+    const { MongoClient } = require('mongodb');
+    const client = new MongoClient(connectionString);
+
+    try {
+      await client.connect();
+      // Parse query (would need to implement query parser)
+      // For now, assume it's a JSON string with collection and filter
+      const queryObj = JSON.parse(query);
+      const db = client.db();
+      const collection = db.collection(queryObj.collection);
+      const results = await collection.find(queryObj.filter || {}).toArray();
+      return {
+        documents: results,
+        count: results.length,
+      };
+    } finally {
+      await client.close();
+    }
+  }
+
+  /**
+   * Evaluate condition expression (used by edge conditions)
+   */
+  async evaluateCondition(
+    expression: string,
+    context: ExecutionContext
+  ): Promise<boolean> {
+    const result = await this.jsSandbox.evaluate(expression, {
+      ...context.inputData,
+      ...context.previousOutputs,
+      $trigger: context.triggerData,
+    });
+
+    return Boolean(result);
+  }
+}
+```
+
+---
+
+## Variable Substitution System
+
+Handles replacement of `{{Step1.data.email}}` with actual values.
+
+```typescript
+// workers/variable-substitutor.ts
+export class VariableSubstitutor {
+  /**
+   * Substitute variables in an object recursively
+   */
+  substitute(obj: any, context: ExecutionContext): any {
+    if (typeof obj === 'string') {
+      return this.substituteString(obj, context);
+    } else if (Array.isArray(obj)) {
+      return obj.map(item => this.substitute(item, context));
+    } else if (obj && typeof obj === 'object') {
+      const result: any = {};
+      for (const [key, value] of Object.entries(obj)) {
+        result[key] = this.substitute(value, context);
+      }
+      return result;
+    }
+    return obj;
+  }
+
+  /**
+   * Substitute variables in a string
+   * Supports:
+   * - {{NodeId.field.path}} - Reference to node output
+   * - {{$trigger.field.path}} - Reference to trigger data
+   * - {{$input.field.path}} - Reference to current node input
+   * - {{$env.VAR_NAME}} - Environment variable
+   */
+  substituteString(str: string, context: ExecutionContext): string {
+    // Match {{...}} patterns
+    const pattern = /\{\{([^}]+)\}\}/g;
+
+    return str.replace(pattern, (match, expression) => {
+      try {
+        const value = this.resolveExpression(expression.trim(), context);
+        return value !== null && value !== undefined ? String(value) : '';
+      } catch (error) {
+        console.error(`Failed to resolve expression ${expression}:`, error);
+        return match; // Return original if resolution fails
+      }
+    });
+  }
+
+  /**
+   * Resolve a variable expression
+   */
+  private resolveExpression(expression: string, context: ExecutionContext): any {
+    // Handle $trigger references
+    if (expression.startsWith('$trigger.')) {
+      const path = expression.substring(9); // Remove '$trigger.'
+      return this.getNestedValue(context.triggerData, path);
+    }
+
+    // Handle $input references
+    if (expression.startsWith('$input.')) {
+      const path = expression.substring(7); // Remove '$input.'
+      return this.getNestedValue(context.inputData, path);
+    }
+
+    // Handle $env references
+    if (expression.startsWith('$env.')) {
+      const varName = expression.substring(5); // Remove '$env.'
+      return process.env[varName];
+    }
+
+    // Handle node references (NodeId.field.path)
+    // First, try to find a node ID match
+    const nodeIdMatch = expression.match(/^([^.]+)\.(.+)$/);
+    if (nodeIdMatch) {
+      const [, nodeId, path] = nodeIdMatch;
+      if (context.previousOutputs[nodeId]) {
+        return this.getNestedValue(context.previousOutputs[nodeId], path);
+      }
+    }
+
+    // If no match, try to get from input data or previous outputs
+    return this.getNestedValue(
+      { ...context.inputData, ...context.previousOutputs },
+      expression
+    );
+  }
+
+  /**
+   * Get nested value from object using dot notation
+   */
+  getNestedValue(obj: any, path: string): any {
+    if (!obj || !path) {
+      return undefined;
+    }
+
+    const parts = path.split('.');
+    let current = obj;
+
+    for (const part of parts) {
+      if (current === null || current === undefined) {
+        return undefined;
+      }
+
+      // Handle array indices
+      if (part.match(/^\d+$/)) {
+        const index = parseInt(part, 10);
+        if (Array.isArray(current)) {
+          current = current[index];
+        } else {
+          return undefined;
+        }
+      } else {
+        current = current[part];
+      }
+    }
+
+    return current;
+  }
+}
+```
+
+---
+
+## JavaScript Sandbox Execution
+
+**⚠️ CRITICAL SECURITY:** User-defined JavaScript code must be executed in a secure sandbox to prevent server compromise.
+
+### Option 1: Using `isolated-vm` (Recommended)
+
+```typescript
+// workers/javascript-sandbox.ts
+import ivm from 'isolated-vm';
+
+export class JavaScriptSandbox {
+  private isolate: ivm.Isolate;
+  private context: ivm.Context;
+
+  constructor() {
+    // Create a new isolate (V8 isolate) for each sandbox instance
+    // Each isolate has its own memory space
+    this.isolate = new ivm.Isolate({
+      memoryLimit: 128, // 128MB memory limit
+      inspector: false, // Disable inspector for security
+    });
+
+    // Create a context within the isolate
+    this.context = this.isolate.createContextSync();
+
+    // Set up global objects (limited set)
+    const jail = this.context.global;
+    jail.setSync('global', jail.derefInto());
+
+    // Allow console (but limit it)
+    jail.setSync('console', {
+      log: new ivm.Callback((...args) => {
+        console.log('[Sandbox]', ...args);
+      }),
+      error: new ivm.Callback((...args) => {
+        console.error('[Sandbox]', ...args);
+      }),
+    });
+
+    // Allow JSON
+    jail.setSync('JSON', JSON);
+
+    // Allow Math
+    jail.setSync('Math', Math);
+
+    // Allow Date (but limit it)
+    jail.setSync('Date', Date);
+
+    // Allow Array, Object, String, Number, Boolean
+    jail.setSync('Array', Array);
+    jail.setSync('Object', Object);
+    jail.setSync('String', String);
+    jail.setSync('Number', Number);
+    jail.setSync('Boolean', Boolean);
+  }
+
+  /**
+   * Evaluate a JavaScript expression
+   */
+  async evaluate(code: string, context: Record<string, any>): Promise<any> {
+    // Inject context variables
+    const jail = this.context.global;
+    for (const [key, value] of Object.entries(context)) {
+      // Convert value to transferable format
+      const transferable = this.convertToTransferable(value);
+      jail.setSync(key, transferable);
+    }
+
+    try {
+      // Compile and run code
+      const script = this.isolate.compileScriptSync(code);
+      const result = script.runSync(this.context, {
+        timeout: 5000, // 5 second timeout
+      });
+
+      // Convert result back
+      return this.convertFromTransferable(result);
+    } catch (error: any) {
+      throw new Error(`JavaScript execution error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Execute a JavaScript function/script
+   */
+  async execute(code: string, context: Record<string, any>): Promise<any> {
+    // Wrap code in a function if it's not already
+    const wrappedCode = code.includes('return') ? code : `return (${code});`;
+
+    return await this.evaluate(wrappedCode, context);
+  }
+
+  /**
+   * Convert value to transferable format for isolated-vm
+   */
+  private convertToTransferable(value: any): any {
+    if (value === null || value === undefined) {
+      return value;
+    }
+
+    if (typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string') {
+      return value;
+    }
+
+    if (Array.isArray(value)) {
+      return new ivm.ExternalCopy(value).copyInto({ release: true });
+    }
+
+    if (typeof value === 'object') {
+      return new ivm.ExternalCopy(value).copyInto({ release: true });
+    }
+
+    return value;
+  }
+
+  /**
+   * Convert value from transferable format
+   */
+  private convertFromTransferable(value: any): any {
+    // isolated-vm handles most conversions automatically
+    return value;
+  }
+
+  /**
+   * Clean up isolate
+   */
+  destroy(): void {
+    this.isolate.dispose();
+  }
+}
+```
+
+### Option 2: Using `vm2` (Alternative, Less Secure)
+
+```typescript
+// workers/javascript-sandbox-vm2.ts
+import { VM } from 'vm2';
+
+export class JavaScriptSandboxVM2 {
+  private vm: VM;
+
+  constructor() {
+    this.vm = new VM({
+      timeout: 5000, // 5 second timeout
+      sandbox: {
+        // Limited global objects
+        console: {
+          log: (...args: any[]) => console.log('[Sandbox]', ...args),
+          error: (...args: any[]) => console.error('[Sandbox]', ...args),
+        },
+        JSON,
+        Math,
+        Date,
+        Array,
+        Object,
+        String,
+        Number,
+        Boolean,
+      },
+      // Disable dangerous features
+      eval: false,
+      wasm: false,
+    });
+  }
+
+  /**
+   * Evaluate a JavaScript expression
+   */
+  async evaluate(code: string, context: Record<string, any>): Promise<any> {
+    // Inject context
+    for (const [key, value] of Object.entries(context)) {
+      this.vm.freeze(value, key);
+    }
+
+    try {
+      return this.vm.run(code);
+    } catch (error: any) {
+      throw new Error(`JavaScript execution error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Execute a JavaScript function/script
+   */
+  async execute(code: string, context: Record<string, any>): Promise<any> {
+    // Wrap in function
+    const wrappedCode = `(function() { ${code} })()`;
+    return await this.evaluate(wrappedCode, context);
+  }
+}
+```
+
+### Security Considerations
+
+1. **Memory Limits:** Set strict memory limits to prevent DoS attacks
+2. **Timeouts:** Always set execution timeouts (5 seconds recommended)
+3. **No File System Access:** Sandbox should not have access to `fs`, `path`, `child_process`
+4. **No Network Access:** Sandbox should not have access to `http`, `https`, `fetch`
+5. **No require():** Disable `require()` to prevent loading arbitrary modules
+6. **Input Validation:** Validate and sanitize user code before execution
+7. **Resource Limits:** Limit CPU time, memory, and execution count per workflow
+
+---
+
+## Retry Policies & Dead Letter Queue
+
+### Retry Strategy
+
+```typescript
+// policies/retry-policy.ts
+export interface RetryPolicy {
+  maxRetries: number;
+  backoffStrategy: 'exponential' | 'linear' | 'fixed';
+  initialDelay: number; // in seconds
+  maxDelay: number; // in seconds
+  retryableErrors: string[]; // Error patterns that should be retried
+  nonRetryableErrors: string[]; // Error patterns that should NOT be retried
+}
+
+export class RetryPolicyManager {
+  /**
+   * Calculate retry delay based on strategy
+   */
+  calculateDelay(
+    retryCount: number,
+    policy: RetryPolicy
+  ): number {
+    let delay: number;
+
+    switch (policy.backoffStrategy) {
+      case 'exponential':
+        delay = policy.initialDelay * Math.pow(2, retryCount - 1);
+        break;
+
+      case 'linear':
+        delay = policy.initialDelay * retryCount;
+        break;
+
+      case 'fixed':
+        delay = policy.initialDelay;
+        break;
+
+      default:
+        delay = policy.initialDelay;
+    }
+
+    // Cap at max delay
+    return Math.min(delay, policy.maxDelay);
+  }
+
+  /**
+   * Determine if error should be retried
+   */
+  shouldRetry(error: Error, policy: RetryPolicy, retryCount: number): boolean {
+    // Check max retries
+    if (retryCount >= policy.maxRetries) {
+      return false;
+    }
+
+    const errorMessage = error.message.toLowerCase();
+
+    // Check non-retryable errors first
+    for (const pattern of policy.nonRetryableErrors) {
+      if (errorMessage.includes(pattern.toLowerCase())) {
+        return false;
+      }
+    }
+
+    // Check retryable errors
+    if (policy.retryableErrors.length > 0) {
+      for (const pattern of policy.retryableErrors) {
+        if (errorMessage.includes(pattern.toLowerCase())) {
+          return true;
+        }
+      }
+      return false; // Not in retryable list
+    }
+
+    // Default: retry all errors (unless in non-retryable list)
+    return true;
+  }
+}
+```
+
+### Default Retry Policies
+
+```typescript
+// policies/default-retry-policies.ts
+export const DEFAULT_RETRY_POLICIES: Record<string, RetryPolicy> = {
+  HTTP_REQUEST: {
+    maxRetries: 5,
+    backoffStrategy: 'exponential',
+    initialDelay: 1, // 1 second
+    maxDelay: 300, // 5 minutes
+    retryableErrors: [
+      'timeout',
+      'econnrefused',
+      'etimedout',
+      '500',
+      '502',
+      '503',
+      '504',
+    ],
+    nonRetryableErrors: [
+      '400',
+      '401',
+      '403',
+      '404',
+      '422',
+    ],
+  },
+
+  DATABASE_QUERY: {
+    maxRetries: 3,
+    backoffStrategy: 'exponential',
+    initialDelay: 2,
+    maxDelay: 60,
+    retryableErrors: [
+      'connection',
+      'timeout',
+      'deadlock',
+    ],
+    nonRetryableErrors: [
+      'syntax error',
+      'permission denied',
+    ],
+  },
+
+  TRANSFORM: {
+    maxRetries: 0, // Don't retry code errors
+    backoffStrategy: 'fixed',
+    initialDelay: 0,
+    maxDelay: 0,
+    retryableErrors: [],
+    nonRetryableErrors: ['*'], // Don't retry any errors
+  },
+};
+```
+
+### Dead Letter Queue Schema
+
+```sql
+CREATE TABLE dead_letter_queue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  execution_id UUID NOT NULL REFERENCES executions(id) ON DELETE CASCADE,
+  node_execution_id UUID REFERENCES node_executions(id) ON DELETE CASCADE,
+  workflow_id UUID NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  node_id VARCHAR(255) NOT NULL,
+  error_message TEXT NOT NULL,
+  error_stack TEXT,
+  input_data JSONB,
+  output_data JSONB,
+  retry_count INTEGER,
+  failure_reason VARCHAR(255), -- 'max_retries', 'non_retryable_error', 'timeout', etc.
+  created_at TIMESTAMP DEFAULT NOW(),
+  resolved_at TIMESTAMP,
+  resolution_notes TEXT
+);
+
+CREATE INDEX idx_dlq_workflow_id ON dead_letter_queue(workflow_id);
+CREATE INDEX idx_dlq_created_at ON dead_letter_queue(created_at DESC);
+CREATE INDEX idx_dlq_resolved_at ON dead_letter_queue(resolved_at) WHERE resolved_at IS NULL;
+```
+
+---
+
+## Frontend Graph Visualization (React Flow)
+
+### React Flow Schema
+
+```typescript
+// types/react-flow-types.ts
+import { Node, Edge } from 'reactflow';
+
+export interface WorkflowNode extends Node {
+  type: 'httpRequest' | 'delay' | 'condition' | 'transform' | 'database' | 'webhook' | 'loop' | 'merge';
+  data: {
+    label: string;
+    nodeType: string;
+    config: Record<string, any>;
+    credentials?: {
+      type: string;
+      credential_id: string;
+    };
+  };
+}
+
+export interface WorkflowEdge extends Edge {
+  data?: {
+    condition?: {
+      type: 'always' | 'if_true' | 'if_false';
+      expression?: string;
+    };
+  };
+}
+```
+
+### Workflow to React Flow Converter
+
+```typescript
+// utils/workflow-to-reactflow.ts
+import { WorkflowNode, WorkflowEdge } from '@/types/react-flow-types';
+import { Node as WorkflowNodeDef, Edge as WorkflowEdgeDef } from '@/types/workflow';
+
+export function convertWorkflowToReactFlow(
+  nodes: WorkflowNodeDef[],
+  edges: WorkflowEdgeDef[]
+): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+  // Convert nodes
+  const reactFlowNodes: WorkflowNode[] = nodes.map(node => ({
+    id: node.id,
+    type: mapNodeTypeToReactFlowType(node.type),
+    position: node.position,
+    data: {
+      label: node.name,
+      nodeType: node.type,
+      config: node.config,
+      credentials: node.credentials,
+    },
+  }));
+
+  // Convert edges
+  const reactFlowEdges: WorkflowEdge[] = edges.map(edge => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    sourceHandle: edge.sourceHandle,
+    targetHandle: edge.targetHandle,
+    animated: edge.condition?.type !== 'always',
+    data: {
+      condition: edge.condition,
+    },
+    label: edge.condition
+      ? `${edge.condition.type === 'if_true' ? 'Yes' : edge.condition.type === 'if_false' ? 'No' : 'Always'}`
+      : undefined,
+  }));
+
+  return { nodes: reactFlowNodes, edges: reactFlowEdges };
+}
+
+function mapNodeTypeToReactFlowType(nodeType: string): WorkflowNode['type'] {
+  const mapping: Record<string, WorkflowNode['type']> = {
+    HTTP_REQUEST: 'httpRequest',
+    DELAY: 'delay',
+    CONDITION: 'condition',
+    TRANSFORM: 'transform',
+    DATABASE_QUERY: 'database',
+    WEBHOOK_RESPONSE: 'webhook',
+    LOOP: 'loop',
+    MERGE: 'merge',
+  };
+
+  return mapping[nodeType] || 'transform';
+}
+```
+
+### React Flow Component Example
+
+```typescript
+// components/WorkflowEditor.tsx
+'use client';
+
+import React, { useCallback, useMemo } from 'react';
+import ReactFlow, {
+  Node,
+  Edge,
+  Controls,
+  Background,
+  Connection,
+  addEdge,
+  useNodesState,
+  useEdgesState,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
+
+import { WorkflowNode, WorkflowEdge } from '@/types/react-flow-types';
+
+interface WorkflowEditorProps {
+  initialNodes: WorkflowNode[];
+  initialEdges: WorkflowEdge[];
+  onSave: (nodes: WorkflowNode[], edges: WorkflowEdge[]) => void;
+}
+
+export function WorkflowEditor({
+  initialNodes,
+  initialEdges,
+  onSave,
+}: WorkflowEditorProps) {
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  const onConnect = useCallback(
+    (params: Connection) => {
+      setEdges((eds) => addEdge(params, eds));
+    },
+    [setEdges]
+  );
+
+  const handleSave = useCallback(() => {
+    onSave(nodes as WorkflowNode[], edges as WorkflowEdge[]);
+  }, [nodes, edges, onSave]);
+
+  return (
+    <div style={{ width: '100%', height: '100vh' }}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        fitView
+      >
+        <Controls />
+        <Background />
+      </ReactFlow>
+      <button onClick={handleSave}>Save Workflow</button>
+    </div>
+  );
+}
+```
+
+---
+
+## Execution State Management
+
+### Execution Status Tracking
+
+```typescript
+// services/execution-state-service.ts
+export class ExecutionStateService {
+  /**
+   * Get execution status with node details
+   */
+  async getExecutionStatus(executionId: string): Promise<ExecutionStatus> {
+    const execution = await db.executions.findUnique({
+      where: { id: executionId },
+      include: {
+        node_executions: {
+          orderBy: { created_at: 'asc' },
+        },
+      },
+    });
+
+    if (!execution) {
+      throw new Error('Execution not found');
+    }
+
+    return {
+      id: execution.id,
+      workflowId: execution.workflow_id,
+      status: execution.status,
+      startedAt: execution.started_at,
+      finishedAt: execution.finished_at,
+      errorMessage: execution.error_message,
+      nodes: execution.node_executions.map(ne => ({
+        nodeId: ne.node_id,
+        status: ne.status,
+        startedAt: ne.started_at,
+        finishedAt: ne.finished_at,
+        errorMessage: ne.error_message,
+        retryCount: ne.retry_count,
+        inputData: ne.input_data,
+        outputData: ne.output_data,
+      })),
+    };
+  }
+
+  /**
+   * Get execution logs
+   */
+  async getExecutionLogs(
+    executionId: string,
+    limit: number = 100
+  ): Promise<ExecutionLog[]> {
+    return await db.execution_logs.findMany({
+      where: { execution_id: executionId },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+    });
+  }
+
+  /**
+   * Cancel a running execution
+   */
+  async cancelExecution(executionId: string): Promise<void> {
+    const execution = await db.executions.findUnique({
+      where: { id: executionId },
+    });
+
+    if (!execution) {
+      throw new Error('Execution not found');
+    }
+
+    if (execution.status !== 'running' && execution.status !== 'pending') {
+      throw new Error('Execution cannot be cancelled');
+    }
+
+    // Update execution status
+    await db.executions.update({
+      where: { id: executionId },
+      data: {
+        status: 'cancelled',
+        finished_at: new Date(),
+      },
+    });
+
+    // Cancel pending node executions
+    await db.node_executions.updateMany({
+      where: {
+        execution_id: executionId,
+        status: 'pending',
+      },
+      data: {
+        status: 'cancelled',
+      },
+    });
+
+    // Remove from queue (if possible)
+    // This would require queue-specific implementation
+  }
+}
+```
+
+---
+
+## Error Handling & Monitoring
+
+### Error Classification
+
+```typescript
+// utils/error-classifier.ts
+export enum ErrorCategory {
+  NETWORK = 'network',
+  AUTHENTICATION = 'authentication',
+  VALIDATION = 'validation',
+  EXECUTION = 'execution',
+  TIMEOUT = 'timeout',
+  RATE_LIMIT = 'rate_limit',
+  UNKNOWN = 'unknown',
+}
+
+export class ErrorClassifier {
+  classify(error: Error): ErrorCategory {
+    const message = error.message.toLowerCase();
+
+    if (message.includes('timeout') || message.includes('timed out')) {
+      return ErrorCategory.TIMEOUT;
+    }
+
+    if (message.includes('401') || message.includes('unauthorized')) {
+      return ErrorCategory.AUTHENTICATION;
+    }
+
+    if (message.includes('403') || message.includes('forbidden')) {
+      return ErrorCategory.AUTHENTICATION;
+    }
+
+    if (message.includes('429') || message.includes('rate limit')) {
+      return ErrorCategory.RATE_LIMIT;
+    }
+
+    if (message.includes('network') || message.includes('connection')) {
+      return ErrorCategory.NETWORK;
+    }
+
+    if (message.includes('validation') || message.includes('invalid')) {
+      return ErrorCategory.VALIDATION;
+    }
+
+    return ErrorCategory.UNKNOWN;
+  }
+}
+```
+
+### Monitoring & Alerting
+
+```typescript
+// services/monitoring-service.ts
+export class MonitoringService {
+  /**
+   * Track execution metrics
+   */
+  async trackExecutionMetrics(executionId: string, metrics: ExecutionMetrics): Promise<void> {
+    // Send to monitoring service (DataDog, New Relic, etc.)
+    // Or store in time-series database
+    console.log('Execution metrics:', {
+      executionId,
+      duration: metrics.duration,
+      nodeCount: metrics.nodeCount,
+      successCount: metrics.successCount,
+      failureCount: metrics.failureCount,
+    });
+  }
+
+  /**
+   * Send alert for failed execution
+   */
+  async sendFailureAlert(
+    execution: Execution,
+    nodeExecution: NodeExecution,
+    error: Error
+  ): Promise<void> {
+    // Send to alerting service (PagerDuty, Slack, etc.)
+    const alert = {
+      severity: 'error',
+      title: `Workflow execution failed: ${execution.workflow_id}`,
+      message: error.message,
+      executionId: execution.id,
+      nodeId: nodeExecution.node_id,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Integrate with your alerting system
+    console.error('Alert:', alert);
+  }
+}
+```
+
+---
+
+## Summary
+
+This workflow automation engine provides:
+
+1. **Stateless Execution:** Each node executes independently with its own context
+2. **Idempotent Retries:** Failed nodes can be retried without re-running previous nodes
+3. **Webhook Ingestion:** Secure webhook endpoints with signature verification
+4. **Polling Support:** Automatic polling for APIs without webhooks
+5. **Node Processing:** Support for HTTP requests, delays, conditions, transforms, and more
+6. **Variable Substitution:** Powerful variable system with dot notation
+7. **JavaScript Sandbox:** Secure execution of user-defined code
+8. **Retry Policies:** Configurable retry strategies with exponential backoff
+9. **Dead Letter Queue:** Failed executions are stored for manual review
+10. **React Flow Integration:** Frontend graph visualization schema
+
+**Key Files to Implement:**
+- `services/webhook-service.ts` - Webhook ingestion
+- `services/polling-service.ts` - Polling loop
+- `workers/execution-orchestrator.ts` - Main execution orchestrator
+- `workers/node-processor.ts` - Node execution logic
+- `workers/variable-substitutor.ts` - Variable resolution
+- `workers/javascript-sandbox.ts` - Secure JS execution
+- `queues/workflow-queue.ts` - Redis/BullMQ setup
