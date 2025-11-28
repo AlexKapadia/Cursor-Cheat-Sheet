@@ -1,0 +1,746 @@
+# Machine Learning Models Creation Guide
+
+## Project Structure and Organisation
+
+### Directory Structure
+
+Always organise ML projects with this structure:
+
+```
+project_name/
+├── data/
+│   ├── raw/                    # Original, unprocessed data
+│   ├── processed/              # Cleaned and preprocessed data
+│   ├── external/               # Third-party data sources
+│   └── interim/                # Intermediate data files
+├── models/
+│   ├── trained/                # Saved model files (.pkl, .h5, .pt, etc.)
+│   ├── checkpoints/            # Training checkpoints
+│   └── experiments/            # Experiment-specific models
+├── notebooks/
+│   ├── 01_exploratory_analysis.ipynb
+│   ├── 02_data_preprocessing.ipynb
+│   ├── 03_model_development.ipynb
+│   └── 04_evaluation.ipynb
+├── src/
+│   ├── data/
+│   │   ├── __init__.py
+│   │   ├── load_data.py
+│   │   ├── preprocess.py
+│   │   └── feature_engineering.py
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── train.py
+│   │   ├── predict.py
+│   │   └── architectures/
+│   ├── evaluation/
+│   │   ├── __init__.py
+│   │   ├── metrics.py
+│   │   └── visualisation.py
+│   └── utils/
+│       ├── __init__.py
+│       └── helpers.py
+├── config/
+│   ├── config.yaml              # Main configuration file
+│   └── hyperparameters.yaml     # Hyperparameter configurations
+├── tests/
+│   ├── test_data.py
+│   ├── test_models.py
+│   └── test_evaluation.py
+├── requirements.txt
+├── setup.py
+├── README.md
+└── .gitignore
+```
+
+### File Naming Conventions
+
+*   **Use descriptive, lowercase names with underscores:** `train_classifier.py`, not `train.py` or `TrainClassifier.py`
+*   **Prefix notebooks with numbers for execution order:** `01_explore_data.ipynb`, `02_preprocess.ipynb`
+*   **Use consistent naming for model files:** `model_v1_20240115.pkl` (include version and date)
+*   **Name configuration files clearly:** `config.yaml`, `hyperparameters.yaml`, not `config1.yaml`
+
+## Data Preparation and Preprocessing
+
+### Data Loading
+
+*   **Always validate data on load:** Check for missing files, corrupted data, or unexpected formats
+*   **Use appropriate data types:** Load CSV with `pd.read_csv(dtype={...})` to specify types and save memory
+*   **Handle large datasets efficiently:** Use chunking for files larger than available RAM
+*   **Log data loading:** Record file paths, shapes, and basic statistics when data is loaded
+*   **Create data loaders that are reproducible:** Set random seeds and document any sampling
+
+```python
+def load_data(file_path, validation_split=0.2, random_seed=42):
+    """
+    Load and split data with reproducibility.
+    
+    Args:
+        file_path: Path to data file
+        validation_split: Proportion for validation set
+        random_seed: Random seed for reproducibility
+    
+    Returns:
+        train_data, val_data: Split datasets
+    """
+    np.random.seed(random_seed)
+    data = pd.read_csv(file_path)
+    # ... splitting logic
+    return train_data, val_data
+```
+
+### Data Cleaning
+
+*   **Handle missing values explicitly:** Document why values are missing and choose appropriate imputation strategy
+*   **Remove duplicates systematically:** Check for exact duplicates and near-duplicates using similarity metrics
+*   **Detect and handle outliers:** Use IQR, Z-score, or domain knowledge; document decisions
+*   **Validate data types:** Ensure numeric columns are numeric, dates are datetime, categories are categorical
+*   **Check for data leakage:** Ensure no future information leaks into training data
+*   **Validate data ranges:** Check that values are within expected ranges (e.g., ages 0-120, percentages 0-100)
+
+### Feature Engineering
+
+*   **Create features that are interpretable:** Avoid black-box transformations without clear meaning
+*   **Handle categorical variables properly:** Use one-hot encoding for low cardinality, target encoding or embeddings for high cardinality
+*   **Normalise or standardise features:** Use StandardScaler or MinMaxScaler; fit on training data only
+*   **Create interaction features when relevant:** But avoid creating too many (curse of dimensionality)
+*   **Handle temporal features:** Extract day of week, month, hour; create time-based features for time series
+*   **Use domain knowledge:** Create features that make sense for the problem domain
+*   **Document feature creation logic:** Explain why each feature was created and how it's calculated
+
+```python
+def create_features(df):
+    """
+    Create engineered features from raw data.
+    
+    Features created:
+    - age_group: Binned age into groups
+    - interaction_term: Product of feature1 and feature2
+    - temporal_features: Extracted from datetime column
+    """
+    df = df.copy()
+    
+    # Age grouping
+    df['age_group'] = pd.cut(df['age'], bins=[0, 18, 35, 50, 100], 
+                             labels=['young', 'adult', 'middle', 'senior'])
+    
+    # Interaction features
+    df['feature_interaction'] = df['feature1'] * df['feature2']
+    
+    # Temporal features
+    df['hour'] = df['datetime'].dt.hour
+    df['day_of_week'] = df['datetime'].dt.dayofweek
+    
+    return df
+```
+
+### Data Splitting
+
+*   **Split before any preprocessing:** Avoid data leakage by splitting first, then fitting transformers on training data
+*   **Use stratified splitting for classification:** Maintain class distribution in train/validation/test sets
+*   **Respect temporal order for time series:** Never use future data to predict past; use time-based splits
+*   **Create separate test set:** Never touch test set until final evaluation
+*   **Use appropriate split ratios:** 60/20/20 or 70/15/15 for train/val/test; adjust based on dataset size
+*   **Document split methodology:** Record random seeds, split dates, or criteria used
+
+```python
+from sklearn.model_selection import train_test_split
+
+# For classification with stratification
+X_train, X_temp, y_train, y_temp = train_test_split(
+    X, y, test_size=0.4, stratify=y, random_state=42
+)
+X_val, X_test, y_val, y_test = train_test_split(
+    X_temp, y_temp, test_size=0.5, stratify=y_temp, random_state=42
+)
+```
+
+## Model Selection and Architecture
+
+### Choosing the Right Model
+
+*   **Start simple:** Begin with baseline models (linear regression, logistic regression, decision trees) before complex models
+*   **Match model to problem type:**
+    *   Classification: Logistic regression → Random Forest → XGBoost → Neural Networks
+    *   Regression: Linear regression → Random Forest → XGBoost → Neural Networks
+    *   Time series: ARIMA → Prophet → LSTM → Transformer-based
+    *   Computer vision: CNN architectures (ResNet, EfficientNet, Vision Transformer)
+    *   NLP: TF-IDF + classifier → Word2Vec → BERT/GPT → Fine-tuned transformers
+*   **Consider interpretability requirements:** Use simpler models if stakeholders need to understand predictions
+*   **Account for dataset size:** Small datasets (< 1000 samples) → simpler models; large datasets → complex models
+*   **Consider training time and inference speed:** Balance accuracy with computational requirements
+
+### Model Architecture Design
+
+#### Neural Networks
+
+*   **Start with proven architectures:** Use ResNet for images, BERT for text, LSTM for sequences
+*   **Design for the problem:** Match input/output shapes to data; use appropriate activation functions
+*   **Use batch normalisation:** Apply after convolutional or dense layers (except output layer)
+*   **Apply dropout for regularisation:** Use 0.2-0.5 dropout rate; higher for larger networks
+*   **Initialise weights properly:** Use He initialisation for ReLU, Xavier for tanh/sigmoid
+*   **Use appropriate loss functions:**
+    *   Binary classification: Binary cross-entropy
+    *   Multi-class classification: Categorical cross-entropy
+    *   Regression: MSE or MAE (MSE for normal errors, MAE for outliers)
+    *   Imbalanced classes: Focal loss or weighted cross-entropy
+*   **Choose optimisers wisely:** Adam for most cases, SGD with momentum for fine-tuning, AdamW for transformers
+
+```python
+import torch.nn as nn
+import torch.nn.functional as F
+
+class Classifier(nn.Module):
+    def __init__(self, input_dim, hidden_dims, num_classes, dropout_rate=0.3):
+        super(Classifier, self).__init__()
+        
+        layers = []
+        prev_dim = input_dim
+        
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(prev_dim, hidden_dim))
+            layers.append(nn.BatchNorm1d(hidden_dim))
+            layers.append(nn.ReLU())
+            layers.append(nn.Dropout(dropout_rate))
+            prev_dim = hidden_dim
+        
+        layers.append(nn.Linear(prev_dim, num_classes))
+        self.network = nn.Sequential(*layers)
+    
+    def forward(self, x):
+        return self.network(x)
+```
+
+#### Tree-Based Models
+
+*   **Tune hyperparameters systematically:** Use grid search or Bayesian optimisation
+*   **Control model complexity:** Limit max_depth, min_samples_split, min_samples_leaf
+*   **Handle class imbalance:** Use class_weight parameter or SMOTE
+*   **Use early stopping:** Monitor validation performance and stop when it plateaus
+*   **Consider ensemble methods:** Random Forest, Gradient Boosting, XGBoost, LightGBM, CatBoost
+
+```python
+from xgboost import XGBClassifier
+from sklearn.model_selection import GridSearchCV
+
+param_grid = {
+    'max_depth': [3, 5, 7],
+    'learning_rate': [0.01, 0.1, 0.3],
+    'n_estimators': [100, 200, 300],
+    'subsample': [0.8, 0.9, 1.0]
+}
+
+model = XGBClassifier(random_state=42)
+grid_search = GridSearchCV(
+    model, param_grid, cv=5, scoring='f1', n_jobs=-1
+)
+grid_search.fit(X_train, y_train)
+```
+
+## Training Best Practices
+
+### Training Configuration
+
+*   **Set random seeds for reproducibility:** Set seeds for NumPy, random, TensorFlow/PyTorch, and CUDA
+*   **Use appropriate batch sizes:** Start with 32 or 64; increase if you have GPU memory; decrease if you have memory issues
+*   **Choose learning rate carefully:** Start with default (0.001 for Adam) or use learning rate finder
+*   **Use learning rate scheduling:** Reduce learning rate on plateau or use cosine annealing
+*   **Implement early stopping:** Monitor validation loss; stop when it stops improving
+*   **Save model checkpoints:** Save best model and periodic checkpoints during training
+*   **Use mixed precision training:** Enable FP16 for faster training on modern GPUs (if supported)
+
+```python
+import torch
+import numpy as np
+import random
+
+def set_seed(seed=42):
+    """Set all random seeds for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+# Use at the start of training script
+set_seed(42)
+```
+
+### Training Loop
+
+*   **Monitor training and validation metrics:** Track loss, accuracy, and other relevant metrics
+*   **Log training progress:** Use TensorBoard, Weights & Biases, or MLflow
+*   **Validate frequently:** Evaluate on validation set every N epochs or batches
+*   **Handle overfitting:** Use regularisation (dropout, L1/L2), data augmentation, or early stopping
+*   **Use gradient clipping:** Clip gradients to prevent exploding gradients (especially for RNNs)
+*   **Implement proper data shuffling:** Shuffle training data each epoch; don't shuffle validation/test
+
+```python
+def train_epoch(model, dataloader, criterion, optimizer, device):
+    """Train for one epoch."""
+    model.train()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+    
+    for batch_idx, (data, target) in enumerate(dataloader):
+        data, target = data.to(device), target.to(device)
+        
+        # Zero gradients
+        optimizer.zero_grad()
+        
+        # Forward pass
+        output = model(data)
+        loss = criterion(output, target)
+        
+        # Backward pass
+        loss.backward()
+        
+        # Gradient clipping
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        
+        # Update weights
+        optimizer.step()
+        
+        # Statistics
+        running_loss += loss.item()
+        _, predicted = output.max(1)
+        total += target.size(0)
+        correct += predicted.eq(target).sum().item()
+    
+    epoch_loss = running_loss / len(dataloader)
+    epoch_acc = 100. * correct / total
+    
+    return epoch_loss, epoch_acc
+```
+
+### Data Augmentation
+
+*   **Use augmentation for small datasets:** Increase effective dataset size
+*   **Apply augmentation only to training data:** Never augment validation or test sets
+*   **Choose augmentation appropriate to domain:**
+    *   Images: Rotation, flipping, cropping, colour jittering, cutout
+    *   Text: Synonym replacement, back-translation, random deletion
+    *   Audio: Time stretching, pitch shifting, noise injection
+*   **Don't over-augment:** Too much augmentation can hurt performance
+*   **Validate augmentation visually:** Check that augmented data still makes sense
+
+```python
+from torchvision import transforms
+
+# Image augmentation
+train_transform = transforms.Compose([
+    transforms.RandomRotation(15),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomCrop(32, padding=4),
+    transforms.ColorJitter(brightness=0.2, contrast=0.2),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+                        std=[0.229, 0.224, 0.225])
+])
+
+# No augmentation for validation
+val_transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+                        std=[0.229, 0.224, 0.225])
+])
+```
+
+## Evaluation and Validation
+
+### Metrics Selection
+
+*   **Choose metrics appropriate to the problem:**
+    *   Binary classification: Accuracy, Precision, Recall, F1-score, ROC-AUC, PR-AUC
+    *   Multi-class classification: Accuracy, F1-score (macro/micro/weighted), Confusion matrix
+    *   Regression: MAE, RMSE, R², MAPE
+    *   Imbalanced datasets: F1-score, PR-AUC, or balanced accuracy (not just accuracy)
+*   **Use multiple metrics:** Don't rely on a single metric; use complementary metrics
+*   **Consider business impact:** Choose metrics that align with business objectives
+*   **Report confidence intervals:** Use bootstrapping or cross-validation to get uncertainty estimates
+
+### Cross-Validation
+
+*   **Use appropriate CV strategy:**
+    *   Standard: K-fold cross-validation (k=5 or 10)
+    *   Time series: Time series split or forward chaining
+    *   Grouped data: GroupKFold to prevent data leakage
+    *   Stratified: StratifiedKFold for imbalanced classification
+*   **Don't use test set in CV:** Only use train/validation sets for cross-validation
+*   **Report mean and std of CV scores:** Show both average performance and variability
+*   **Use nested CV for hyperparameter tuning:** Outer loop for model selection, inner loop for hyperparameters
+
+```python
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+
+skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+cv_scores = cross_val_score(
+    model, X_train, y_train, cv=skf, scoring='f1', n_jobs=-1
+)
+
+print(f"CV F1-score: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
+```
+
+### Model Interpretation
+
+*   **Understand model predictions:** Use SHAP, LIME, or feature importance
+*   **Analyse errors:** Look at confusion matrix, error cases, and failure modes
+*   **Check for bias:** Evaluate performance across different subgroups
+*   **Visualise predictions:** Create plots showing predictions vs actuals, residuals, etc.
+*   **Document model limitations:** Clearly state what the model can and cannot do
+
+```python
+import shap
+
+# For tree-based models
+explainer = shap.TreeExplainer(model)
+shap_values = explainer.shap_values(X_test)
+shap.summary_plot(shap_values, X_test)
+
+# For neural networks
+explainer = shap.DeepExplainer(model, X_train_sample)
+shap_values = explainer.shap_values(X_test_sample)
+```
+
+## Hyperparameter Tuning
+
+### Tuning Strategy
+
+*   **Start with default hyperparameters:** Get baseline performance first
+*   **Tune systematically:** Use grid search for small spaces, random search or Bayesian optimisation for large spaces
+*   **Tune one hyperparameter at a time initially:** Understand each parameter's impact
+*   **Use validation set for tuning:** Never use test set for hyperparameter selection
+*   **Document all hyperparameter experiments:** Keep track of what was tried and results
+*   **Use early stopping in hyperparameter search:** Don't waste time on clearly bad configurations
+
+### Important Hyperparameters by Model Type
+
+#### Neural Networks
+*   Learning rate (most important)
+*   Batch size
+*   Number of layers and units
+*   Dropout rate
+*   Optimiser choice and parameters
+*   Learning rate schedule
+
+#### Tree-Based Models
+*   max_depth
+*   min_samples_split
+*   min_samples_leaf
+*   learning_rate (for boosting)
+*   n_estimators
+*   subsample / colsample_bytree
+
+#### Linear Models
+*   Regularisation strength (C or alpha)
+*   Regularisation type (L1 vs L2)
+*   Solver algorithm
+
+```python
+from sklearn.model_selection import RandomizedSearchCV
+from scipy.stats import randint, uniform
+
+param_distributions = {
+    'max_depth': randint(3, 10),
+    'min_samples_split': randint(2, 20),
+    'min_samples_leaf': randint(1, 10),
+    'learning_rate': uniform(0.01, 0.3),
+    'n_estimators': randint(100, 500)
+}
+
+random_search = RandomizedSearchCV(
+    model, param_distributions, n_iter=50, cv=5, 
+    scoring='f1', n_jobs=-1, random_state=42
+)
+random_search.fit(X_train, y_train)
+```
+
+## Code Quality and Best Practices
+
+### Code Organisation
+
+*   **Separate concerns:** Data loading, preprocessing, training, evaluation in separate modules
+*   **Use configuration files:** Store hyperparameters, paths, and settings in YAML or JSON
+*   **Create reusable functions:** Write functions that can be used across projects
+*   **Document functions and classes:** Use docstrings explaining purpose, parameters, and returns
+*   **Use type hints:** Add type annotations for better code clarity and IDE support
+*   **Follow PEP 8:** Use consistent code style (black, flake8, pylint)
+
+```python
+from typing import Tuple, List
+import numpy as np
+import pandas as pd
+
+def preprocess_data(
+    df: pd.DataFrame, 
+    categorical_cols: List[str],
+    numerical_cols: List[str]
+) -> Tuple[pd.DataFrame, dict]:
+    """
+    Preprocess data by encoding categorical and scaling numerical features.
+    
+    Args:
+        df: Input dataframe
+        categorical_cols: List of categorical column names
+        numerical_cols: List of numerical column names
+    
+    Returns:
+        Processed dataframe and preprocessing parameters dictionary
+    """
+    # Implementation
+    pass
+```
+
+### Version Control
+
+*   **Version your data:** Use DVC (Data Version Control) or similar tools
+*   **Version your models:** Save models with version numbers and metadata
+*   **Track experiments:** Use MLflow, Weights & Biases, or TensorBoard
+*   **Commit frequently:** Make small, logical commits with clear messages
+*   **Use .gitignore:** Exclude data files, model files, and large binaries
+
+### Testing
+
+*   **Write unit tests:** Test individual functions (data loading, preprocessing, etc.)
+*   **Test model inference:** Ensure model can make predictions on new data
+*   **Test edge cases:** Handle missing values, empty inputs, wrong types
+*   **Test reproducibility:** Ensure same inputs produce same outputs
+*   **Use test fixtures:** Create small, representative datasets for testing
+
+```python
+import pytest
+import numpy as np
+
+def test_preprocess_data():
+    """Test data preprocessing function."""
+    # Create test data
+    df = pd.DataFrame({
+        'cat': ['A', 'B', 'A'],
+        'num': [1, 2, 3]
+    })
+    
+    # Test function
+    processed, params = preprocess_data(df, ['cat'], ['num'])
+    
+    # Assertions
+    assert processed.shape[0] == 3
+    assert 'cat_encoded' in processed.columns
+    assert isinstance(params, dict)
+```
+
+## Deployment Considerations
+
+### Model Serialisation
+
+*   **Use appropriate format:** Pickle for scikit-learn, joblib for large NumPy arrays, ONNX for cross-platform
+*   **Save preprocessing pipeline:** Include scalers, encoders, and feature engineering steps
+*   **Save model metadata:** Version, training date, performance metrics, feature names
+*   **Test model loading:** Ensure models can be loaded in production environment
+
+```python
+import joblib
+import json
+
+# Save model
+joblib.dump(model, 'model.pkl')
+
+# Save preprocessing pipeline
+joblib.dump(preprocessor, 'preprocessor.pkl')
+
+# Save metadata
+metadata = {
+    'version': '1.0',
+    'training_date': '2024-01-15',
+    'accuracy': 0.95,
+    'features': list(X_train.columns)
+}
+with open('metadata.json', 'w') as f:
+    json.dump(metadata, f)
+```
+
+### Production Readiness
+
+*   **Optimise inference speed:** Use model quantisation, pruning, or smaller architectures
+*   **Handle errors gracefully:** Catch exceptions and return meaningful error messages
+*   **Add input validation:** Check data types, shapes, and ranges before prediction
+*   **Monitor model performance:** Track prediction latency, error rates, and data drift
+*   **Implement model versioning:** Support multiple model versions and A/B testing
+*   **Create API endpoints:** Use Flask, FastAPI, or similar for model serving
+
+```python
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import joblib
+import numpy as np
+
+app = FastAPI()
+model = joblib.load('model.pkl')
+preprocessor = joblib.load('preprocessor.pkl')
+
+class PredictionRequest(BaseModel):
+    features: list
+
+@app.post("/predict")
+def predict(request: PredictionRequest):
+    try:
+        # Validate input
+        if len(request.features) != expected_num_features:
+            raise HTTPException(status_code=400, detail="Wrong number of features")
+        
+        # Preprocess
+        X = preprocessor.transform([request.features])
+        
+        # Predict
+        prediction = model.predict(X)[0]
+        probability = model.predict_proba(X)[0].tolist()
+        
+        return {
+            'prediction': int(prediction),
+            'probabilities': probability
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+```
+
+## Common Pitfalls and Solutions
+
+### Data Issues
+
+*   **Data leakage:** Solution: Split data before any preprocessing; be careful with feature engineering
+*   **Target leakage:** Solution: Remove features that wouldn't be available at prediction time
+*   **Train/test distribution shift:** Solution: Check distributions; use stratified splitting
+*   **Missing values in test set:** Solution: Handle missing values in training; apply same logic to test
+*   **Class imbalance:** Solution: Use class weights, SMOTE, or appropriate metrics (F1, not accuracy)
+
+### Model Issues
+
+*   **Overfitting:** Solution: Use regularisation, dropout, early stopping, or more data
+*   **Underfitting:** Solution: Increase model complexity, reduce regularisation, or add features
+*   **Vanishing/exploding gradients:** Solution: Use batch normalisation, gradient clipping, or better initialisation
+*   **Poor generalisation:** Solution: Use cross-validation, collect more diverse data, or use data augmentation
+
+### Evaluation Issues
+
+*   **Optimistic performance estimates:** Solution: Use proper train/val/test splits; don't tune on test set
+*   **Wrong metrics:** Solution: Choose metrics that match business objectives and problem type
+*   **Ignoring uncertainty:** Solution: Report confidence intervals or prediction intervals
+*   **Not testing on real-world data:** Solution: Test on held-out data that represents production
+
+## Monitoring and Maintenance
+
+### Model Monitoring
+
+*   **Track prediction distributions:** Monitor if predictions drift over time
+*   **Monitor input data quality:** Check for missing values, outliers, or unexpected values
+*   **Track performance metrics:** Monitor accuracy, precision, recall in production
+*   **Set up alerts:** Alert when performance drops below threshold
+*   **Log predictions:** Store predictions and actuals for analysis
+
+### Model Retraining
+
+*   **Schedule regular retraining:** Retrain on new data periodically (weekly, monthly)
+*   **Automate retraining pipeline:** Use CI/CD to trigger retraining
+*   **A/B test new models:** Compare new model with current model before full deployment
+*   **Maintain model registry:** Keep track of all model versions and their performance
+
+## Documentation Requirements
+
+### Code Documentation
+
+*   **Document all functions:** Use docstrings with Args, Returns, and Raises sections
+*   **Explain complex logic:** Add comments for non-obvious code
+*   **Document assumptions:** State assumptions about data, model, or problem
+*   **Include usage examples:** Show how to use functions and classes
+
+### Model Documentation
+
+*   **Model card:** Document model purpose, training data, performance, limitations
+*   **Feature documentation:** List all features, their types, and meanings
+*   **Hyperparameter documentation:** Record all hyperparameters and why they were chosen
+*   **Performance report:** Document metrics, confusion matrices, error analysis
+*   **Deployment guide:** Instructions for deploying and using the model
+
+### README Requirements
+
+Every ML project should have a README with:
+
+*   **Project description:** What problem does this solve?
+*   **Installation instructions:** How to set up the environment
+*   **Data requirements:** What data is needed and where to get it
+*   **Usage examples:** How to train and use the model
+*   **Model performance:** Key metrics and results
+*   **Project structure:** Overview of directory organisation
+*   **Contributing guidelines:** How others can contribute
+
+## Performance Optimisation
+
+### Training Speed
+
+*   **Use GPU when available:** Leverage CUDA for neural networks
+*   **Optimise data loading:** Use DataLoader with multiple workers, prefetching
+*   **Use mixed precision:** Enable FP16 training on modern GPUs
+*   **Profile code:** Identify bottlenecks using profiling tools
+*   **Batch operations:** Process data in batches rather than one-by-one
+
+### Inference Speed
+
+*   **Model quantisation:** Reduce precision (FP32 → FP16 → INT8) for faster inference
+*   **Model pruning:** Remove unnecessary weights
+*   **Model distillation:** Train smaller model to mimic larger model
+*   **Use ONNX or TensorRT:** Convert models to optimised formats
+*   **Batch predictions:** Process multiple inputs at once
+
+```python
+# Model quantisation example (PyTorch)
+import torch.quantization as quantization
+
+model_fp32 = load_model()
+model_fp32.eval()
+
+# Prepare for quantisation
+model_fp32.qconfig = quantization.get_default_qconfig('fbgemm')
+model_int8 = quantization.prepare(model_fp32)
+
+# Calibrate (run on sample data)
+calibrate(model_int8, calibration_data)
+
+# Convert to quantised model
+model_int8 = quantization.convert(model_int8)
+```
+
+## Security and Privacy
+
+### Data Privacy
+
+*   **Handle sensitive data carefully:** Encrypt data at rest and in transit
+*   **Anonymise or pseudonymise data:** Remove or mask personally identifiable information
+*   **Use differential privacy:** Add noise to protect individual records
+*   **Comply with regulations:** Follow GDPR, HIPAA, or other relevant regulations
+
+### Model Security
+
+*   **Validate inputs:** Check for adversarial examples or malicious inputs
+*   **Secure model endpoints:** Use authentication and authorisation
+*   **Monitor for attacks:** Detect model poisoning or evasion attacks
+*   **Keep dependencies updated:** Regularly update libraries to patch vulnerabilities
+
+## Reproducibility Checklist
+
+Before considering a project complete, ensure:
+
+- [ ] All random seeds are set and documented
+- [ ] Data version is tracked and reproducible
+- [ ] All hyperparameters are saved in configuration files
+- [ ] Code is version controlled with clear commit messages
+- [ ] Environment is documented (requirements.txt, Dockerfile, or conda environment)
+- [ ] Model can be trained from scratch and produce same results
+- [ ] All dependencies are pinned to specific versions
+- [ ] README includes all necessary information to reproduce results
+- [ ] Experiments are logged with all relevant details
+
+---
+
+**Remember:** Machine learning is iterative. Start simple, validate assumptions, and gradually increase complexity. Always prioritise understanding your data and problem domain over using the latest model architecture. Document everything, test thoroughly, and deploy responsibly.
+

@@ -1,0 +1,856 @@
+# Brutalist Archival Index
+
+## Source of Truth: Neo-Brutalism & Archival Aesthetic
+
+*Reference Sites: dau.lt, Are.na, brutalistwebsites.com*
+
+---
+
+## 1. Design DNA: "The Raw Material"
+
+### Core Philosophy
+
+**"Honesty of Material."** Do not hide the browser. Embrace the raw, unadorned nature of HTML/CSS.
+
+### Fundamental Rules
+
+- **No Blur.** No CSS `filter: blur()` or `backdrop-filter: blur()`.
+- **No Shadows.** No `box-shadow`, `text-shadow`, or any shadow effects.
+- **No Rounded Corners.** No `border-radius`. Everything is a box with sharp, 90-degree corners.
+- **Everything is a Box.** Every element must have a `1px solid` border (`1px solid black` or `1px solid currentColor`).
+
+### Color System
+
+```css
+:root {
+  --bg-canvas: #FFFFFF;      /* Paper - default light */
+  /* OR */
+  --bg-canvas: #000000;      /* Void - dark mode */
+  
+  --text-primary: #000000;   /* Contrast with bg-canvas */
+  /* OR */
+  --text-primary: #FFFFFF;   /* For dark mode */
+  
+  --accent: #0000FF;         /* Hyper-Link Blue */
+  /* OR */
+  --accent: #FF0000;         /* Warning Red */
+}
+
+/* Constraint: No gradients. Only solid, flat colors. */
+```
+
+### Border System
+
+```css
+/* All elements must have borders */
+* {
+  border: 1px solid currentColor;
+  /* OR */
+  border: 1px solid black;
+}
+
+/* Exceptions: body, html can be borderless */
+body, html {
+  border: none;
+}
+```
+
+---
+
+## 2. Typographic Strategy (The "Editor")
+
+### Hierarchy
+
+#### Display Type
+- **Purpose:** Headlines, titles, major headings
+- **Font:** Giant, tight-tracking Sans-Serif
+  - Recommended: `Helvetica Now`, `Neue Haas Grotesk`, `Inter`, system fonts
+  - `letter-spacing: -0.04em` (tight tracking)
+  - `text-transform: uppercase` (often)
+- **Scaling:** 120px+ on desktop, fluid down to 48px on mobile
+
+#### Data/Meta Type
+- **Purpose:** Dates, tags, numbers, metadata
+- **Font:** Monospace
+  - Recommended: `Courier New`, `JetBrains Mono`, `Space Mono`, `Monaco`
+- **Rule:** If it is a date, a tag, or a number, it MUST be Monospace.
+
+#### Body Text
+- **Font:** System fonts or refined Grotesque
+  - `font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;`
+- **Size:** 16px baseline, readable on all devices
+
+### Scaling: Extreme Contrast
+
+A 120px headline next to a 12px label. This is intentional.
+
+### Implementation Example
+
+```css
+.display {
+  font-family: 'Helvetica Now', -apple-system, sans-serif;
+  font-size: clamp(48px, 12vw, 120px);
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.data {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+```
+
+---
+
+## 3. Component Architecture (Production Code)
+
+### The "Index Row" (The Signature Component)
+
+A full-width list item that spans the viewport width.
+
+#### Structure
+
+```jsx
+<li className="index-row">
+  <a href="#" className="index-row-link">
+    <span className="index-row-title">Project Name</span>
+    <span className="index-row-meta">↳ See it online</span>
+  </a>
+  <div className="index-row-reveal">
+    <video 
+      src="/video.mp4" 
+      className="index-row-video"
+      muted
+      loop
+      playsInline
+    />
+  </div>
+</li>
+```
+
+#### Styling
+
+```css
+.index-row {
+  width: 100%;
+  border-top: 1px solid black;
+  border-bottom: 1px solid black;
+  position: relative;
+  background: var(--bg-canvas);
+  transition: background 0.1s linear, color 0.1s linear;
+}
+
+.index-row:hover {
+  background: var(--text-primary);
+  color: var(--bg-canvas);
+}
+
+.index-row-link {
+  display: block;
+  padding: 1.5rem 2rem;
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.index-row-title {
+  font-size: clamp(24px, 4vw, 48px);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.index-row-meta {
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.index-row-reveal {
+  position: fixed;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s linear;
+  z-index: 1000;
+}
+
+.index-row:hover .index-row-reveal {
+  opacity: 1;
+}
+
+.index-row-video {
+  width: 400px;
+  height: auto;
+  border: 1px solid black;
+  display: block;
+}
+```
+
+#### React Hook: useMousePosition
+
+```jsx
+import { useState, useEffect } from 'react';
+
+/**
+ * Hook to track mouse position for floating image/video reveals
+ * Used in Index Row components for cursor-tracking reveals
+ */
+export function useMousePosition() {
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const updateMousePosition = (e) => {
+      setMousePosition({ x: e.clientX, y: e.clientY });
+    };
+
+    window.addEventListener('mousemove', updateMousePosition);
+
+    return () => {
+      window.removeEventListener('mousemove', updateMousePosition);
+    };
+  }, []);
+
+  return mousePosition;
+}
+```
+
+#### Usage in Index Row with Float Reveal
+
+```jsx
+import { useMousePosition } from './hooks/useMousePosition';
+
+function IndexRow({ title, href, videoSrc }) {
+  const { x, y } = useMousePosition();
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <li 
+      className="index-row"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <a href={href} className="index-row-link">
+        <span className="index-row-title">{title}</span>
+        <span className="index-row-meta">↳ See it online</span>
+      </a>
+      {isHovered && (
+        <div 
+          className="index-row-reveal"
+          style={{
+            left: `${x + 20}px`,
+            top: `${y + 20}px`,
+          }}
+        >
+          <video 
+            src={videoSrc}
+            className="index-row-video"
+            autoPlay
+            muted
+            loop
+            playsInline
+          />
+        </div>
+      )}
+    </li>
+  );
+}
+```
+
+### The "Raw" Button
+
+A button that looks like a default HTML button but styled with precision.
+
+```jsx
+<button className="raw-button">
+  Send it!
+</button>
+```
+
+```css
+.raw-button {
+  border: 1px solid black;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  padding: 0.5rem 1.5rem;
+  text-transform: uppercase;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.1s linear, color 0.1s linear;
+}
+
+.raw-button:hover {
+  background: var(--text-primary);
+  color: var(--bg-canvas);
+}
+
+.raw-button:active {
+  background: var(--accent);
+  color: var(--bg-canvas);
+}
+```
+
+### The "Ticker" / Marquee
+
+A scrolling text band that separates sections.
+
+```jsx
+<div className="ticker">
+  <div className="ticker-content">
+    <span>This is a scrolling ticker • </span>
+    <span>It loops infinitely • </span>
+    <span>Use it for section separation • </span>
+  </div>
+</div>
+```
+
+```css
+.ticker {
+  width: 100%;
+  border-top: 1px solid black;
+  border-bottom: 1px solid black;
+  overflow: hidden;
+  white-space: nowrap;
+  background: var(--bg-canvas);
+}
+
+.ticker-content {
+  display: inline-block;
+  animation: ticker-scroll 30s linear infinite;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 1rem 0;
+}
+
+.ticker-content span {
+  display: inline-block;
+  margin-right: 2rem;
+}
+
+@keyframes ticker-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+```
+
+---
+
+## 4. Motion Rules
+
+### Timing: "Snap" Physics
+
+Brutalism does not "ease." Things are either On or Off.
+
+```css
+/* Instant transitions */
+.transition-instant {
+  transition: all 0s;
+}
+
+/* OR minimal linear transitions */
+.transition-snap {
+  transition: all 0.1s linear;
+}
+
+/* NO easing functions */
+/* ❌ transition: all 0.3s ease-in-out; */
+/* ❌ transition: all 0.2s cubic-bezier(...); */
+```
+
+### Hover States
+
+```css
+/* Background inversion on hover */
+.element:hover {
+  background: var(--text-primary);
+  color: var(--bg-canvas);
+  transition: background 0.1s linear, color 0.1s linear;
+}
+```
+
+### Float Reveal Animation
+
+```css
+.index-row-reveal {
+  transition: opacity 0.1s linear;
+  transform: translate(-50%, -50%);
+  /* Positioned via JavaScript using mouse coordinates */
+}
+```
+
+---
+
+## 5. Custom Cursor
+
+### Implementation
+
+```css
+* {
+  cursor: none; /* Hide default cursor */
+}
+
+body {
+  cursor: none;
+}
+
+/* Custom cursor */
+.custom-cursor {
+  position: fixed;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  pointer-events: none;
+  z-index: 9999;
+  mix-blend-mode: difference;
+  transform: translate(-50%, -50%);
+  transition: transform 0s; /* No easing */
+}
+
+/* OR crosshair variant */
+.custom-cursor-crosshair {
+  position: fixed;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+  z-index: 9999;
+  mix-blend-mode: difference;
+  transform: translate(-50%, -50%);
+}
+
+.custom-cursor-crosshair::before,
+.custom-cursor-crosshair::after {
+  content: '';
+  position: absolute;
+  background: var(--text-primary);
+}
+
+.custom-cursor-crosshair::before {
+  width: 1px;
+  height: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.custom-cursor-crosshair::after {
+  width: 100%;
+  height: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+```
+
+### React Component
+
+```jsx
+import { useEffect, useState } from 'react';
+import { useMousePosition } from './hooks/useMousePosition';
+
+function CustomCursor() {
+  const { x, y } = useMousePosition();
+
+  return (
+    <div 
+      className="custom-cursor"
+      style={{
+        left: `${x}px`,
+        top: `${y}px`,
+      }}
+    />
+  );
+}
+```
+
+---
+
+## 6. Tailwind CSS Configuration
+
+### Fluid Typography Plugin
+
+```js
+// tailwind.config.js
+const plugin = require('tailwindcss/plugin');
+
+module.exports = {
+  theme: {
+    extend: {
+      // Your theme extensions
+    },
+  },
+  plugins: [
+    plugin(function({ addUtilities }) {
+      addUtilities({
+        '.fluid-display': {
+          fontSize: 'clamp(2rem, 8vw, 7.5rem)',
+          lineHeight: '1',
+          letterSpacing: '-0.04em',
+          textTransform: 'uppercase',
+        },
+        '.fluid-heading': {
+          fontSize: 'clamp(1.5rem, 4vw, 3rem)',
+          lineHeight: '1.1',
+          letterSpacing: '-0.02em',
+        },
+        '.fluid-body': {
+          fontSize: 'clamp(1rem, 1.5vw, 1.125rem)',
+          lineHeight: '1.5',
+        },
+        '.fluid-meta': {
+          fontSize: 'clamp(0.75rem, 1vw, 0.875rem)',
+          fontFamily: 'monospace',
+        },
+      });
+    }),
+  ],
+};
+```
+
+### Base Styles
+
+```css
+/* Add to your global CSS */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border: 1px solid currentColor;
+  }
+  
+  body, html {
+    border: none;
+  }
+  
+  body {
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+}
+```
+
+---
+
+## 7. Accessibility
+
+### High Contrast
+
+Brutalism naturally provides high contrast, but ensure:
+
+```css
+/* Minimum contrast ratios per WCAG */
+:root {
+  --bg-canvas: #FFFFFF;
+  --text-primary: #000000;
+  /* Contrast ratio: 21:1 (AAA) */
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-canvas: #000000;
+    --text-primary: #FFFFFF;
+    /* Contrast ratio: 21:1 (AAA) */
+  }
+}
+```
+
+### Screen Reader Considerations
+
+#### ASCII Art / Raw Layouts
+
+When using ASCII art or purely visual layouts, provide alternative text:
+
+```jsx
+<div className="ascii-art" aria-hidden="true">
+  {asciiContent}
+</div>
+<div className="sr-only">
+  {descriptionText}
+</div>
+```
+
+```css
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+```
+
+#### Semantic HTML
+
+```jsx
+<nav aria-label="Main navigation">
+  <ul role="list">
+    <li>
+      <a href="/project-1">Project One</a>
+    </li>
+  </ul>
+</nav>
+
+<main>
+  <article>
+    <h1>Project Title</h1>
+    <time dateTime="2024-01-01">2024-01-01</time>
+  </article>
+</main>
+```
+
+#### Keyboard Navigation
+
+```css
+/* Ensure all interactive elements are keyboard accessible */
+a:focus,
+button:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Remove default focus styles only if custom ones are provided */
+*:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+```
+
+#### Motion Preferences
+
+```css
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  
+  .ticker-content {
+    animation: none;
+  }
+}
+```
+
+#### ARIA Labels
+
+```jsx
+<button 
+  className="raw-button"
+  aria-label="Submit form"
+>
+  Send it!
+</button>
+
+<div 
+  className="index-row-reveal"
+  role="img"
+  aria-label="Preview video for project"
+>
+  <video src={videoSrc} />
+</div>
+```
+
+---
+
+## 8. Complete Example: Index Row Component
+
+```jsx
+import { useState } from 'react';
+import { useMousePosition } from './hooks/useMousePosition';
+
+export function IndexRow({ title, href, videoSrc, meta = "↳ See it online" }) {
+  const { x, y } = useMousePosition();
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <li 
+      className="index-row"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <a 
+        href={href} 
+        className="index-row-link"
+        aria-label={`View ${title} project`}
+      >
+        <span className="index-row-title">{title}</span>
+        <span className="index-row-meta">{meta}</span>
+      </a>
+      {isHovered && (
+        <div 
+          className="index-row-reveal"
+          style={{
+            left: `${x + 20}px`,
+            top: `${y + 20}px`,
+          }}
+          role="img"
+          aria-label={`Preview for ${title}`}
+        >
+          <video 
+            src={videoSrc}
+            className="index-row-video"
+            autoPlay
+            muted
+            loop
+            playsInline
+            aria-hidden="true"
+          />
+        </div>
+      )}
+    </li>
+  );
+}
+```
+
+```css
+.index-row {
+  width: 100%;
+  border-top: 1px solid black;
+  border-bottom: 1px solid black;
+  position: relative;
+  background: var(--bg-canvas);
+  transition: background 0.1s linear, color 0.1s linear;
+}
+
+.index-row:hover {
+  background: var(--text-primary);
+  color: var(--bg-canvas);
+}
+
+.index-row-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.index-row-title {
+  font-size: clamp(24px, 4vw, 48px);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+.index-row-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+.index-row-reveal {
+  position: fixed;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s linear;
+  z-index: 1000;
+  transform: translate(-50%, -50%);
+}
+
+.index-row:hover .index-row-reveal {
+  opacity: 1;
+}
+
+.index-row-video {
+  width: 400px;
+  height: auto;
+  border: 1px solid black;
+  display: block;
+}
+```
+
+---
+
+## 9. Layout Patterns
+
+### Full-Width List (Index Layout)
+
+```css
+.index-container {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.index-container li {
+  width: 100%;
+  display: block;
+}
+```
+
+### Grid Layout (Alternative)
+
+```css
+.grid-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 0;
+  border: 1px solid black;
+}
+
+.grid-item {
+  border: 1px solid black;
+  padding: 2rem;
+}
+```
+
+---
+
+## 10. Additional Considerations
+
+### Performance
+
+- Use `will-change` sparingly for hover reveals
+- Lazy load video elements
+- Optimize images/videos
+
+### Browser Support
+
+- Modern browsers only (no IE support)
+- CSS Grid and Flexbox required
+- CSS Custom Properties (CSS Variables) required
+
+### JavaScript Requirements
+
+- React 18+ (or equivalent framework)
+- Mouse position tracking
+- Hover state management
+
+---
+
+## Summary
+
+This document serves as the **Source of Truth** for generating websites that follow the Neo-Brutalism / Archival aesthetic. Key principles:
+
+1. **Raw Material:** No blur, shadows, or rounded corners
+2. **Typography:** Extreme contrast between display and data/meta
+3. **Components:** Index Row with hover inversion and float reveal
+4. **Motion:** Snap physics, linear transitions only
+5. **Cursor:** Custom cursor with `mix-blend-mode: difference`
+6. **Accessibility:** High contrast, semantic HTML, reduced motion support
+
+Reference: dau.lt, Are.na, brutalistwebsites.com

@@ -1,0 +1,723 @@
+# Data-Driven Cyber UI: Source of Truth
+## Mission Control Dashboard Design System
+
+> **Design Philosophy:** High-Precision Data Aesthetic | Telemetry-Inspired | Mission Control Dashboard
+
+---
+
+## 🎨 PHASE 1: VISUAL FORENSICS
+
+### Design DNA: "Observability Mode"
+
+#### Color Palette
+
+```css
+/* Core Backgrounds */
+--bg-console: #050505;        /* Deepest Black - Main canvas */
+--bg-panel: #0A0A0A;          /* Slightly lighter card background */
+--bg-overlay: #0F0F0F;        /* Modal/overlay backgrounds */
+
+/* Accent Colors */
+--accent-success: #00FF94;    /* Neon Green - System Normal */
+--accent-alert: #FF0055;      /* Neon Red - Errors/Warnings */
+--accent-info: #00D4FF;       /* Cyan - Information */
+--accent-warning: #FFAA00;    /* Amber - Warnings */
+
+/* Border & Structure */
+--border-dim: rgba(255, 255, 255, 0.1);
+--border-bright: rgba(255, 255, 255, 0.2);
+--grid-line: #1A1A1A;         /* Grid overlay lines */
+
+/* Text Hierarchy */
+--text-primary: #FFFFFF;
+--text-secondary: rgba(255, 255, 255, 0.7);
+--text-tertiary: rgba(255, 255, 255, 0.5);
+--text-muted: rgba(255, 255, 255, 0.3);
+```
+
+#### Typography System
+
+```css
+/* Headers & UI Text */
+--font-display: 'Inter', 'Geist Sans', -apple-system, sans-serif;
+--font-weight-display: 600;
+--font-weight-heading: 500;
+
+/* Data & Code */
+--font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+--font-mono-weight: 400;
+--font-mono-weight-bold: 600;
+```
+
+#### Shape Language
+
+- **Border Radius:** Strictly `0px` or `rounded-sm` (2px max). No bubbly curves.
+- **Borders:** Every component MUST have a 1px border (`border-[1px]`).
+- **Spacing:** Tight, precise. Use `gap-2`, `gap-3`, `gap-4` for component spacing.
+- **Padding:** Minimal. Cards use `p-3` or `p-4`.
+
+---
+
+## 🔧 PHASE 2: THE PHYSICS ENGINE
+
+### Grid Background System
+
+**Tailwind Plugin Configuration:**
+
+```javascript
+// tailwind.config.js
+const plugin = require('tailwindcss/plugin');
+
+module.exports = {
+  theme: {
+    extend: {
+      colors: {
+        'console': '#050505',
+        'panel': '#0A0A0A',
+        'overlay': '#0F0F0F',
+        'success': '#00FF94',
+        'alert': '#FF0055',
+        'info': '#00D4FF',
+        'warning': '#FFAA00',
+      },
+    },
+  },
+  plugins: [
+    plugin(function({ addUtilities, addComponents }) {
+      // Grid Background Utility
+      addUtilities({
+        '.bg-grid': {
+          'background-image': `
+            linear-gradient(to right, rgba(26, 26, 26, 0.5) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(26, 26, 26, 0.5) 1px, transparent 1px)
+          `,
+          'background-size': '20px 20px',
+          'background-position': '0 0, 0 0',
+        },
+        '.bg-grid-dense': {
+          'background-image': `
+            linear-gradient(to right, rgba(26, 26, 26, 0.3) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(26, 26, 26, 0.3) 1px, transparent 1px)
+          `,
+          'background-size': '10px 10px',
+        },
+        '.bg-grid-sparse': {
+          'background-image': `
+            linear-gradient(to right, rgba(26, 26, 26, 0.4) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(26, 26, 26, 0.4) 1px, transparent 1px)
+          `,
+          'background-size': '40px 40px',
+        },
+      });
+
+      // Glow Utilities
+      addUtilities({
+        '.glow-success': {
+          'box-shadow': '0 0 20px rgba(0, 255, 148, 0.3), 0 0 40px rgba(0, 255, 148, 0.1)',
+        },
+        '.glow-alert': {
+          'box-shadow': '0 0 20px rgba(255, 0, 85, 0.3), 0 0 40px rgba(255, 0, 85, 0.1)',
+        },
+        '.glow-info': {
+          'box-shadow': '0 0 20px rgba(0, 212, 255, 0.3), 0 0 40px rgba(0, 212, 255, 0.1)',
+        },
+        '.glow-warning': {
+          'box-shadow': '0 0 20px rgba(255, 170, 0, 0.3), 0 0 40px rgba(255, 170, 0, 0.1)',
+        },
+        '.glow-subtle': {
+          'box-shadow': '0 0 10px rgba(255, 255, 255, 0.05)',
+        },
+      });
+
+      // Text Glow
+      addUtilities({
+        '.text-glow-success': {
+          'text-shadow': '0 0 10px rgba(0, 255, 148, 0.5), 0 0 20px rgba(0, 255, 148, 0.3)',
+        },
+        '.text-glow-alert': {
+          'text-shadow': '0 0 10px rgba(255, 0, 85, 0.5), 0 0 20px rgba(255, 0, 85, 0.3)',
+        },
+      });
+    }),
+  ],
+};
+```
+
+### Motion & Interaction Rules
+
+```css
+/* Transition Speeds */
+--transition-fast: 0.15s ease-out;      /* Hover states */
+--transition-base: 0.2s ease-out;       /* Standard transitions */
+--transition-slow: 0.4s ease-out;       /* Complex animations */
+
+/* No Bouncy Springs */
+/* Use: ease-out, linear, or cubic-bezier(0.4, 0, 0.2, 1) */
+/* Avoid: ease-in-out, bounce, elastic */
+```
+
+**Animation Principles:**
+- **Data Streams In:** Use `opacity` + `translateY` for "sliding down" effect.
+- **Count Up:** Use `@keyframes` or JavaScript for number counting.
+- **Glitch Reveal:** Optional text decode animation (random chars → final text).
+- **Sticky Headers:** Use `position: sticky` with `top-0` and `z-10`.
+
+---
+
+## 🧩 PHASE 3: COMPONENT SPECIFICATIONS
+
+### 1. CountUp Component
+
+**Purpose:** Animate numeric values from 0 (or start) to target value.
+
+**Props:**
+```typescript
+interface CountUpProps {
+  value: number;
+  duration?: number;        // Default: 2000ms
+  decimals?: number;        // Default: 0
+  prefix?: string;          // e.g., "$"
+  suffix?: string;          // e.g., "ms"
+  className?: string;
+}
+```
+
+**Implementation Pattern:**
+```tsx
+// React Example
+const CountUp = ({ value, duration = 2000, decimals = 0, prefix, suffix, className }) => {
+  const [displayValue, setDisplayValue] = useState(0);
+  
+  useEffect(() => {
+    let startTime: number;
+    const animate = (currentTime: number) => {
+      if (!startTime) startTime = currentTime;
+      const progress = Math.min((currentTime - startTime) / duration, 1);
+      const easeOut = 1 - Math.pow(1 - progress, 3); // Ease-out cubic
+      setDisplayValue(value * easeOut);
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+    requestAnimationFrame(animate);
+  }, [value, duration]);
+  
+  return (
+    <span className={`font-mono ${className}`}>
+      {prefix}
+      {displayValue.toFixed(decimals).toLocaleString()}
+      {suffix}
+    </span>
+  );
+};
+```
+
+**Styling:**
+- Font: `font-mono` (JetBrains Mono)
+- Size: `text-2xl` to `text-4xl` depending on hierarchy
+- Color: `text-success` or `text-primary`
+- Optional: `text-glow-success` for emphasis
+
+---
+
+### 2. LiveGraph Component
+
+**Purpose:** Real-time data visualization with streaming updates.
+
+**Props:**
+```typescript
+interface LiveGraphProps {
+  data: number[];           // Array of data points
+  width?: number;           // Default: 100%
+  height?: number;         // Default: 60px
+  color?: string;          // Default: --accent-success
+  strokeWidth?: number;    // Default: 2
+  showGrid?: boolean;      // Default: true
+  showPoints?: boolean;    // Default: false
+}
+```
+
+**Implementation Pattern:**
+```tsx
+// React + SVG Example
+const LiveGraph = ({ 
+  data, 
+  width = '100%', 
+  height = 60, 
+  color = '#00FF94',
+  strokeWidth = 2,
+  showGrid = true 
+}) => {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [path, setPath] = useState('');
+  
+  useEffect(() => {
+    if (!data.length || !svgRef.current) return;
+    
+    const svgWidth = svgRef.current.clientWidth;
+    const svgHeight = height;
+    const maxValue = Math.max(...data);
+    const minValue = Math.min(...data);
+    const range = maxValue - minValue || 1;
+    
+    const points = data.map((value, index) => {
+      const x = (index / (data.length - 1)) * svgWidth;
+      const y = svgHeight - ((value - minValue) / range) * svgHeight;
+      return { x, y };
+    });
+    
+    const pathData = points.map((p, i) => 
+      i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
+    ).join(' ');
+    
+    setPath(pathData);
+  }, [data, height]);
+  
+  return (
+    <div className="relative w-full bg-panel border border-border-dim rounded-sm overflow-hidden">
+      <svg 
+        ref={svgRef}
+        width={width} 
+        height={height}
+        className="block"
+        style={{ background: showGrid ? 'var(--grid-pattern)' : 'transparent' }}
+      >
+        {showGrid && (
+          <defs>
+            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(26, 26, 26, 0.5)" strokeWidth="1"/>
+            </pattern>
+          </defs>
+        )}
+        <rect width="100%" height="100%" fill={showGrid ? "url(#grid)" : "transparent"} />
+        <path
+          d={path}
+          fill="none"
+          stroke={color}
+          strokeWidth={strokeWidth}
+          className="transition-all duration-200"
+        />
+      </svg>
+    </div>
+  );
+};
+```
+
+**Styling:**
+- Container: `bg-panel border border-border-dim rounded-sm`
+- Animation: Path updates with `transition-all duration-200`
+- Grid overlay: Optional, subtle
+
+---
+
+### 3. MetricCard Component
+
+**Purpose:** Display a labeled metric with value and optional sparkline.
+
+**Props:**
+```typescript
+interface MetricCardProps {
+  label: string;
+  value: number | string;
+  unit?: string;
+  trend?: 'up' | 'down' | 'neutral';
+  sparkline?: number[];     // Optional mini graph
+  status?: 'success' | 'alert' | 'warning' | 'info';
+  onClick?: () => void;
+}
+```
+
+**Implementation Pattern:**
+```tsx
+const MetricCard = ({ 
+  label, 
+  value, 
+  unit, 
+  trend, 
+  sparkline,
+  status = 'success',
+  onClick 
+}) => {
+  const statusColors = {
+    success: 'border-success text-success',
+    alert: 'border-alert text-alert',
+    warning: 'border-warning text-warning',
+    info: 'border-info text-info',
+  };
+  
+  return (
+    <div
+      onClick={onClick}
+      className={`
+        bg-panel border border-border-dim rounded-sm p-4
+        transition-all duration-200 cursor-pointer
+        hover:border-bright hover:glow-subtle
+        ${onClick ? 'hover:scale-[1.02]' : ''}
+      `}
+    >
+      <div className="flex items-start justify-between mb-2">
+        <span className="text-sm text-secondary font-display">{label}</span>
+        {trend && (
+          <span className={`text-xs ${statusColors[status]}`}>
+            {trend === 'up' ? '↑' : trend === 'down' ? '↓' : '—'}
+          </span>
+        )}
+      </div>
+      
+      <div className={`text-2xl font-mono font-bold ${statusColors[status]}`}>
+        {typeof value === 'number' ? (
+          <CountUp value={value} suffix={unit} />
+        ) : (
+          <span>{value}{unit}</span>
+        )}
+      </div>
+      
+      {sparkline && sparkline.length > 0 && (
+        <div className="mt-3 h-12">
+          <LiveGraph data={sparkline} height={48} color={`var(--accent-${status})`} />
+        </div>
+      )}
+    </div>
+  );
+};
+```
+
+**Styling:**
+- Base: `bg-panel border border-border-dim rounded-sm p-4`
+- Hover: `hover:border-bright hover:glow-subtle`
+- Value: `text-2xl font-mono font-bold`
+- Label: `text-sm text-secondary font-display`
+
+---
+
+### 4. StreamTable Component
+
+**Purpose:** Data table with rows that "slide down" as new entries arrive.
+
+**Props:**
+```typescript
+interface StreamTableProps {
+  columns: { key: string; label: string; width?: string }[];
+  data: Record<string, any>[];
+  maxRows?: number;         // Default: 50
+  stickyHeader?: boolean;   // Default: true
+  highlightNew?: boolean;   // Default: true
+}
+```
+
+**Implementation Pattern:**
+```tsx
+const StreamTable = ({ 
+  columns, 
+  data, 
+  maxRows = 50,
+  stickyHeader = true,
+  highlightNew = true 
+}) => {
+  const [displayedData, setDisplayedData] = useState<typeof data>([]);
+  const [newRowKey, setNewRowKey] = useState<string | null>(null);
+  
+  useEffect(() => {
+    if (data.length === 0) return;
+    
+    const latest = data[data.length - 1];
+    const key = `${latest[columns[0].key]}-${Date.now()}`;
+    
+    setNewRowKey(key);
+    setDisplayedData(prev => {
+      const updated = [latest, ...prev].slice(0, maxRows);
+      return updated;
+    });
+    
+    // Remove highlight after animation
+    setTimeout(() => setNewRowKey(null), 1000);
+  }, [data, columns, maxRows]);
+  
+  return (
+    <div className="bg-panel border border-border-dim rounded-sm overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className={stickyHeader ? 'sticky top-0 z-10 bg-panel' : ''}>
+            <tr className="border-b border-border-dim">
+              {columns.map(col => (
+                <th
+                  key={col.key}
+                  className="px-4 py-2 text-left text-xs font-display font-semibold text-secondary uppercase tracking-wider"
+                  style={{ width: col.width }}
+                >
+                  {col.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {displayedData.map((row, index) => {
+              const rowKey = `${row[columns[0].key]}-${index}`;
+              const isNew = rowKey === newRowKey;
+              
+              return (
+                <tr
+                  key={rowKey}
+                  className={`
+                    border-b border-border-dim
+                    transition-all duration-200
+                    ${isNew && highlightNew ? 'bg-success/10 animate-slide-down' : ''}
+                    hover:bg-overlay
+                  `}
+                >
+                  {columns.map(col => (
+                    <td
+                      key={col.key}
+                      className="px-4 py-2 text-sm font-mono text-primary"
+                    >
+                      {row[col.key] ?? '—'}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+```
+
+**Styling:**
+- Container: `bg-panel border border-border-dim rounded-sm overflow-hidden`
+- Header: `sticky top-0 z-10 bg-panel` (if sticky)
+- Cells: `font-mono text-sm`
+- New Row: `bg-success/10` with slide-down animation
+
+**Animation:**
+```css
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-down {
+  animation: slide-down 0.3s ease-out;
+}
+```
+
+---
+
+### 5. StatusIndicator Component
+
+**Purpose:** Pulsing dot that indicates system status.
+
+**Props:**
+```typescript
+interface StatusIndicatorProps {
+  status: 'online' | 'offline' | 'warning' | 'error';
+  label?: string;
+  size?: 'sm' | 'md' | 'lg';  // Default: 'md'
+}
+```
+
+**Implementation Pattern:**
+```tsx
+const StatusIndicator = ({ 
+  status, 
+  label,
+  size = 'md' 
+}) => {
+  const statusConfig = {
+    online: { color: 'success', pulse: true },
+    offline: { color: 'text-muted', pulse: false },
+    warning: { color: 'warning', pulse: true },
+    error: { color: 'alert', pulse: true },
+  };
+  
+  const config = statusConfig[status];
+  const sizeClasses = {
+    sm: 'w-2 h-2',
+    md: 'w-3 h-3',
+    lg: 'w-4 h-4',
+  };
+  
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative">
+        <div
+          className={`
+            ${sizeClasses[size]} rounded-full
+            bg-${config.color}
+            ${config.pulse ? 'animate-pulse' : ''}
+          `}
+        />
+        {config.pulse && (
+          <div
+            className={`
+              absolute inset-0 ${sizeClasses[size]} rounded-full
+              bg-${config.color} opacity-50
+              animate-ping
+            `}
+          />
+        )}
+      </div>
+      {label && (
+        <span className="text-sm text-secondary font-display">{label}</span>
+      )}
+    </div>
+  );
+};
+```
+
+**Styling:**
+- Dot: `rounded-full` with `bg-success`, `bg-alert`, etc.
+- Pulse: `animate-pulse` for steady pulse
+- Ping: `animate-ping` for ripple effect (optional)
+
+---
+
+## 🎬 PHASE 4: ADVANCED FEATURES
+
+### Glitch Reveal Animation (Optional)
+
+**Purpose:** Text decodes from random characters to final text on load.
+
+**Implementation:**
+```tsx
+const GlitchReveal = ({ text, duration = 2000, className = '' }) => {
+  const [displayText, setDisplayText] = useState('');
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+  
+  useEffect(() => {
+    let iterations = 0;
+    const interval = setInterval(() => {
+      setDisplayText(
+        text
+          .split('')
+          .map((char, index) => {
+            if (index < iterations) return text[index];
+            return chars[Math.floor(Math.random() * chars.length)];
+          })
+          .join('')
+      );
+      
+      iterations += 1 / 3;
+      if (iterations >= text.length) {
+        clearInterval(interval);
+        setDisplayText(text);
+      }
+    }, duration / text.length);
+    
+    return () => clearInterval(interval);
+  }, [text, duration]);
+  
+  return (
+    <span className={`font-mono ${className}`}>
+      {displayText}
+    </span>
+  );
+};
+```
+
+---
+
+### Layout Patterns
+
+#### Dashboard Grid
+```tsx
+// Main Dashboard Container
+<div className="min-h-screen bg-console bg-grid text-primary">
+  {/* Header */}
+  <header className="sticky top-0 z-20 bg-panel/95 backdrop-blur-sm border-b border-border-dim">
+    <div className="container mx-auto px-4 py-3">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-display font-semibold">Mission Control</h1>
+        <StatusIndicator status="online" label="System Online" />
+      </div>
+    </div>
+  </header>
+  
+  {/* Main Content */}
+  <main className="container mx-auto px-4 py-6">
+    {/* Metric Grid */}
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <MetricCard label="Requests/sec" value={1250} unit="/s" status="success" />
+      <MetricCard label="Error Rate" value={0.02} unit="%" status="alert" />
+      <MetricCard label="Latency" value={45} unit="ms" status="success" />
+      <MetricCard label="Uptime" value={99.9} unit="%" status="success" />
+    </div>
+    
+    {/* Data Tables */}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <StreamTable
+        columns={[
+          { key: 'timestamp', label: 'Time' },
+          { key: 'event', label: 'Event' },
+          { key: 'status', label: 'Status' },
+        ]}
+        data={logData}
+      />
+    </div>
+  </main>
+</div>
+```
+
+---
+
+## 📋 USAGE CHECKLIST
+
+### Before Implementation:
+- [ ] Tailwind config includes grid background utilities
+- [ ] Glow utilities are defined
+- [ ] Color palette is added to Tailwind theme
+- [ ] Fonts (Inter, JetBrains Mono) are loaded
+
+### Component Implementation:
+- [ ] CountUp animates smoothly with ease-out
+- [ ] LiveGraph updates path without flicker
+- [ ] MetricCard has hover glow effect
+- [ ] StreamTable rows slide down on new data
+- [ ] StatusIndicator pulses correctly
+
+### Visual Verification:
+- [ ] Grid background is visible but subtle
+- [ ] All borders are 1px and visible
+- [ ] No border-radius exceeds 2px
+- [ ] Typography hierarchy is clear
+- [ ] Colors match palette exactly
+
+---
+
+## 🚀 QUICK START
+
+1. **Install Dependencies:**
+   ```bash
+   npm install tailwindcss @tailwindcss/typography
+   ```
+
+2. **Configure Tailwind:**
+   - Add the plugin code from "Grid Background System" section
+   - Add color palette to theme.extend.colors
+
+3. **Load Fonts:**
+   ```html
+   <link rel="preconnect" href="https://fonts.googleapis.com">
+   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+   ```
+
+4. **Apply Base Styles:**
+   ```css
+   body {
+     @apply bg-console text-primary font-display;
+   }
+   ```
+
+---
+
+**Last Updated:** 2024
+**Version:** 1.0.0
+**Status:** Source of Truth

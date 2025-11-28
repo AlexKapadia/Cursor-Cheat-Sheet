@@ -1,0 +1,1195 @@
+# Fintech Ledger Engine: Source of Truth Documentation
+
+**Version:** 1.0  
+**Last Updated:** 2024  
+**Author:** Principal Fintech Architect
+
+---
+
+## Table of Contents
+
+1. [Core Architecture Principles](#core-architecture-principles)
+2. [Database Schema (PostgreSQL)](#database-schema-postgresql)
+3. [Transaction Engine](#transaction-engine)
+4. [Idempotency & Request Deduplication](#idempotency--request-deduplication)
+5. [Frontend UX & Statement Views](#frontend-ux--statement-views)
+6. [Critical Best Practices](#critical-best-practices)
+7. [Race Condition Defense](#race-condition-defense)
+8. [Example Transactions](#example-transactions)
+
+---
+
+## Core Architecture Principles
+
+### ⚠️ THE IMMUTABILITY RULE
+
+**Never Update Balances Directly**
+
+- You **DO NOT** have a `balance` column that you edit
+- Balances are **calculated** by summing ledger entries
+- The ledger is the **single source of truth**
+- This ensures complete auditability and prevents data corruption
+
+### Double-Entry Bookkeeping
+
+Every financial transaction must have **at least two entries**:
+
+- One account is **Debited**
+- One account is **Credited**
+- **Fundamental Constraint:** `SUM(Debits) == SUM(Credits)` for every transaction
+- This ensures the accounting equation always balances: `Assets = Liabilities + Equity`
+
+### ACID Compliance
+
+All financial movements **MUST** happen inside a strict Database Transaction:
+
+- **Atomicity:** All entries succeed or all fail
+- **Consistency:** Double-entry rules are enforced
+- **Isolation:** Concurrent transactions don't interfere
+- **Durability:** Once committed, changes are permanent
+
+---
+
+## Database Schema (PostgreSQL)
+
+### 1. Core Tables
+
+#### `accounts`
+
+Stores all accounts in the system (user wallets, clearing accounts, revenue accounts, etc.)
+
+```sql
+CREATE TABLE accounts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('asset', 'liability', 'equity', 'revenue', 'expense')),
+    currency VARCHAR(3) NOT NULL, -- ISO 4217 (USD, EUR, etc.)
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    
+    -- Indexes
+    INDEX idx_accounts_user_id (user_id),
+    INDEX idx_accounts_type (type),
+    INDEX idx_accounts_currency (currency)
+);
+
+-- Example accounts:
+-- "User A Wallet" (type: 'liability' - we owe the user money)
+-- "Stripe Clearing Account" (type: 'asset' - money we hold with Stripe)
+-- "Revenue - Transaction Fees" (type: 'revenue')
+-- "Operating Expenses" (type: 'expense')
+```
+
+#### `transactions`
+
+The event record - represents a single business transaction (transfer, payment, refund, etc.)
+
+```sql
+CREATE TABLE transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    reference_id VARCHAR(255) UNIQUE, -- External ID (payment processor, etc.)
+    description TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'posted', 'voided')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    posted_at TIMESTAMPTZ,
+    voided_at TIMESTAMPTZ,
+    voided_by UUID REFERENCES users(id),
+    metadata JSONB, -- Additional context (payment method, IP address, etc.)
+    
+    -- Indexes
+    INDEX idx_transactions_reference_id (reference_id),
+    INDEX idx_transactions_status (status),
+    INDEX idx_transactions_created_at (created_at),
+    INDEX idx_transactions_posted_at (posted_at)
+);
+```
+
+#### `ledger_entries`
+
+The actual movement of money - every debit and credit entry
+
+```sql
+CREATE TABLE ledger_entries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+    amount BIGINT NOT NULL CHECK (amount > 0), -- Stored in lowest denomination (cents, satoshis, etc.)
+    direction VARCHAR(10) NOT NULL CHECK (direction IN ('debit', 'credit')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    -- Indexes
+    INDEX idx_ledger_entries_transaction_id (transaction_id),
+    INDEX idx_ledger_entries_account_id (account_id),
+    INDEX idx_ledger_entries_created_at (created_at),
+    INDEX idx_ledger_entries_account_created (account_id, created_at)
+);
+
+-- Critical Constraint: Double-Entry Validation
+-- For every transaction_id:
+-- SUM(amount WHERE direction = 'credit') - SUM(amount WHERE direction = 'debit') = 0
+```
+
+**Double-Entry Validation Function:**
+
+```sql
+CREATE OR REPLACE FUNCTION validate_double_entry(p_transaction_id UUID)
+RETURNS BOOLEAN AS $$
+DECLARE
+    v_balance BIGINT;
+BEGIN
+    SELECT 
+        COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount ELSE -amount END), 0)
+    INTO v_balance
+    FROM ledger_entries
+    WHERE transaction_id = p_transaction_id;
+    
+    RETURN v_balance = 0;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Add constraint trigger
+CREATE OR REPLACE FUNCTION check_double_entry()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NOT validate_double_entry(NEW.transaction_id) THEN
+        RAISE EXCEPTION 'Double-entry violation: Debits must equal Credits for transaction %', NEW.transaction_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_check_double_entry
+AFTER INSERT OR UPDATE ON ledger_entries
+FOR EACH ROW
+EXECUTE FUNCTION check_double_entry();
+```
+
+### 2. The Snapshot Optimization
+
+**Problem:** Calculating `SUM()` on millions of ledger entries is slow for real-time balance queries.
+
+**Solution:** `balance_snapshots` table - periodic snapshots of account balances.
+
+```sql
+CREATE TABLE balance_snapshots (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    balance BIGINT NOT NULL, -- Balance at snapshot time (in lowest denomination)
+    snapshot_date DATE NOT NULL, -- Date of snapshot (typically midnight)
+    calculated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(account_id, snapshot_date),
+    INDEX idx_balance_snapshots_account_date (account_id, snapshot_date DESC)
+);
+```
+
+**Balance Calculation Logic:**
+
+```
+Current Balance = Snapshot Balance + Sum(Entries since Snapshot)
+```
+
+**Balance Query Function:**
+
+```sql
+CREATE OR REPLACE FUNCTION get_account_balance(
+    p_account_id UUID,
+    p_as_of TIMESTAMPTZ DEFAULT NOW()
+)
+RETURNS BIGINT AS $$
+DECLARE
+    v_snapshot_balance BIGINT;
+    v_snapshot_date DATE;
+    v_entries_sum BIGINT;
+BEGIN
+    -- Get most recent snapshot before or on the target date
+    SELECT balance, snapshot_date
+    INTO v_snapshot_balance, v_snapshot_date
+    FROM balance_snapshots
+    WHERE account_id = p_account_id
+      AND snapshot_date <= p_as_of::DATE
+    ORDER BY snapshot_date DESC
+    LIMIT 1;
+    
+    -- If no snapshot exists, start from 0
+    v_snapshot_balance := COALESCE(v_snapshot_balance, 0);
+    v_snapshot_date := COALESCE(v_snapshot_date, '1970-01-01'::DATE);
+    
+    -- Sum all entries since snapshot
+    SELECT COALESCE(
+        SUM(CASE WHEN direction = 'credit' THEN amount ELSE -amount END),
+        0
+    )
+    INTO v_entries_sum
+    FROM ledger_entries
+    WHERE account_id = p_account_id
+      AND created_at > (v_snapshot_date || ' 00:00:00')::TIMESTAMPTZ
+      AND created_at <= p_as_of;
+    
+    RETURN v_snapshot_balance + v_entries_sum;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+**Snapshot Generation Job (Run Daily at Midnight):**
+
+```sql
+CREATE OR REPLACE FUNCTION generate_balance_snapshots(p_snapshot_date DATE DEFAULT CURRENT_DATE)
+RETURNS VOID AS $$
+DECLARE
+    v_account RECORD;
+    v_balance BIGINT;
+BEGIN
+    FOR v_account IN SELECT id FROM accounts WHERE is_active = true
+    LOOP
+        -- Calculate balance as of end of snapshot date
+        v_balance := get_account_balance(
+            v_account.id,
+            (p_snapshot_date || ' 23:59:59')::TIMESTAMPTZ
+        );
+        
+        -- Insert or update snapshot
+        INSERT INTO balance_snapshots (account_id, balance, snapshot_date)
+        VALUES (v_account.id, v_balance, p_snapshot_date)
+        ON CONFLICT (account_id, snapshot_date)
+        DO UPDATE SET balance = v_balance, calculated_at = NOW();
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+---
+
+## Transaction Engine
+
+### 1. The Transfer Function
+
+**PostgreSQL Stored Procedure: `transfer_funds`**
+
+```sql
+CREATE OR REPLACE FUNCTION transfer_funds(
+    p_from_account_id UUID,
+    p_to_account_id UUID,
+    p_amount BIGINT,
+    p_currency VARCHAR(3),
+    p_reference_id VARCHAR(255) DEFAULT NULL,
+    p_description TEXT DEFAULT NULL,
+    p_idempotency_key UUID DEFAULT NULL
+)
+RETURNS UUID AS $$
+DECLARE
+    v_transaction_id UUID;
+    v_from_balance BIGINT;
+    v_from_account_type VARCHAR(20);
+    v_to_account_type VARCHAR(20);
+    v_from_currency VARCHAR(3);
+    v_to_currency VARCHAR(3);
+BEGIN
+    -- Validate inputs
+    IF p_amount <= 0 THEN
+        RAISE EXCEPTION 'Amount must be positive';
+    END IF;
+    
+    IF p_from_account_id = p_to_account_id THEN
+        RAISE EXCEPTION 'Cannot transfer to the same account';
+    END IF;
+    
+    -- Get account details (with row-level locking)
+    SELECT type, currency INTO v_from_account_type, v_from_currency
+    FROM accounts
+    WHERE id = p_from_account_id AND is_active = true
+    FOR UPDATE;
+    
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'From account not found or inactive';
+    END IF;
+    
+    SELECT type, currency INTO v_to_account_type, v_to_currency
+    FROM accounts
+    WHERE id = p_to_account_id AND is_active = true
+    FOR UPDATE;
+    
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'To account not found or inactive';
+    END IF;
+    
+    -- Currency validation
+    IF v_from_currency != p_currency OR v_to_currency != p_currency THEN
+        RAISE EXCEPTION 'Currency mismatch';
+    END IF;
+    
+    -- Check balance (using snapshot optimization)
+    v_from_balance := get_account_balance(p_from_account_id);
+    
+    -- For asset accounts, check if we have enough
+    -- For liability accounts, negative balance means we owe money (which is allowed)
+    IF v_from_account_type = 'asset' AND v_from_balance < p_amount THEN
+        RAISE EXCEPTION 'Insufficient funds. Available: %, Requested: %', 
+            v_from_balance, p_amount;
+    END IF;
+    
+    -- Create transaction record
+    INSERT INTO transactions (
+        reference_id,
+        description,
+        status,
+        metadata
+    ) VALUES (
+        p_reference_id,
+        COALESCE(p_description, 'Transfer'),
+        'posted',
+        jsonb_build_object('idempotency_key', p_idempotency_key)
+    )
+    RETURNING id INTO v_transaction_id;
+    
+    -- Create ledger entries (Double-Entry)
+    -- Debit: Money leaves from_account
+    INSERT INTO ledger_entries (
+        transaction_id,
+        account_id,
+        amount,
+        direction
+    ) VALUES (
+        v_transaction_id,
+        p_from_account_id,
+        p_amount,
+        'debit'
+    );
+    
+    -- Credit: Money enters to_account
+    INSERT INTO ledger_entries (
+        transaction_id,
+        account_id,
+        amount,
+        direction
+    ) VALUES (
+        v_transaction_id,
+        p_to_account_id,
+        p_amount,
+        'credit'
+    );
+    
+    -- Update transaction posted_at
+    UPDATE transactions
+    SET posted_at = NOW()
+    WHERE id = v_transaction_id;
+    
+    RETURN v_transaction_id;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+**Usage Example:**
+
+```sql
+-- Transfer $50.00 (5000 cents) from User A's wallet to User B's wallet
+SELECT transfer_funds(
+    'user-a-wallet-uuid'::UUID,
+    'user-b-wallet-uuid'::UUID,
+    5000, -- $50.00 in cents
+    'USD',
+    'payment-12345',
+    'Payment for services',
+    'idempotency-key-uuid'::UUID
+);
+```
+
+### 2. Account Type Rules
+
+**Debit/Credit Rules by Account Type:**
+
+| Account Type | Debit Effect | Credit Effect |
+|-------------|-------------|---------------|
+| **Asset** | Increase | Decrease |
+| **Liability** | Decrease | Increase |
+| **Equity** | Decrease | Increase |
+| **Revenue** | Decrease | Increase |
+| **Expense** | Increase | Decrease |
+
+**Example: User Wallet (Liability)**
+- When user receives money: **Credit** the wallet (we owe them more)
+- When user sends money: **Debit** the wallet (we owe them less)
+
+**Example: Stripe Clearing (Asset)**
+- When Stripe deposits money: **Debit** the account (we have more)
+- When we pay out: **Credit** the account (we have less)
+
+---
+
+## Idempotency & Request Deduplication
+
+### The Problem
+
+If a network request fails after the transaction is processed but before the response is sent, the client may retry, causing duplicate transactions.
+
+### The Solution: Idempotency Keys
+
+**Rule:** Every API request that moves money **MUST** carry an `Idempotency-Key` header.
+
+### Implementation Pattern
+
+**1. Middleware/API Layer (Node.js/TypeScript Example):**
+
+```typescript
+import { Redis } from 'ioredis';
+
+const redis = new Redis(process.env.REDIS_URL);
+
+interface IdempotencyResult {
+    transactionId: string;
+    status: 'posted' | 'pending';
+    createdAt: Date;
+}
+
+async function checkIdempotency(
+    idempotencyKey: string
+): Promise<IdempotencyResult | null> {
+    const key = `processed_request:${idempotencyKey}`;
+    const cached = await redis.get(key);
+    
+    if (cached) {
+        return JSON.parse(cached);
+    }
+    
+    return null;
+}
+
+async function storeIdempotencyResult(
+    idempotencyKey: string,
+    result: IdempotencyResult,
+    ttlSeconds: number = 86400 // 24 hours
+): Promise<void> {
+    const key = `processed_request:${idempotencyKey}`;
+    await redis.setex(key, ttlSeconds, JSON.stringify(result));
+}
+
+// API Handler
+async function transferFundsHandler(req: Request, res: Response) {
+    const idempotencyKey = req.headers['idempotency-key'] as string;
+    
+    if (!idempotencyKey) {
+        return res.status(400).json({ error: 'Idempotency-Key header required' });
+    }
+    
+    // Check if we've seen this request before
+    const cachedResult = await checkIdempotency(idempotencyKey);
+    if (cachedResult) {
+        return res.status(200).json({
+            transactionId: cachedResult.transactionId,
+            status: cachedResult.status,
+            message: 'Duplicate request - returning previous result'
+        });
+    }
+    
+    // Process the transaction
+    try {
+        const transactionId = await transferFunds(
+            req.body.fromAccountId,
+            req.body.toAccountId,
+            req.body.amount,
+            req.body.currency,
+            req.body.referenceId,
+            req.body.description,
+            idempotencyKey
+        );
+        
+        const result: IdempotencyResult = {
+            transactionId,
+            status: 'posted',
+            createdAt: new Date()
+        };
+        
+        // Store result for future duplicate requests
+        await storeIdempotencyResult(idempotencyKey, result);
+        
+        return res.status(201).json(result);
+    } catch (error) {
+        return res.status(400).json({ error: error.message });
+    }
+}
+```
+
+**2. Database-Level Idempotency (Alternative/Additional):**
+
+```sql
+CREATE TABLE idempotency_keys (
+    idempotency_key UUID PRIMARY KEY,
+    transaction_id UUID NOT NULL REFERENCES transactions(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '24 hours'),
+    
+    INDEX idx_idempotency_expires (expires_at)
+);
+
+-- Cleanup expired keys (run periodically)
+CREATE OR REPLACE FUNCTION cleanup_expired_idempotency_keys()
+RETURNS VOID AS $$
+BEGIN
+    DELETE FROM idempotency_keys
+    WHERE expires_at < NOW();
+END;
+$$ LANGUAGE plpgsql;
+```
+
+**3. Enhanced Transfer Function with Idempotency:**
+
+```sql
+CREATE OR REPLACE FUNCTION transfer_funds(
+    -- ... previous parameters ...
+    p_idempotency_key UUID DEFAULT NULL
+)
+RETURNS UUID AS $$
+DECLARE
+    v_transaction_id UUID;
+    v_existing_transaction_id UUID;
+BEGIN
+    -- Check idempotency key if provided
+    IF p_idempotency_key IS NOT NULL THEN
+        SELECT transaction_id INTO v_existing_transaction_id
+        FROM idempotency_keys
+        WHERE idempotency_key = p_idempotency_key
+          AND expires_at > NOW();
+        
+        IF v_existing_transaction_id IS NOT NULL THEN
+            RETURN v_existing_transaction_id;
+        END IF;
+    END IF;
+    
+    -- ... rest of transfer logic ...
+    
+    -- Store idempotency key if provided
+    IF p_idempotency_key IS NOT NULL THEN
+        INSERT INTO idempotency_keys (idempotency_key, transaction_id)
+        VALUES (p_idempotency_key, v_transaction_id)
+        ON CONFLICT (idempotency_key) DO NOTHING;
+    END IF;
+    
+    RETURN v_transaction_id;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+---
+
+## Frontend UX & Statement Views
+
+### The "Statement" View
+
+Users should **never** see raw accounting entries (Debits/Credits). Instead, show human-readable transaction descriptions.
+
+### Transaction Display Logic
+
+**For User Wallet Accounts (Liability):**
+
+```typescript
+interface TransactionDisplay {
+    id: string;
+    description: string;
+    amount: string; // Formatted: "+$50.00" or "-$50.00"
+    date: Date;
+    type: 'sent' | 'received' | 'fee' | 'refund';
+}
+
+function formatTransactionForUser(
+    transaction: Transaction,
+    userAccountId: string
+): TransactionDisplay {
+    const userEntry = transaction.ledgerEntries.find(
+        entry => entry.accountId === userAccountId
+    );
+    
+    if (!userEntry) {
+        // Transaction doesn't involve user's account
+        return null;
+    }
+    
+    const isDebit = userEntry.direction === 'debit';
+    const amount = formatCurrency(userEntry.amount, transaction.currency);
+    
+    return {
+        id: transaction.id,
+        description: transaction.description,
+        amount: isDebit ? `-${amount}` : `+${amount}`,
+        date: transaction.createdAt,
+        type: isDebit ? 'sent' : 'received'
+    };
+}
+```
+
+**SQL Query for User Statement:**
+
+```sql
+CREATE OR REPLACE FUNCTION get_user_statement(
+    p_user_account_id UUID,
+    p_limit INTEGER DEFAULT 50,
+    p_offset INTEGER DEFAULT 0
+)
+RETURNS TABLE (
+    transaction_id UUID,
+    description TEXT,
+    amount_display TEXT,
+    amount_cents BIGINT,
+    direction VARCHAR(10),
+    created_at TIMESTAMPTZ,
+    counterparty_account_name VARCHAR(255)
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        t.id AS transaction_id,
+        t.description,
+        CASE 
+            WHEN le.direction = 'debit' THEN '-' || format_currency(le.amount, a.currency)
+            ELSE '+' || format_currency(le.amount, a.currency)
+        END AS amount_display,
+        le.amount AS amount_cents,
+        le.direction,
+        t.created_at,
+        (
+            SELECT a2.name
+            FROM ledger_entries le2
+            JOIN accounts a2 ON le2.account_id = a2.id
+            WHERE le2.transaction_id = t.id
+              AND le2.account_id != p_user_account_id
+            LIMIT 1
+        ) AS counterparty_account_name
+    FROM ledger_entries le
+    JOIN transactions t ON le.transaction_id = t.id
+    JOIN accounts a ON le.account_id = a.id
+    WHERE le.account_id = p_user_account_id
+      AND t.status = 'posted'
+    ORDER BY t.created_at DESC
+    LIMIT p_limit
+    OFFSET p_offset;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+---
+
+## Critical Best Practices
+
+### 1. BigInt Handling: Never Use JavaScript `Number` for Money
+
+**⚠️ CRITICAL WARNING:**
+
+JavaScript's `Number` type uses IEEE 754 floating-point representation, which **cannot accurately represent** all decimal values. This leads to rounding errors.
+
+**❌ WRONG:**
+
+```typescript
+const amount = 0.1 + 0.2; // Returns 0.30000000000000004
+const price = 19.99 * 100; // May not be exactly 1999
+```
+
+**✅ CORRECT:**
+
+Use a dedicated money library:
+
+**Option 1: dinero.js**
+
+```typescript
+import Dinero from 'dinero.js';
+
+// Store amounts as integers (cents)
+const amount = Dinero({ amount: 5000, currency: 'USD' }); // $50.00
+
+// Operations
+const total = amount.add(Dinero({ amount: 2500, currency: 'USD' }));
+const formatted = total.toFormat('$0,0.00'); // "$75.00"
+
+// Convert to database value
+const cents = total.getAmount(); // 7500 (for BIGINT storage)
+```
+
+**Option 2: currency.js**
+
+```typescript
+import currency from 'currency.js';
+
+const amount = currency(50.00, { precision: 2 });
+const total = amount.add(25.00);
+const formatted = total.format(); // "$75.00"
+const cents = total.intValue; // 7500
+```
+
+**Database Storage Pattern:**
+
+```typescript
+// Always store as BIGINT (lowest denomination)
+interface Money {
+    amount: bigint; // In cents/smallest unit
+    currency: string; // ISO 4217
+}
+
+function toDatabaseAmount(dollars: number): bigint {
+    return BigInt(Math.round(dollars * 100));
+}
+
+function fromDatabaseAmount(cents: bigint): number {
+    return Number(cents) / 100;
+}
+```
+
+### 2. The "Void" Pattern: Never Delete Transactions
+
+**Rule:** You **NEVER** delete a transaction from the ledger. To reverse a transaction, create a new transaction with swapped Debits/Credits (a "Contra-Entry").
+
+**Void Transaction Function:**
+
+```sql
+CREATE OR REPLACE FUNCTION void_transaction(
+    p_transaction_id UUID,
+    p_voided_by UUID,
+    p_reason TEXT DEFAULT NULL
+)
+RETURNS UUID AS $$
+DECLARE
+    v_void_transaction_id UUID;
+    v_entry RECORD;
+BEGIN
+    -- Mark original transaction as voided
+    UPDATE transactions
+    SET 
+        status = 'voided',
+        voided_at = NOW(),
+        voided_by = p_voided_by
+    WHERE id = p_transaction_id
+      AND status = 'posted';
+    
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Transaction not found or cannot be voided';
+    END IF;
+    
+    -- Create void transaction
+    INSERT INTO transactions (
+        reference_id,
+        description,
+        status,
+        metadata
+    ) VALUES (
+        'void-' || p_transaction_id::TEXT,
+        COALESCE(p_reason, 'Void of transaction ' || p_transaction_id::TEXT),
+        'posted',
+        jsonb_build_object('voided_transaction_id', p_transaction_id)
+    )
+    RETURNING id INTO v_void_transaction_id;
+    
+    -- Create contra-entries (swap debit/credit)
+    FOR v_entry IN 
+        SELECT account_id, amount, direction
+        FROM ledger_entries
+        WHERE transaction_id = p_transaction_id
+    LOOP
+        INSERT INTO ledger_entries (
+            transaction_id,
+            account_id,
+            amount,
+            direction
+        ) VALUES (
+            v_void_transaction_id,
+            v_entry.account_id,
+            v_entry.amount,
+            CASE WHEN v_entry.direction = 'debit' THEN 'credit' ELSE 'debit' END
+        );
+    END LOOP;
+    
+    RETURN v_void_transaction_id;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+**Example:**
+
+```
+Original Transaction:
+  Debit: User A Wallet $100
+  Credit: User B Wallet $100
+
+Void Transaction:
+  Debit: User B Wallet $100  (swapped)
+  Credit: User A Wallet $100 (swapped)
+
+Net Effect: $0 movement (transaction is reversed)
+```
+
+### 3. Audit Trail Requirements
+
+**Every transaction must be auditable:**
+
+- Who created it (`created_by`)
+- When it was created (`created_at`)
+- If voided, who voided it (`voided_by`, `voided_at`)
+- All metadata preserved in `transactions.metadata` JSONB field
+
+**Enhanced Transactions Table:**
+
+```sql
+ALTER TABLE transactions
+ADD COLUMN created_by UUID REFERENCES users(id),
+ADD COLUMN ip_address INET,
+ADD COLUMN user_agent TEXT;
+```
+
+---
+
+## Race Condition Defense
+
+### The Problem
+
+Concurrent requests can cause race conditions:
+
+1. **Balance Check Race:** Two transfers check balance simultaneously, both see sufficient funds, both proceed, causing overdraft
+2. **Double-Spend:** Same idempotency key processed by multiple servers simultaneously
+
+### Solutions
+
+#### 1. Database Row-Level Locking
+
+**Use `SELECT ... FOR UPDATE` to lock accounts during balance checks:**
+
+```sql
+-- In transfer_funds function (already shown above)
+SELECT type, currency INTO v_from_account_type, v_from_currency
+FROM accounts
+WHERE id = p_from_account_id AND is_active = true
+FOR UPDATE; -- This locks the row until transaction commits
+```
+
+#### 2. Pessimistic Locking with Redis
+
+**For distributed systems, use Redis distributed locks:**
+
+```typescript
+import Redlock from 'redlock';
+import { Redis } from 'ioredis';
+
+const redis = new Redis(process.env.REDIS_URL);
+const redlock = new Redlock([redis], {
+    retryCount: 3,
+    retryDelay: 200
+});
+
+async function transferWithLock(
+    fromAccountId: string,
+    toAccountId: string,
+    amount: bigint
+): Promise<string> {
+    // Lock both accounts (order by ID to prevent deadlock)
+    const lockKeys = [fromAccountId, toAccountId].sort();
+    const lockKey = `account_lock:${lockKeys.join(':')}`;
+    
+    const lock = await redlock.acquire([lockKey], 5000); // 5 second TTL
+    
+    try {
+        // Perform transfer
+        return await transferFunds(fromAccountId, toAccountId, amount);
+    } finally {
+        await lock.release();
+    }
+}
+```
+
+#### 3. Optimistic Locking with Version Numbers
+
+**Add version column to accounts:**
+
+```sql
+ALTER TABLE accounts
+ADD COLUMN version INTEGER NOT NULL DEFAULT 0;
+
+-- Update version on every change
+CREATE OR REPLACE FUNCTION transfer_funds(...)
+-- ... in function ...
+UPDATE accounts
+SET version = version + 1, updated_at = NOW()
+WHERE id IN (p_from_account_id, p_to_account_id);
+```
+
+#### 4. Database Constraints
+
+**Use database-level constraints to prevent invalid states:**
+
+```sql
+-- Prevent negative balances for asset accounts (if business rule requires)
+CREATE OR REPLACE FUNCTION check_asset_balance()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_account_type VARCHAR(20);
+    v_balance BIGINT;
+BEGIN
+    SELECT type INTO v_account_type
+    FROM accounts
+    WHERE id = NEW.account_id;
+    
+    IF v_account_type = 'asset' THEN
+        v_balance := get_account_balance(NEW.account_id);
+        IF v_balance < 0 THEN
+            RAISE EXCEPTION 'Asset account cannot have negative balance';
+        END IF;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Note: This trigger runs AFTER insert, so it checks the new balance
+-- For real-time prevention, use a CHECK constraint or application-level validation
+```
+
+#### 5. Idempotency Key Atomicity
+
+**Use Redis SETNX (SET if Not eXists) for atomic idempotency checks:**
+
+```typescript
+async function processWithIdempotency(
+    idempotencyKey: string,
+    processor: () => Promise<string>
+): Promise<string> {
+    const lockKey = `idempotency:${idempotencyKey}`;
+    
+    // Try to acquire lock (atomic operation)
+    const acquired = await redis.set(
+        lockKey,
+        'processing',
+        'EX', 60, // 60 second expiry
+        'NX' // Only set if not exists
+    );
+    
+    if (!acquired) {
+        // Another process is handling this, wait and check result
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const result = await redis.get(`idempotency_result:${idempotencyKey}`);
+        if (result) {
+            return JSON.parse(result).transactionId;
+        }
+        throw new Error('Idempotency key collision - retry later');
+    }
+    
+    try {
+        const transactionId = await processor();
+        
+        // Store result
+        await redis.setex(
+            `idempotency_result:${idempotencyKey}`,
+            86400, // 24 hours
+            JSON.stringify({ transactionId, status: 'posted' })
+        );
+        
+        return transactionId;
+    } finally {
+        await redis.del(lockKey);
+    }
+}
+```
+
+### Summary: Race Condition Defense Checklist
+
+✅ **Always use database transactions** for multi-step operations  
+✅ **Lock accounts with `FOR UPDATE`** before balance checks  
+✅ **Use distributed locks (Redis)** in multi-server environments  
+✅ **Implement idempotency keys** with atomic operations  
+✅ **Use database constraints** to enforce business rules  
+✅ **Order locks consistently** (by ID) to prevent deadlocks  
+✅ **Set reasonable lock timeouts** to prevent indefinite blocking  
+
+---
+
+## Example Transactions
+
+### Example 1: User-to-User Transfer
+
+**Scenario:** User A sends $50.00 to User B
+
+```sql
+-- Accounts
+-- User A Wallet (Liability): uuid-a
+-- User B Wallet (Liability): uuid-b
+
+SELECT transfer_funds(
+    'uuid-a'::UUID, -- From: User A Wallet
+    'uuid-b'::UUID, -- To: User B Wallet
+    5000,           -- $50.00 in cents
+    'USD',
+    'transfer-123',
+    'Payment from User A to User B',
+    'idempotency-key-abc123'::UUID
+);
+
+-- Resulting Ledger Entries:
+-- Entry 1: Debit  User A Wallet  $50.00 (we owe User A less)
+-- Entry 2: Credit User B Wallet  $50.00 (we owe User B more)
+```
+
+### Example 2: Payment Processing (Stripe)
+
+**Scenario:** User pays $100.00 via Stripe, $2.00 fee
+
+```sql
+-- Accounts
+-- User Wallet (Liability): uuid-user
+-- Stripe Clearing (Asset): uuid-stripe
+-- Revenue - Fees (Revenue): uuid-fees
+
+BEGIN;
+
+-- Main payment: Stripe -> User Wallet
+SELECT transfer_funds(
+    'uuid-stripe'::UUID,
+    'uuid-user'::UUID,
+    10000, -- $100.00
+    'USD',
+    'stripe-payment-xyz',
+    'Payment received via Stripe'
+);
+
+-- Fee deduction: User Wallet -> Revenue
+SELECT transfer_funds(
+    'uuid-user'::UUID,
+    'uuid-fees'::UUID,
+    200, -- $2.00
+    'USD',
+    'stripe-fee-xyz',
+    'Transaction fee'
+);
+
+COMMIT;
+
+-- Resulting Ledger Entries:
+-- Entry 1: Debit  Stripe Clearing    $100.00
+-- Entry 2: Credit User Wallet       $100.00
+-- Entry 3: Debit  User Wallet       $2.00
+-- Entry 4: Credit Revenue - Fees    $2.00
+```
+
+### Example 3: Refund (Void Pattern)
+
+**Scenario:** Refund $50.00 to User A
+
+```sql
+-- Original transaction ID: original-tx-uuid
+
+SELECT void_transaction(
+    'original-tx-uuid'::UUID,
+    'admin-user-uuid'::UUID,
+    'Customer requested refund'
+);
+
+-- Creates contra-entries that reverse the original transaction
+```
+
+---
+
+## Testing & Validation
+
+### Unit Tests
+
+**Test Double-Entry Constraint:**
+
+```sql
+-- This should fail
+BEGIN;
+INSERT INTO transactions (description, status) VALUES ('Test', 'posted') RETURNING id;
+INSERT INTO ledger_entries (transaction_id, account_id, amount, direction)
+VALUES (lastval(), 'account-1', 1000, 'debit');
+-- Missing credit entry - should trigger constraint violation
+COMMIT;
+```
+
+**Test Balance Calculation:**
+
+```sql
+-- Verify balance calculation
+SELECT get_account_balance('account-uuid'::UUID);
+
+-- Should match:
+SELECT 
+    COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount ELSE -amount END), 0)
+FROM ledger_entries
+WHERE account_id = 'account-uuid'::UUID;
+```
+
+### Integration Tests
+
+**Test Concurrent Transfers:**
+
+```typescript
+// Simulate 10 concurrent transfers
+const promises = Array.from({ length: 10 }, () =>
+    transferFunds(fromAccount, toAccount, 1000, 'USD', null, null, randomUUID())
+);
+
+const results = await Promise.allSettled(promises);
+// Verify all succeeded and balances are correct
+```
+
+---
+
+## Performance Considerations
+
+### Indexing Strategy
+
+**Critical Indexes:**
+
+```sql
+-- Fast balance queries
+CREATE INDEX idx_ledger_account_created ON ledger_entries(account_id, created_at DESC);
+
+-- Fast transaction lookups
+CREATE INDEX idx_ledger_transaction ON ledger_entries(transaction_id);
+
+-- Fast snapshot queries
+CREATE INDEX idx_snapshot_account_date ON balance_snapshots(account_id, snapshot_date DESC);
+```
+
+### Query Optimization
+
+**Use Materialized Views for Complex Reports:**
+
+```sql
+CREATE MATERIALIZED VIEW daily_account_summary AS
+SELECT 
+    account_id,
+    DATE(created_at) AS transaction_date,
+    SUM(CASE WHEN direction = 'credit' THEN amount ELSE -amount END) AS net_change
+FROM ledger_entries
+GROUP BY account_id, DATE(created_at);
+
+-- Refresh periodically
+REFRESH MATERIALIZED VIEW daily_account_summary;
+```
+
+---
+
+## Security Considerations
+
+1. **Never expose internal account IDs** to end users
+2. **Validate all inputs** (amounts, account IDs, currencies)
+3. **Implement rate limiting** on transfer endpoints
+4. **Log all financial operations** for audit
+5. **Use parameterized queries** to prevent SQL injection
+6. **Encrypt sensitive metadata** in `transactions.metadata`
+7. **Implement role-based access control** for void operations
+
+---
+
+## Conclusion
+
+This ledger engine provides:
+
+✅ **Immutability:** All transactions are append-only  
+✅ **Auditability:** Complete history of all movements  
+✅ **Integrity:** Double-entry constraints enforced at database level  
+✅ **Performance:** Snapshot optimization for fast balance queries  
+✅ **Reliability:** ACID transactions, idempotency, race condition defense  
+✅ **Scalability:** Designed for high-volume financial operations  
+
+**Remember:** The ledger is the source of truth. Everything else is derived.
+
+---
+
+**Document Version:** 1.0  
+**Last Updated:** 2024  
+**Maintained By:** Principal Fintech Architect

@@ -1,0 +1,795 @@
+# Cinematic Angular Smoke: Source of Truth
+
+> **Design System Documentation**  
+> Replicating the Visual Physics and Atmosphere of Cinematic Intelligence  
+> Dark, Moody, Precise, Fluid
+
+---
+
+## Phase 1: Visual Abstraction (Forensic Analysis)
+
+### 1.1 The "Smoke" Engine
+
+The background is a **slow-motion fluid simulation** that creates depth and atmosphere. This is not a static image—it's a living, breathing layer that adds cinematic quality.
+
+#### Technical Strategy
+
+**Primary Approach: Pre-rendered Video Loop (Recommended)**
+
+For production reliability and performance, use a high-resolution video loop with specific blend modes:
+
+- **Format:** MP4 (H.264) or WebM (VP9) for optimal compression
+- **Resolution:** Minimum 1920x1080, ideally 4K for retina displays
+- **Duration:** 10-30 second seamless loop
+- **Frame Rate:** 30fps (fluid motion without being distracting)
+- **Color Profile:** Dark, desaturated greens/blacks (matches `--bg-void`)
+- **Blend Mode:** `mix-blend-mode: screen` (allows dark areas to remain transparent)
+- **Optimization:**
+  - Video must be `muted`, `autoplay`, `loop`, `playsInline`
+  - Use `preload="auto"` for immediate playback
+  - Ensure video doesn't block pointer events (`pointer-events: none` on video element)
+  - Consider multiple quality sources for responsive loading
+
+**Alternative Approach: WebGL Shader (Advanced)**
+
+If you have WebGL expertise, implement a real-time fluid simulation using:
+
+- **Three.js** with custom shaders
+- **GPU-accelerated** particle systems
+- **Fragment shaders** for fluid dynamics (Navier-Stokes equations)
+- **Performance consideration:** This is computationally expensive and may impact mobile devices
+
+**Fallback Strategy:**
+
+1. If video fails to load, fall back to a static gradient background
+2. Use CSS `background-image` with a subtle animated gradient as tertiary fallback
+3. Ensure the background color (`--bg-void`) is always visible
+
+#### Implementation Notes
+
+- The smoke should be **subtle**—it enhances atmosphere without distracting from content
+- Opacity should be controlled via the blend mode, not video opacity
+- The video should cover the entire viewport (`object-fit: cover`)
+- Position: `absolute` with `inset-0` to ensure full coverage
+
+---
+
+### 1.2 The "Razor" Geometry
+
+**Constraint:** Sharp, precise edges. No rounded corners.
+
+- **Default:** `border-radius: 0px` (strictly enforced)
+- **Exception:** Minimal `2px` allowed for very specific micro-interactions (use sparingly)
+- **Rationale:** Creates a "precise/serious" aesthetic—architectural, not organic
+
+#### Visual Characteristics
+
+- Buttons: Sharp rectangles with 1px borders
+- Cards: Angular containers with no shadow
+- All interactive elements: Geometric, not rounded
+- This extends to icons, badges, and UI elements
+
+---
+
+### 1.3 The "Connector" Interaction
+
+A **vertical line** that connects sections and draws itself as the user scrolls.
+
+#### Behavior
+
+- **Trigger:** Element enters viewport (Intersection Observer)
+- **Animation:** `stroke-dashoffset` animates from 100% (hidden) to 0% (fully drawn)
+- **Direction:** Top to bottom (or configurable)
+- **Style:** 1px width, `--accent-primary` color
+- **Timing:** Uses "Liquid Time" easing (see Motion Physics)
+
+#### Technical Implementation
+
+- SVG `<path>` element with `stroke-dasharray` and `stroke-dashoffset`
+- Scroll-driven animation using Intersection Observer API
+- Smooth, progressive reveal based on scroll position
+
+---
+
+## Phase 2: The Aesthetic Physics (The "Look")
+
+### 2.1 Color System: "The Deep Forest"
+
+**Hard Constraints** — These colors are non-negotiable:
+
+```css
+:root {
+  --bg-void: #050805;        /* Almost black with hint of green/warmth */
+  --accent-primary: #8FA38F;  /* Sage Green for text/lines/accents */
+  --accent-glow: #2D4A3E;     /* Deep Emerald for background glows */
+  --text-light: #EAECE8;      /* Off-white, not pure white */
+}
+```
+
+#### Usage Guidelines
+
+- **Background:** `--bg-void` is the foundation. Everything sits on this deep, warm black.
+- **Primary Accent:** `--accent-primary` for interactive elements, borders on hover, text highlights, connector lines.
+- **Glow Effects:** `--accent-glow` for subtle background radials, volumetric lighting.
+- **Text:** `--text-light` for primary text. Never use pure white (`#FFFFFF`).
+
+#### Color Psychology
+
+- **Deep Forest** evokes: Intelligence, precision, nature, depth, mystery
+- The slight green tint prevents the black from feeling cold or sterile
+
+---
+
+### 2.2 Lighting: Volumetric Lighting
+
+Elements feel like they're floating in a **foggy room** with subtle spotlights.
+
+#### Implementation
+
+Use CSS `radial-gradient` with low opacity to create "spotlights" behind text and cards:
+
+```css
+.volumetric-light {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(45, 74, 62, 0.15) 0%,  /* --accent-glow at 15% opacity */
+    transparent 70%
+  );
+}
+```
+
+#### Placement Strategy
+
+- Behind headlines: Subtle glow that follows scroll position
+- Behind cards on hover: Slight radial expansion
+- Background layers: Multiple low-opacity radials for depth
+- Never overpower content—lighting is atmospheric, not functional
+
+---
+
+### 2.3 Typography: "Sharp & Editorial"
+
+#### Font Pairing
+
+**Headline Font: Neo-Grotesque Sans**
+
+- **Options:** `Söhne`, `Helvetica Now`, `Inter` (fallback)
+- **Weight:** `400` (Regular) — clean, not bold/shouty
+- **Tracking:** `-0.02em` (tight, editorial feel)
+- **Usage:** H1, H2, H3, hero text, section titles
+
+**Label/Meta Font: Crisp Monospace**
+
+- **Options:** `'Courier New'`, `'Monaco'`, `'Menlo'`, `'Consolas'`
+- **Style:** `uppercase`
+- **Size:** `text-xs` (12px)
+- **Tracking:** `0.25em` (widest, technical feel)
+- **Usage:** Labels, metadata, timestamps, navigation items
+
+#### Typography Hierarchy
+
+```css
+/* Headlines */
+.headline {
+  font-family: 'Söhne', 'Helvetica Now', sans-serif;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--text-light);
+}
+
+/* Labels */
+.label {
+  font-family: monospace;
+  font-size: 0.75rem; /* 12px */
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  color: var(--accent-primary);
+}
+```
+
+---
+
+### 2.4 Motion Physics: "Liquid Time"
+
+**Philosophy:** Slow, deliberate, fluid. Things don't "pop" in—they "drift" in.
+
+#### Speed
+
+- **Default Duration:** `1.2s` (1200ms)
+- **Slow Animations:** Up to `2.4s` for major transitions
+- **Fast Animations:** Minimum `0.6s` (rare, only for micro-interactions)
+
+#### Easing Function
+
+```css
+transition: transform 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+```
+
+**Breakdown:**
+- `cubic-bezier(0.2, 0.8, 0.2, 1)` creates a smooth, organic motion
+- Slow start, acceleration, then gentle deceleration
+- Feels like moving through water or fog
+
+#### Scroll: Heavy Inertia
+
+Use **Lenis** for smooth, weighted scrolling:
+
+```javascript
+import Lenis from '@studio-freight/lenis';
+
+const lenis = new Lenis({
+  duration: 1.2,
+  easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+  orientation: 'vertical',
+  gestureOrientation: 'vertical',
+  smoothWheel: true,
+  wheelMultiplier: 1,
+  smoothTouch: false,
+  touchMultiplier: 2,
+});
+
+function raf(time) {
+  lenis.raf(time);
+  requestAnimationFrame(raf);
+}
+
+requestAnimationFrame(raf);
+```
+
+**Configuration:**
+- `duration: 1.2` — matches motion physics
+- `smoothWheel: true` — enables momentum scrolling
+- `wheelMultiplier: 1` — adjust for desired "heaviness"
+
+---
+
+## Phase 3: Component Architecture (The Building Blocks)
+
+### 3.1 AtmosphericBackground.tsx
+
+**Purpose:** Layers background color, fog noise texture, and fluid/smoke video loop.
+
+```tsx
+import React, { useRef, useEffect } from 'react';
+
+interface AtmosphericBackgroundProps {
+  children?: React.ReactNode;
+  videoSrc?: string;
+  noiseTextureSrc?: string;
+}
+
+const AtmosphericBackground: React.FC<AtmosphericBackgroundProps> = ({
+  children,
+  videoSrc = '/videos/smoke-loop.mp4',
+  noiseTextureSrc = '/textures/noise.png',
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    // Ensure video plays (some browsers require user interaction)
+    const video = videoRef.current;
+    if (video) {
+      video.play().catch((error) => {
+        console.warn('Video autoplay failed:', error);
+      });
+    }
+  }, []);
+
+  return (
+    <div className="relative w-full h-full min-h-screen overflow-hidden bg-bg-void">
+      {/* Base Background Color */}
+      <div className="absolute inset-0 bg-bg-void" />
+
+      {/* Fog Noise Texture Layer */}
+      <div
+        className="absolute inset-0 pointer-events-none opacity-[0.05]"
+        style={{
+          backgroundImage: `url('${noiseTextureSrc}')`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          mixBlendMode: 'overlay',
+        }}
+        aria-hidden="true"
+      />
+
+      {/* Fluid/Smoke Video Loop */}
+      <video
+        ref={videoRef}
+        className="absolute inset-0 w-full h-full object-cover mix-blend-screen pointer-events-none"
+        src={videoSrc}
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="auto"
+        aria-hidden="true"
+      >
+        Your browser does not support the video tag.
+      </video>
+
+      {/* Content Layer */}
+      <div className="relative z-10">
+        {children}
+      </div>
+    </div>
+  );
+};
+
+export default AtmosphericBackground;
+```
+
+#### Implementation Details
+
+- **Layering Order (bottom to top):**
+  1. Base background color (`bg-bg-void`)
+  2. Fog noise texture (5% opacity, overlay blend)
+  3. Smoke video (screen blend mode)
+  4. Content (z-index: 10)
+
+- **Video Optimization:**
+  - `pointer-events-none` ensures video doesn't block interactions
+  - `object-cover` maintains aspect ratio while covering viewport
+  - `mix-blend-screen` allows dark areas to remain transparent
+  - `preload="auto"` for immediate playback
+
+- **Fallback Strategy:**
+  - If video fails, the background color and noise texture still provide atmosphere
+  - Consider adding a `poster` attribute with a static frame
+
+---
+
+### 3.2 TimelineConnector.tsx
+
+**Purpose:** Vertical SVG line that draws itself as the user scrolls.
+
+```tsx
+import React, { useEffect, useRef, useState } from 'react';
+
+interface TimelineConnectorProps {
+  targetId: string;
+  startY?: number; // Starting Y position (default: 0)
+  endY?: number; // Ending Y position (default: 100%)
+  className?: string;
+}
+
+const TimelineConnector: React.FC<TimelineConnectorProps> = ({
+  targetId,
+  startY = 0,
+  endY = 100,
+  className = '',
+}) => {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const pathRef = useRef<SVGPathElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [pathLength, setPathLength] = useState(0);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const path = pathRef.current;
+    const container = containerRef.current;
+    if (!path || !container) return;
+
+    // Calculate path length
+    const length = path.getTotalLength();
+    setPathLength(length);
+    path.style.strokeDasharray = `${length}`;
+    path.style.strokeDashoffset = `${length}`; // Start fully hidden
+
+    // Intersection Observer for scroll-triggered animation
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+            animatePath(path, length);
+          }
+        });
+      },
+      {
+        threshold: 0.1, // Trigger when 10% visible
+        rootMargin: '0px',
+      }
+    );
+
+    if (container) {
+      observer.observe(container);
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  const animatePath = (path: SVGPathElement, length: number) => {
+    const startTime = performance.now();
+    const duration = 1200; // 1.2s - matches "Liquid Time"
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+
+      // Cubic bezier easing: (0.2, 0.8, 0.2, 1)
+      const ease = (t: number) => {
+        return t < 0.5
+          ? 4 * t * t * t
+          : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      };
+
+      const easedProgress = ease(progress);
+      const drawLength = length * easedProgress;
+      path.style.strokeDashoffset = `${length - drawLength}`;
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+
+    requestAnimationFrame(animate);
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className={`relative w-full h-full ${className}`}
+      style={{ position: 'relative' }}
+    >
+      <svg
+        ref={svgRef}
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+      >
+        <path
+          ref={pathRef}
+          d={`M 50 ${startY} L 50 ${endY}`}
+          stroke="var(--accent-primary)"
+          strokeWidth="1"
+          fill="none"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+    </div>
+  );
+};
+
+export default TimelineConnector;
+```
+
+#### Implementation Details
+
+- **Animation Trigger:** Intersection Observer API detects when container enters viewport
+- **Easing:** Custom cubic-bezier function matching "Liquid Time" physics
+- **Path Calculation:** Uses `getTotalLength()` for accurate stroke-dasharray
+- **Responsive:** SVG `viewBox` and `preserveAspectRatio` ensure scaling
+
+#### Usage Example
+
+```tsx
+<TimelineConnector
+  targetId="section-2"
+  startY={0}
+  endY={100}
+  className="h-screen"
+/>
+```
+
+---
+
+### 3.3 RazorCard.tsx
+
+**Purpose:** Sharp-edged content container with subtle hover effects.
+
+```tsx
+import React from 'react';
+
+interface RazorCardProps {
+  children: React.ReactNode;
+  className?: string;
+  onClick?: () => void;
+  as?: keyof JSX.IntrinsicElements;
+}
+
+const RazorCard: React.FC<RazorCardProps> = ({
+  children,
+  className = '',
+  onClick,
+  as: Component = 'div',
+}) => {
+  return (
+    <Component
+      className={`
+        relative
+        p-6
+        border border-[rgba(255,255,255,0.1)]
+        bg-transparent
+        transition-all duration-[1200ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]
+        hover:border-accent-primary
+        hover:bg-[rgba(255,255,255,0.05)]
+        ${onClick ? 'cursor-pointer' : ''}
+        ${className}
+      `}
+      onClick={onClick}
+      style={{
+        borderRadius: '0px', // Enforce "Razor" geometry
+      }}
+    >
+      {children}
+    </Component>
+  );
+};
+
+export default RazorCard;
+```
+
+#### Implementation Details
+
+- **Border:** `1px solid rgba(255,255,255,0.1)` — subtle, almost invisible
+- **Hover State:**
+  - Border: `--accent-primary` (sage green)
+  - Background: `rgba(255,255,255,0.05)` — slight lightening
+  - No shadow — maintains flat, architectural feel
+- **Transition:** 1.2s with "Liquid Time" easing
+- **Geometry:** Explicitly set `borderRadius: 0px` to enforce "Razor" constraint
+
+#### Usage Example
+
+```tsx
+<RazorCard className="max-w-md">
+  <h2 className="headline text-2xl mb-4">Title</h2>
+  <p className="text-text-light">Content goes here.</p>
+</RazorCard>
+```
+
+---
+
+## Phase 4: Configuration & Setup
+
+### 4.1 Tailwind Configuration
+
+**File:** `tailwind.config.js`
+
+```javascript
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    './src/**/*.{js,jsx,ts,tsx}',
+    './pages/**/*.{js,jsx,ts,tsx}',
+    './components/**/*.{js,jsx,ts,tsx}',
+  ],
+  theme: {
+    extend: {
+      // Enforce "Razor" Geometry
+      borderRadius: {
+        none: '0',
+        sm: '2px', // Minimal exception for micro-interactions
+        DEFAULT: '0', // Override default to enforce sharp edges
+        md: '0',
+        lg: '0',
+        xl: '0',
+        '2xl': '0',
+        '3xl': '0',
+        full: '0', // Even "full" is sharp (for specific use cases)
+      },
+      // Color System: "The Deep Forest"
+      colors: {
+        'bg-void': '#050805',
+        'accent-primary': '#8FA38F',
+        'accent-glow': '#2D4A3E',
+        'text-light': '#EAECE8',
+      },
+      // Typography
+      fontFamily: {
+        headline: ['Söhne', 'Helvetica Now', 'Inter', 'sans-serif'],
+        label: ['Courier New', 'Monaco', 'Menlo', 'Consolas', 'monospace'],
+      },
+      letterSpacing: {
+        tight: '-0.02em',
+        widest: '0.25em',
+      },
+      // Motion Physics: "Liquid Time"
+      transitionTimingFunction: {
+        liquid: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+      },
+      transitionDuration: {
+        1200: '1.2s',
+        2400: '2.4s',
+      },
+    },
+  },
+  plugins: [],
+};
+```
+
+#### Key Overrides
+
+- **Border Radius:** All defaults set to `0` to enforce "Razor" geometry
+- **Colors:** Custom palette matching "The Deep Forest"
+- **Typography:** Headline and label font families
+- **Motion:** Custom easing and duration tokens
+
+---
+
+### 4.2 Global CSS Setup
+
+**File:** `globals.css` (or equivalent)
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-void: #050805;
+  --accent-primary: #8FA38F;
+  --accent-glow: #2D4A3E;
+  --text-light: #EAECE8;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-void);
+  color: var(--text-light);
+  font-family: 'Söhne', 'Helvetica Now', 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Enforce "Razor" Geometry Globally */
+* {
+  border-radius: 0 !important;
+}
+
+/* Allow minimal 2px exception where explicitly needed */
+.rounded-sm {
+  border-radius: 2px !important;
+}
+
+/* Volumetric Lighting Utility */
+.volumetric-light {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(45, 74, 62, 0.15) 0%,
+    transparent 70%
+  );
+}
+
+/* Typography Utilities */
+.headline {
+  font-family: var(--font-headline);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--text-light);
+}
+
+.label {
+  font-family: monospace;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  color: var(--accent-primary);
+}
+```
+
+---
+
+### 4.3 Video Asset Requirements
+
+#### Smoke Loop Video
+
+**Specifications:**
+- **Format:** MP4 (H.264) or WebM (VP9)
+- **Resolution:** 1920x1080 (minimum), 3840x2160 (recommended for retina)
+- **Duration:** 10-30 seconds (seamless loop)
+- **Frame Rate:** 30fps
+- **Color Profile:** Dark, desaturated greens/blacks
+- **File Size:** Optimize for web (target: <5MB for 1080p, <15MB for 4K)
+
+**Creation Methods:**
+1. **Pre-rendered:** Use After Effects, Blender, or similar to create a fluid simulation loop
+2. **Stock Footage:** Search for "smoke loop," "fluid simulation," "dark smoke background"
+3. **WebGL Export:** If using Three.js, export frames and compile into video
+
+**Placement:**
+- Store in `/public/videos/smoke-loop.mp4` (or equivalent public directory)
+
+---
+
+### 4.4 Noise Texture Requirements
+
+#### Fog Noise Texture
+
+**Specifications:**
+- **Format:** PNG (with transparency) or JPG
+- **Resolution:** 1024x1024 or 2048x2048
+- **Style:** Subtle grain/noise pattern
+- **Color:** Grayscale or desaturated
+
+**Creation Methods:**
+1. **Photoshop:** Generate noise filter, apply blur, adjust levels
+2. **Online Tools:** Use noise texture generators
+3. **Code:** Generate programmatically with canvas API
+
+**Placement:**
+- Store in `/public/textures/noise.png` (or equivalent public directory)
+
+---
+
+## Implementation Checklist
+
+### Setup
+- [ ] Install dependencies: `@studio-freight/lenis`, `tailwindcss`
+- [ ] Configure `tailwind.config.js` with "Razor" geometry overrides
+- [ ] Set up global CSS with color variables and typography
+- [ ] Add Lenis smooth scroll initialization
+
+### Assets
+- [ ] Source or create smoke loop video (10-30s, seamless)
+- [ ] Create or source noise texture (1024x1024 minimum)
+- [ ] Place assets in public directory
+
+### Components
+- [ ] Implement `AtmosphericBackground.tsx`
+- [ ] Implement `TimelineConnector.tsx`
+- [ ] Implement `RazorCard.tsx`
+- [ ] Test components in isolation
+
+### Integration
+- [ ] Wrap application with `AtmosphericBackground`
+- [ ] Add `TimelineConnector` to sections
+- [ ] Replace standard cards with `RazorCard`
+- [ ] Apply typography classes (`headline`, `label`)
+
+### Testing
+- [ ] Verify video plays on load (autoplay, muted, loop)
+- [ ] Test scroll-driven connector animations
+- [ ] Verify hover states on cards
+- [ ] Check "Razor" geometry (no rounded corners)
+- [ ] Test on mobile devices (video performance)
+- [ ] Verify color accuracy against palette
+
+---
+
+## Notes & Considerations
+
+### Performance
+
+- **Video Loading:** Consider lazy loading for below-the-fold content
+- **Mobile:** Test video performance on lower-end devices; may need lower resolution fallback
+- **Blend Modes:** `mix-blend-mode` can be expensive; test performance impact
+
+### Accessibility
+
+- **Video:** Ensure video has `aria-hidden="true"` (decorative)
+- **Contrast:** Verify text contrast meets WCAG AA standards
+- **Motion:** Respect `prefers-reduced-motion` media query
+
+### Browser Compatibility
+
+- **Blend Modes:** `mix-blend-mode: screen` supported in all modern browsers
+- **Video Autoplay:** Some browsers require user interaction; handle gracefully
+- **Intersection Observer:** Polyfill for older browsers if needed
+
+---
+
+## Conclusion
+
+This design system creates a **"Cinematic Intelligence"** aesthetic through:
+
+1. **Atmospheric Depth:** Layered backgrounds with fluid motion
+2. **Precise Geometry:** Sharp, architectural edges
+3. **Fluid Motion:** Slow, deliberate animations
+4. **Deep Forest Palette:** Dark, moody, intelligent colors
+
+**Remember:** The goal is to replicate the **visual physics**, not the content. This system is adaptable to any use case—portfolio, fashion brand, tech product—while maintaining the core aesthetic.
+
+---
+
+*Last Updated: [Current Date]*  
+*Version: 1.0.0*

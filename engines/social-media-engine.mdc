@@ -1,0 +1,1392 @@
+# Social Media Engine Architecture
+## Source of Truth Documentation
+
+**Version:** 1.0  
+**Last Updated:** 2024  
+**Reference:** Twitter/X, Threads, Instagram
+
+---
+
+## Table of Contents
+
+1. [Core Principles](#core-principles)
+2. [Database Schema](#database-schema)
+3. [Real-Time Architecture](#real-time-architecture)
+4. [Frontend Architecture](#frontend-architecture)
+5. [Critical Implementation Details](#critical-implementation-details)
+
+---
+
+## Core Principles
+
+### ⚠️ THE "INSTANT" RULE
+
+**Optimistic UI:** Every interaction (Like, Retweet, Follow, Comment) must happen *instantly* in the UI. The server request happens in the background. If it fails, roll back.
+
+**Cursor Pagination:** NEVER use offset pagination (Page 1, 2). Use Cursor-based pagination (`created_at < last_seen_id`) for infinite feeds.
+
+**Polymorphism:** The "Feed" is a mix of Posts, Reposts, Ads, and "Who to Follow" suggestions.
+
+---
+
+## Database Schema
+
+### Technology Stack
+- **Database:** Supabase (PostgreSQL)
+- **Primary Keys:** UUIDs (`uuid_generate_v4()`)
+- **Indexing Strategy:** Composite indexes for common query patterns
+- **RLS:** Row Level Security enabled on all tables
+
+---
+
+### 1. Core Tables
+
+#### `profiles`
+
+```sql
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  username VARCHAR(30) UNIQUE NOT NULL,
+  display_name VARCHAR(100),
+  avatar_url TEXT,
+  bio TEXT,
+  metrics JSONB DEFAULT '{"followers": 0, "following": 0, "posts": 0}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_profiles_username ON profiles(username);
+CREATE INDEX idx_profiles_created_at ON profiles(created_at DESC);
+```
+
+**Notes:**
+- `username` is unique and indexed for fast lookups
+- `metrics` is JSONB for atomic updates (followers/following counts)
+- Consider adding `verified` boolean for verified accounts
+
+---
+
+#### `posts`
+
+```sql
+CREATE TABLE posts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  author_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  media_urls TEXT[] DEFAULT '{}',
+  media_blur_hashes TEXT[] DEFAULT '{}', -- BlurHash placeholders
+  parent_post_id UUID REFERENCES posts(id) ON DELETE CASCADE, -- For threads/replies
+  type VARCHAR(20) DEFAULT 'text' CHECK (type IN ('text', 'image', 'video', 'quote', 'poll')),
+  quote_post_id UUID REFERENCES posts(id) ON DELETE SET NULL, -- For quote tweets
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ -- Soft delete
+);
+
+-- Composite index for author's posts feed
+CREATE INDEX idx_posts_author_created ON posts(author_id, created_at DESC) 
+  WHERE deleted_at IS NULL;
+
+-- Index for thread replies
+CREATE INDEX idx_posts_parent ON posts(parent_post_id, created_at ASC) 
+  WHERE deleted_at IS NULL;
+
+-- Index for home feed queries
+CREATE INDEX idx_posts_created_at ON posts(created_at DESC) 
+  WHERE deleted_at IS NULL;
+
+-- Full-text search index
+CREATE INDEX idx_posts_content_search ON posts USING gin(to_tsvector('english', content));
+```
+
+**Notes:**
+- `parent_post_id` enables threaded conversations
+- `quote_post_id` enables quote tweets/reposts
+- Soft deletes preserve referential integrity
+- Composite indexes optimize common query patterns
+
+---
+
+#### `interactions`
+
+```sql
+CREATE TABLE interactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  type VARCHAR(20) NOT NULL CHECK (type IN ('like', 'repost', 'bookmark')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  -- Prevent duplicate interactions
+  UNIQUE(user_id, post_id, type)
+);
+
+-- Index for "has user interacted with post?"
+CREATE INDEX idx_interactions_user_post ON interactions(user_id, post_id, type);
+
+-- Index for "who liked this post?"
+CREATE INDEX idx_interactions_post_type ON interactions(post_id, type, created_at DESC);
+
+-- Index for user's activity feed
+CREATE INDEX idx_interactions_user_created ON interactions(user_id, created_at DESC);
+```
+
+**Notes:**
+- Unique constraint prevents double-likes/reposts
+- Multiple indexes support different query patterns
+- `type` enum ensures data integrity
+
+---
+
+#### `follows`
+
+```sql
+CREATE TABLE follows (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  follower_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  following_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  -- Prevent self-follows and duplicates
+  CHECK (follower_id != following_id),
+  UNIQUE(follower_id, following_id)
+);
+
+-- Index for "Who am I following?"
+CREATE INDEX idx_follows_follower ON follows(follower_id, created_at DESC);
+
+-- Index for "Who follows me?"
+CREATE INDEX idx_follows_following ON follows(following_id, created_at DESC);
+
+-- Composite index for feed queries
+CREATE INDEX idx_follows_follower_following ON follows(follower_id, following_id);
+```
+
+**Notes:**
+- Bidirectional indexes support both query directions
+- Check constraint prevents self-follows
+
+---
+
+### 2. Feed Strategy: Hybrid Pull/Push Model
+
+#### Architecture Decision
+
+**Pull Model (Small Users):**
+- When fetching feed, query `posts WHERE author_id IN (my_following_ids)`
+- Suitable for users with < 10,000 followers
+- Real-time via Postgres Changes
+
+**Push Model (Celebrities):**
+- When a celebrity (> 10,000 followers) posts, fan-out to Redis
+- Pre-compute feed entries for active users
+- Hybrid: Pull for small accounts, Push for large accounts
+
+#### Home Feed SQL Function
+
+```sql
+CREATE OR REPLACE FUNCTION get_home_feed(
+  p_user_id UUID,
+  p_limit INTEGER DEFAULT 20,
+  p_cursor TIMESTAMPTZ DEFAULT NULL
+)
+RETURNS TABLE (
+  post_id UUID,
+  author_id UUID,
+  author_username VARCHAR,
+  author_display_name VARCHAR,
+  author_avatar_url TEXT,
+  content TEXT,
+  media_urls TEXT[],
+  media_blur_hashes TEXT[],
+  parent_post_id UUID,
+  quote_post_id UUID,
+  type VARCHAR,
+  created_at TIMESTAMPTZ,
+  like_count BIGINT,
+  repost_count BIGINT,
+  comment_count BIGINT,
+  is_liked BOOLEAN,
+  is_reposted BOOLEAN,
+  is_bookmarked BOOLEAN
+) AS $$
+BEGIN
+  RETURN QUERY
+  WITH following_ids AS (
+    SELECT following_id 
+    FROM follows 
+    WHERE follower_id = p_user_id
+  ),
+  feed_posts AS (
+    SELECT 
+      p.id,
+      p.author_id,
+      p.content,
+      p.media_urls,
+      p.media_blur_hashes,
+      p.parent_post_id,
+      p.quote_post_id,
+      p.type,
+      p.created_at
+    FROM posts p
+    WHERE p.author_id IN (SELECT following_id FROM following_ids)
+      AND p.deleted_at IS NULL
+      AND (p_cursor IS NULL OR p.created_at < p_cursor)
+    ORDER BY p.created_at DESC
+    LIMIT p_limit
+  )
+  SELECT 
+    fp.id AS post_id,
+    fp.author_id,
+    pr.username AS author_username,
+    pr.display_name AS author_display_name,
+    pr.avatar_url AS author_avatar_url,
+    fp.content,
+    fp.media_urls,
+    fp.media_blur_hashes,
+    fp.parent_post_id,
+    fp.quote_post_id,
+    fp.type,
+    fp.created_at,
+    COALESCE(like_stats.like_count, 0)::BIGINT AS like_count,
+    COALESCE(repost_stats.repost_count, 0)::BIGINT AS repost_count,
+    COALESCE(comment_stats.comment_count, 0)::BIGINT AS comment_count,
+    COALESCE(user_interactions.is_liked, false) AS is_liked,
+    COALESCE(user_interactions.is_reposted, false) AS is_reposted,
+    COALESCE(user_interactions.is_bookmarked, false) AS is_bookmarked
+  FROM feed_posts fp
+  INNER JOIN profiles pr ON fp.author_id = pr.id
+  LEFT JOIN (
+    SELECT post_id, COUNT(*) AS like_count
+    FROM interactions
+    WHERE type = 'like'
+    GROUP BY post_id
+  ) like_stats ON fp.id = like_stats.post_id
+  LEFT JOIN (
+    SELECT post_id, COUNT(*) AS repost_count
+    FROM interactions
+    WHERE type = 'repost'
+    GROUP BY post_id
+  ) repost_stats ON fp.id = repost_stats.post_id
+  LEFT JOIN (
+    SELECT parent_post_id, COUNT(*) AS comment_count
+    FROM posts
+    WHERE parent_post_id IS NOT NULL AND deleted_at IS NULL
+    GROUP BY parent_post_id
+  ) comment_stats ON fp.id = comment_stats.parent_post_id
+  LEFT JOIN (
+    SELECT 
+      post_id,
+      bool_or(type = 'like') AS is_liked,
+      bool_or(type = 'repost') AS is_reposted,
+      bool_or(type = 'bookmark') AS is_bookmarked
+    FROM interactions
+    WHERE user_id = p_user_id
+    GROUP BY post_id
+  ) user_interactions ON fp.id = user_interactions.post_id
+  ORDER BY fp.created_at DESC;
+END;
+$$ LANGUAGE plpgsql STABLE;
+```
+
+**Cursor Pagination Logic:**
+- `p_cursor` is the `created_at` timestamp of the last post seen
+- Next page: `cursor = lastPost.created_at`
+- Efficient: Uses index on `(author_id, created_at DESC)`
+
+---
+
+### 3. Follow Transaction (Atomic)
+
+```sql
+CREATE OR REPLACE FUNCTION follow_user(
+  p_follower_id UUID,
+  p_following_id UUID
+)
+RETURNS JSONB AS $$
+DECLARE
+  v_result JSONB;
+BEGIN
+  -- Prevent self-follow
+  IF p_follower_id = p_following_id THEN
+    RAISE EXCEPTION 'Cannot follow yourself';
+  END IF;
+
+  -- Insert follow relationship
+  INSERT INTO follows (follower_id, following_id)
+  VALUES (p_follower_id, p_following_id)
+  ON CONFLICT (follower_id, following_id) DO NOTHING
+  RETURNING id INTO v_result;
+
+  -- If already following, return early
+  IF v_result IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'message', 'Already following');
+  END IF;
+
+  -- Atomically update metrics
+  UPDATE profiles
+  SET metrics = jsonb_set(
+    jsonb_set(
+      metrics,
+      '{following}',
+      to_jsonb((metrics->>'following')::int + 1)
+    ),
+    '{updated_at}',
+    to_jsonb(EXTRACT(EPOCH FROM NOW()))
+  )
+  WHERE id = p_follower_id;
+
+  UPDATE profiles
+  SET metrics = jsonb_set(
+    jsonb_set(
+      metrics,
+      '{followers}',
+      to_jsonb((metrics->>'followers')::int + 1)
+    ),
+    '{updated_at}',
+    to_jsonb(EXTRACT(EPOCH FROM NOW()))
+  )
+  WHERE id = p_following_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'follower_id', p_follower_id,
+    'following_id', p_following_id
+  );
+END;
+$$ LANGUAGE plpgsql;
+
+-- Unfollow function (mirror logic)
+CREATE OR REPLACE FUNCTION unfollow_user(
+  p_follower_id UUID,
+  p_following_id UUID
+)
+RETURNS JSONB AS $$
+BEGIN
+  DELETE FROM follows
+  WHERE follower_id = p_follower_id
+    AND following_id = p_following_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'message', 'Not following');
+  END IF;
+
+  -- Decrement metrics
+  UPDATE profiles
+  SET metrics = jsonb_set(
+    jsonb_set(
+      metrics,
+      '{following}',
+      to_jsonb(GREATEST((metrics->>'following')::int - 1, 0))
+    ),
+    '{updated_at}',
+    to_jsonb(EXTRACT(EPOCH FROM NOW()))
+  )
+  WHERE id = p_follower_id;
+
+  UPDATE profiles
+  SET metrics = jsonb_set(
+    jsonb_set(
+      metrics,
+      '{followers}',
+      to_jsonb(GREATEST((metrics->>'followers')::int - 1, 0))
+    ),
+    '{updated_at}',
+    to_jsonb(EXTRACT(EPOCH FROM NOW()))
+  )
+  WHERE id = p_following_id;
+
+  RETURN jsonb_build_object('success', true);
+END;
+$$ LANGUAGE plpgsql;
+```
+
+**Critical Points:**
+- Atomic transaction ensures data consistency
+- JSONB updates are efficient and atomic
+- Prevents race conditions with `ON CONFLICT`
+
+---
+
+## Real-Time Architecture
+
+### 1. Notification Engine
+
+#### Schema
+
+```sql
+CREATE TABLE notifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  recipient_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  actor_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  type VARCHAR(50) NOT NULL CHECK (type IN (
+    'like', 'repost', 'comment', 'mention', 'follow', 'quote'
+  )),
+  reference_id UUID, -- post_id, comment_id, etc.
+  reference_type VARCHAR(20), -- 'post', 'comment', 'user'
+  metadata JSONB DEFAULT '{}'::jsonb, -- Additional context
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_notifications_recipient ON notifications(recipient_id, created_at DESC);
+CREATE INDEX idx_notifications_unread ON notifications(recipient_id, read_at) 
+  WHERE read_at IS NULL;
+```
+
+#### Grouping Logic
+
+```sql
+CREATE OR REPLACE FUNCTION get_grouped_notifications(
+  p_user_id UUID,
+  p_limit INTEGER DEFAULT 20,
+  p_cursor TIMESTAMPTZ DEFAULT NULL
+)
+RETURNS TABLE (
+  id UUID,
+  type VARCHAR,
+  actors JSONB, -- Array of {id, username, avatar_url}
+  actor_count INTEGER,
+  reference_id UUID,
+  reference_type VARCHAR,
+  metadata JSONB,
+  created_at TIMESTAMPTZ,
+  read_at TIMESTAMPTZ
+) AS $$
+BEGIN
+  RETURN QUERY
+  WITH grouped AS (
+    SELECT 
+      type,
+      reference_id,
+      reference_type,
+      metadata,
+      MIN(created_at) AS created_at,
+      MAX(created_at) AS latest_at,
+      COUNT(*) AS total_count,
+      COUNT(*) FILTER (WHERE read_at IS NULL) AS unread_count
+    FROM notifications
+    WHERE recipient_id = p_user_id
+      AND (p_cursor IS NULL OR created_at < p_cursor)
+    GROUP BY type, reference_id, reference_type, metadata
+    ORDER BY MAX(created_at) DESC
+    LIMIT p_limit
+  ),
+  actor_details AS (
+    SELECT 
+      g.*,
+      jsonb_agg(
+        jsonb_build_object(
+          'id', n.actor_id,
+          'username', p.username,
+          'display_name', p.display_name,
+          'avatar_url', p.avatar_url
+        ) ORDER BY n.created_at DESC
+      ) FILTER (WHERE n.actor_id IS NOT NULL) AS actors
+    FROM grouped g
+    LEFT JOIN notifications n ON 
+      n.type = g.type 
+      AND n.reference_id = g.reference_id
+      AND n.recipient_id = p_user_id
+    LEFT JOIN profiles p ON n.actor_id = p.id
+    GROUP BY g.type, g.reference_id, g.reference_type, g.metadata, 
+             g.created_at, g.latest_at, g.total_count, g.unread_count
+  )
+  SELECT 
+    uuid_generate_v4() AS id, -- Synthetic ID for grouped notification
+    ad.type,
+    ad.actors,
+    ad.total_count::INTEGER AS actor_count,
+    ad.reference_id,
+    ad.reference_type,
+    ad.metadata,
+    ad.created_at,
+    CASE WHEN ad.unread_count > 0 THEN NULL ELSE ad.latest_at END AS read_at
+  FROM actor_details ad
+  ORDER BY ad.latest_at DESC;
+END;
+$$ LANGUAGE plpgsql STABLE;
+```
+
+**Real-Time Push:**
+- Use Supabase Realtime to listen for new notifications
+- Channel: `notifications:${userId}`
+- Only push a "new notification" event (not full payload)
+- Client fetches grouped list via REST API
+
+**Example Supabase Realtime Subscription:**
+```typescript
+const channel = supabase
+  .channel(`notifications:${userId}`)
+  .on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'notifications',
+    filter: `recipient_id=eq.${userId}`
+  }, (payload) => {
+    // Just increment badge count
+    incrementNotificationBadge();
+    // Fetch full list via REST
+    refetchNotifications();
+  })
+  .subscribe();
+```
+
+---
+
+### 2. Chat / Direct Messages
+
+#### Schema
+
+```sql
+CREATE TABLE conversations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  type VARCHAR(20) DEFAULT 'direct' CHECK (type IN ('direct', 'group')),
+  participants UUID[] NOT NULL, -- Array of user IDs
+  last_message_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_conversations_participants ON conversations USING gin(participants);
+CREATE INDEX idx_conversations_last_message ON conversations(last_message_at DESC);
+
+CREATE TABLE messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  sender_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  media_urls TEXT[] DEFAULT '{}',
+  reply_to_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+  read_by UUID[] DEFAULT '{}', -- Array of user IDs who read this
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at DESC);
+CREATE INDEX idx_messages_sender ON messages(sender_id, created_at DESC);
+```
+
+#### RLS Policies
+
+```sql
+-- Enable RLS
+ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+
+-- Conversations: User can only see conversations they're in
+CREATE POLICY "Users can view their conversations"
+  ON conversations FOR SELECT
+  USING (auth.uid() = ANY(participants));
+
+-- Messages: User can only see messages in their conversations
+CREATE POLICY "Users can view messages in their conversations"
+  ON messages FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM conversations
+      WHERE id = messages.conversation_id
+        AND auth.uid() = ANY(participants)
+    )
+  );
+
+-- Messages: User can only send messages to conversations they're in
+CREATE POLICY "Users can send messages to their conversations"
+  ON messages FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM conversations
+      WHERE id = messages.conversation_id
+        AND auth.uid() = ANY(participants)
+        AND sender_id = auth.uid()
+    )
+  );
+```
+
+**Real-Time:**
+- Channel: `conversation:${conversationId}`
+- Listen for new messages, typing indicators, read receipts
+
+---
+
+## Frontend Architecture
+
+### Technology Stack
+- **Framework:** Next.js 14+ (App Router)
+- **State Management:** TanStack Query (React Query) v5
+- **Real-Time:** Supabase Realtime
+- **Virtualization:** `@tanstack/react-virtual` (for long feeds)
+- **Image Optimization:** Next.js Image + BlurHash
+- **Media Compression:** `compressorjs`
+
+---
+
+### 1. InfiniteFeed Component
+
+#### Implementation
+
+```typescript
+// hooks/useInfiniteFeed.ts
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+
+interface FeedPost {
+  post_id: string;
+  author_id: string;
+  author_username: string;
+  author_display_name: string;
+  author_avatar_url: string;
+  content: string;
+  media_urls: string[];
+  media_blur_hashes: string[];
+  parent_post_id: string | null;
+  quote_post_id: string | null;
+  type: string;
+  created_at: string;
+  like_count: number;
+  repost_count: number;
+  comment_count: number;
+  is_liked: boolean;
+  is_reposted: boolean;
+  is_bookmarked: boolean;
+}
+
+interface FeedResponse {
+  posts: FeedPost[];
+  nextCursor: string | null; // ISO timestamp
+}
+
+export function useInfiniteFeed(userId: string) {
+  return useInfiniteQuery({
+    queryKey: ['homeFeed', userId],
+    queryFn: async ({ pageParam }): Promise<FeedResponse> => {
+      const { data, error } = await supabase.rpc('get_home_feed', {
+        p_user_id: userId,
+        p_limit: 20,
+        p_cursor: pageParam || null,
+      });
+
+      if (error) throw error;
+
+      const posts = data || [];
+      const nextCursor = posts.length > 0 
+        ? posts[posts.length - 1].created_at 
+        : null;
+
+      return { posts, nextCursor };
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: null as string | null,
+    staleTime: 30000, // 30 seconds
+  });
+}
+```
+
+#### Component with Virtualization
+
+```typescript
+// components/InfiniteFeed.tsx
+'use client';
+
+import { useInfiniteFeed } from '@/hooks/useInfiniteFeed';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { useRef, useEffect } from 'react';
+import { PostCard } from './PostCard';
+
+export function InfiniteFeed({ userId }: { userId: string }) {
+  const parentRef = useRef<HTMLDivElement>(null);
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteFeed(userId);
+
+  // Flatten all pages into single array
+  const allPosts = data?.pages.flatMap(page => page.posts) ?? [];
+
+  const virtualizer = useVirtualizer({
+    count: allPosts.length + (hasNextPage ? 1 : 0),
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 200, // Estimated post height
+    overscan: 5,
+  });
+
+  useEffect(() => {
+    const [lastItem] = [...virtualizer.getVirtualItems()].reverse();
+    if (!lastItem) return;
+
+    if (lastItem.index >= allPosts.length - 1 && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, fetchNextPage, isFetchingNextPage, allPosts.length, virtualizer]);
+
+  return (
+    <div ref={parentRef} className="h-screen overflow-auto">
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: '100%',
+          position: 'relative',
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualItem) => {
+          const post = allPosts[virtualItem.index];
+          if (!post) {
+            return (
+              <div
+                key={virtualItem.key}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: `${virtualItem.size}px`,
+                  transform: `translateY(${virtualItem.start}px)`,
+                }}
+              >
+                Loading...
+              </div>
+            );
+          }
+
+          return (
+            <div
+              key={virtualItem.key}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: `${virtualItem.size}px`,
+                transform: `translateY(${virtualItem.start}px)`,
+              }}
+            >
+              <PostCard post={post} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+```
+
+#### Scroll Restoration
+
+```typescript
+// hooks/useScrollRestoration.ts
+import { useEffect, useRef } from 'react';
+import { usePathname } from 'next/navigation';
+
+const scrollPositions = new Map<string, number>();
+
+export function useScrollRestoration(key: string) {
+  const pathname = usePathname();
+  const scrollKey = `${pathname}:${key}`;
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Restore scroll position
+    const savedPosition = scrollPositions.get(scrollKey);
+    if (savedPosition && containerRef.current) {
+      containerRef.current.scrollTop = savedPosition;
+    }
+
+    // Save scroll position on unmount
+    return () => {
+      if (containerRef.current) {
+        scrollPositions.set(scrollKey, containerRef.current.scrollTop);
+      }
+    };
+  }, [scrollKey]);
+
+  return containerRef;
+}
+```
+
+---
+
+### 2. OptimisticInteraction Hook
+
+```typescript
+// hooks/useOptimisticLike.ts
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+
+interface OptimisticUpdate {
+  postId: string;
+  userId: string;
+  type: 'like' | 'repost' | 'bookmark';
+  action: 'add' | 'remove';
+}
+
+export function useOptimisticLike(postId: string, userId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (isLiked: boolean) => {
+      if (isLiked) {
+        const { error } = await supabase
+          .from('interactions')
+          .insert({
+            user_id: userId,
+            post_id: postId,
+            type: 'like',
+          });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('interactions')
+          .delete()
+          .eq('user_id', userId)
+          .eq('post_id', postId)
+          .eq('type', 'like');
+        if (error) throw error;
+      }
+    },
+    onMutate: async (isLiked) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['homeFeed'] });
+
+      // Snapshot previous state
+      const previousData = queryClient.getQueriesData({ queryKey: ['homeFeed'] });
+
+      // Optimistically update all feed queries
+      queryClient.setQueriesData<{ pages: Array<{ posts: any[] }> }>(
+        { queryKey: ['homeFeed'] },
+        (old) => {
+          if (!old) return old;
+
+          return {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              posts: page.posts.map((post) => {
+                if (post.post_id === postId) {
+                  return {
+                    ...post,
+                    is_liked: isLiked,
+                    like_count: isLiked
+                      ? post.like_count + 1
+                      : Math.max(0, post.like_count - 1),
+                  };
+                }
+                return post;
+              }),
+            })),
+          };
+        }
+      );
+
+      return { previousData };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previousData) {
+        context.previousData.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+    },
+    onSettled: () => {
+      // Optionally invalidate to ensure consistency
+      // queryClient.invalidateQueries({ queryKey: ['homeFeed'] });
+    },
+  });
+}
+```
+
+**Usage:**
+```typescript
+// components/PostCard.tsx
+function PostCard({ post }: { post: FeedPost }) {
+  const { mutate: toggleLike, isPending } = useOptimisticLike(post.post_id, userId);
+
+  return (
+    <button
+      onClick={() => toggleLike(!post.is_liked)}
+      disabled={isPending}
+      className={post.is_liked ? 'text-red-500' : ''}
+    >
+      ❤️ {post.like_count}
+    </button>
+  );
+}
+```
+
+---
+
+### 3. Media Uploading
+
+#### Client-Side Compression
+
+```typescript
+// utils/imageCompression.ts
+import Compressor from 'compressorjs';
+
+export async function compressImage(
+  file: File,
+  options: { maxWidth?: number; maxHeight?: number; quality?: number } = {}
+): Promise<File> {
+  return new Promise((resolve, reject) => {
+    new Compressor(file, {
+      maxWidth: options.maxWidth || 1920,
+      maxHeight: options.maxHeight || 1920,
+      quality: options.quality || 0.8,
+      convertTypes: ['image/png'],
+      convertSize: 5000000, // Convert PNG > 5MB to JPEG
+      success: (compressedFile) => resolve(compressedFile as File),
+      error: reject,
+    });
+  });
+}
+
+// Generate BlurHash
+import { encode } from 'blurhash';
+
+export async function generateBlurHash(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Could not get canvas context'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, 32, 32);
+      const imageData = ctx.getImageData(0, 0, 32, 32);
+      const hash = encode(
+        imageData.data,
+        imageData.width,
+        imageData.height,
+        4,
+        4
+      );
+      resolve(hash);
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+```
+
+#### Optimistic Upload Hook
+
+```typescript
+// hooks/useOptimisticMediaUpload.ts
+import { useState } from 'react';
+import { compressImage, generateBlurHash } from '@/utils/imageCompression';
+import { supabase } from '@/lib/supabase';
+
+export function useOptimisticMediaUpload() {
+  const [uploading, setUploading] = useState(false);
+
+  const uploadMedia = async (files: File[]) => {
+    setUploading(true);
+    const uploads = files.map(async (file) => {
+      // 1. Compress on client
+      const compressed = await compressImage(file);
+      
+      // 2. Generate BlurHash
+      const blurHash = await generateBlurHash(compressed);
+      
+      // 3. Create Blob URL for immediate display
+      const blobUrl = URL.createObjectURL(compressed);
+      
+      // 4. Upload to Supabase Storage
+      const fileExt = compressed.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `media/${fileName}`;
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('posts')
+        .upload(filePath, compressed, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) throw uploadError;
+
+      // 5. Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('posts')
+        .getPublicUrl(filePath);
+
+      return {
+        url: publicUrl,
+        blurHash,
+        blobUrl, // For immediate display
+      };
+    });
+
+    try {
+      const results = await Promise.all(uploads);
+      setUploading(false);
+      return results;
+    } catch (error) {
+      setUploading(false);
+      throw error;
+    }
+  };
+
+  return { uploadMedia, uploading };
+}
+```
+
+**Usage in Post Creation:**
+```typescript
+// components/CreatePost.tsx
+function CreatePost() {
+  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const { uploadMedia, uploading } = useOptimisticMediaUpload();
+
+  const handleFileSelect = async (files: FileList) => {
+    const fileArray = Array.from(files);
+    setMediaFiles(fileArray);
+    
+    // Show Blob URLs immediately
+    const urls = fileArray.map(file => URL.createObjectURL(file));
+    setPreviewUrls(urls);
+  };
+
+  const handleSubmit = async () => {
+    // Upload in background
+    const uploaded = await uploadMedia(mediaFiles);
+    
+    // Create post with uploaded URLs
+    await createPost({
+      content: textContent,
+      media_urls: uploaded.map(u => u.url),
+      media_blur_hashes: uploaded.map(u => u.blurHash),
+    });
+  };
+
+  return (
+    <div>
+      {previewUrls.map((url, i) => (
+        <img key={i} src={url} alt="Preview" className="blur-sm" />
+      ))}
+    </div>
+  );
+}
+```
+
+---
+
+## Critical Implementation Details
+
+### 1. Recursive Comment Tree
+
+#### Strategy: Flattened List with Indentation
+
+**Why Flattened?**
+- Recursive components cause re-render cascades
+- Flattened list is easier to virtualize
+- Better performance for deep threads
+
+#### SQL Function for Comment Tree
+
+```sql
+CREATE OR REPLACE FUNCTION get_post_thread(
+  p_post_id UUID,
+  p_user_id UUID
+)
+RETURNS TABLE (
+  post_id UUID,
+  author_id UUID,
+  author_username VARCHAR,
+  author_display_name VARCHAR,
+  author_avatar_url TEXT,
+  content TEXT,
+  media_urls TEXT[],
+  parent_post_id UUID,
+  depth INTEGER, -- 0 = root, 1 = reply, 2 = reply to reply
+  thread_path LTREE, -- For efficient tree queries
+  created_at TIMESTAMPTZ,
+  like_count BIGINT,
+  is_liked BOOLEAN
+) AS $$
+BEGIN
+  RETURN QUERY
+  WITH RECURSIVE thread_tree AS (
+    -- Root post
+    SELECT 
+      p.id,
+      p.author_id,
+      p.content,
+      p.media_urls,
+      p.parent_post_id,
+      p.created_at,
+      0 AS depth,
+      ltree(p.id::text) AS thread_path
+    FROM posts p
+    WHERE p.id = p_post_id AND p.deleted_at IS NULL
+    
+    UNION ALL
+    
+    -- Recursive: Replies
+    SELECT 
+      p.id,
+      p.author_id,
+      p.content,
+      p.media_urls,
+      p.parent_post_id,
+      p.created_at,
+      tt.depth + 1,
+      tt.thread_path || p.id::text
+    FROM posts p
+    INNER JOIN thread_tree tt ON p.parent_post_id = tt.id
+    WHERE p.deleted_at IS NULL
+      AND tt.depth < 10 -- Prevent infinite recursion
+  )
+  SELECT 
+    tt.id AS post_id,
+    tt.author_id,
+    pr.username AS author_username,
+    pr.display_name AS author_display_name,
+    pr.avatar_url AS author_avatar_url,
+    tt.content,
+    tt.media_urls,
+    tt.parent_post_id,
+    tt.depth,
+    tt.thread_path,
+    tt.created_at,
+    COALESCE(like_stats.like_count, 0)::BIGINT AS like_count,
+    COALESCE(user_interactions.is_liked, false) AS is_liked
+  FROM thread_tree tt
+  INNER JOIN profiles pr ON tt.author_id = pr.id
+  LEFT JOIN (
+    SELECT post_id, COUNT(*) AS like_count
+    FROM interactions
+    WHERE type = 'like'
+    GROUP BY post_id
+  ) like_stats ON tt.id = like_stats.post_id
+  LEFT JOIN (
+    SELECT post_id, bool_or(type = 'like') AS is_liked
+    FROM interactions
+    WHERE user_id = p_user_id AND type = 'like'
+    GROUP BY post_id
+  ) user_interactions ON tt.id = user_interactions.post_id
+  ORDER BY tt.thread_path, tt.created_at ASC;
+END;
+$$ LANGUAGE plpgsql STABLE;
+```
+
+#### React Component (Flattened)
+
+```typescript
+// components/CommentThread.tsx
+interface Comment {
+  post_id: string;
+  author_username: string;
+  content: string;
+  parent_post_id: string | null;
+  depth: number;
+  like_count: number;
+  is_liked: boolean;
+}
+
+export function CommentThread({ postId }: { postId: string }) {
+  const { data: comments } = useQuery({
+    queryKey: ['thread', postId],
+    queryFn: () => fetchThread(postId),
+  });
+
+  return (
+    <div>
+      {comments?.map((comment) => (
+        <div
+          key={comment.post_id}
+          style={{
+            marginLeft: `${comment.depth * 2}rem`,
+            borderLeft: comment.depth > 0 ? '2px solid #e5e7eb' : 'none',
+            paddingLeft: comment.depth > 0 ? '1rem' : 0,
+          }}
+        >
+          <PostCard post={comment} />
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+**Alternative: Recursive Component (Simpler, Less Performant)**
+```typescript
+function CommentTree({ postId, depth = 0 }: { postId: string; depth?: number }) {
+  const { data: replies } = useQuery({
+    queryKey: ['replies', postId],
+    queryFn: () => fetchReplies(postId),
+  });
+
+  return (
+    <div>
+      <PostCard postId={postId} />
+      {replies?.map((reply) => (
+        <div key={reply.post_id} style={{ marginLeft: '2rem' }}>
+          <CommentTree postId={reply.post_id} depth={depth + 1} />
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+**Recommendation:** Use flattened list for feeds, recursive for small threads (< 50 comments).
+
+---
+
+### 2. BlurHash Strategy
+
+#### Implementation
+
+```typescript
+// components/PostImage.tsx
+'use client';
+
+import Image from 'next/image';
+import { useState } from 'react';
+import { decode } from 'blurhash';
+
+interface PostImageProps {
+  src: string;
+  blurHash?: string;
+  alt: string;
+  width: number;
+  height: number;
+}
+
+export function PostImage({ src, blurHash, alt, width, height }: PostImageProps) {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [blurDataUrl, setBlurDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (blurHash) {
+      // Decode BlurHash to data URL
+      const pixels = decode(blurHash, 32, 32);
+      const canvas = document.createElement('canvas');
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const imageData = ctx.createImageData(32, 32);
+        imageData.data.set(pixels);
+        ctx.putImageData(imageData, 0, 0);
+        setBlurDataUrl(canvas.toDataURL());
+      }
+    }
+  }, [blurHash]);
+
+  return (
+    <div className="relative" style={{ width, height }}>
+      {blurDataUrl && !isLoaded && (
+        <Image
+          src={blurDataUrl}
+          alt={alt}
+          fill
+          className="blur-xl"
+          unoptimized
+        />
+      )}
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        className={isLoaded ? 'opacity-100' : 'opacity-0'}
+        onLoad={() => setIsLoaded(true)}
+        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+      />
+    </div>
+  );
+}
+```
+
+**Backend: Generate BlurHash on Upload**
+
+```typescript
+// api/upload-media/route.ts
+import { encode } from 'blurhash';
+import sharp from 'sharp';
+
+export async function POST(request: Request) {
+  const formData = await request.formData();
+  const file = formData.get('file') as File;
+  
+  const buffer = Buffer.from(await file.arrayBuffer());
+  
+  // Resize to 32x32 for BlurHash
+  const { data, info } = await sharp(buffer)
+    .resize(32, 32, { fit: 'cover' })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  
+  const blurHash = encode(
+    new Uint8ClampedArray(data),
+    info.width,
+    info.height,
+    4,
+    4
+  );
+  
+  // Upload to storage and return URL + blurHash
+  return Response.json({ url: publicUrl, blurHash });
+}
+```
+
+---
+
+### 3. Performance Optimizations
+
+#### Query Optimization Checklist
+
+1. **Indexes:** All foreign keys and common WHERE clauses indexed
+2. **Composite Indexes:** For multi-column queries (author_id + created_at)
+3. **Partial Indexes:** For filtered queries (WHERE deleted_at IS NULL)
+4. **Connection Pooling:** Use Supabase connection pooler
+5. **Query Batching:** Batch multiple queries when possible
+
+#### Frontend Optimizations
+
+1. **React Query Caching:**
+   - `staleTime`: 30 seconds for feeds
+   - `cacheTime`: 5 minutes
+   - `refetchOnWindowFocus`: false for feeds
+
+2. **Virtualization:**
+   - Use `@tanstack/react-virtual` for feeds > 100 items
+   - Estimate item heights accurately
+
+3. **Image Optimization:**
+   - Next.js Image component with `priority` for above-fold
+   - Lazy load images below fold
+   - Use WebP format when possible
+
+4. **Code Splitting:**
+   - Lazy load heavy components (media viewer, rich text editor)
+   - Dynamic imports for modals
+
+---
+
+## Summary
+
+### Key Architectural Decisions
+
+1. **Optimistic UI:** All interactions update instantly, rollback on error
+2. **Cursor Pagination:** Timestamp-based cursors for infinite scroll
+3. **Hybrid Feed:** Pull for small accounts, Push for celebrities
+4. **Flattened Comments:** Better performance than recursive components
+5. **BlurHash:** Instant image placeholders for better UX
+6. **Atomic Transactions:** Follow/unfollow updates metrics atomically
+
+### Scalability Considerations
+
+- **Read Replicas:** Use Supabase read replicas for feed queries
+- **Redis Caching:** Cache celebrity feeds in Redis
+- **CDN:** Serve media via CDN (Supabase Storage + Cloudflare)
+- **Rate Limiting:** Implement rate limits on mutations
+- **Database Sharding:** Consider sharding by user_id for > 100M users
+
+---
+
+**End of Documentation**

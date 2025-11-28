@@ -1,0 +1,2035 @@
+# Marketplace Engine - Logic & Backend Layer
+## Source of Truth for High-Performance Online Marketplace
+
+> **Core Philosophy:** This file defines the **data, state, and payment logic** for an e-commerce marketplace. Visual design is handled by separate Design MDC files (e.g., `apple-adaptive-system.mdc`, `structural-swiss-grid.mdc`) that "plug into" this engine.
+
+---
+
+## TABLE OF CONTENTS
+
+1. [Database Schema (Supabase/Postgres)](#phase-1-the-database-schema)
+2. [Backend Logic (Server Actions)](#phase-2-backend-logic-server-actions)
+3. [Shopping UI Architecture](#phase-3-the-shopping-ui-architecture)
+4. [Stripe Integration](#phase-4-stripe-integration)
+5. [Design System Bridge](#phase-5-design-system-bridge)
+6. [Performance & Caching](#phase-6-performance--caching)
+7. [Validation Schemas](#phase-7-validation-schemas)
+
+---
+
+## PHASE 1: THE DATABASE SCHEMA
+
+### 1.1 Core Tables (Supabase/Postgres)
+
+#### `products` Table
+
+```sql
+CREATE TABLE products (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  description TEXT,
+  price INTEGER NOT NULL, -- Price in cents (e.g., 1999 = $19.99)
+  inventory_count INTEGER NOT NULL DEFAULT 0 CHECK (inventory_count >= 0),
+  images TEXT[] DEFAULT '{}', -- Array of image URLs
+  metadata JSONB DEFAULT '{}', -- Custom specs: {"size": "M", "color": "Blue", "material": "Cotton"}
+  slug TEXT UNIQUE NOT NULL,
+  category TEXT,
+  featured BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for performance
+CREATE INDEX idx_products_slug ON products(slug);
+CREATE INDEX idx_products_category ON products(category);
+CREATE INDEX idx_products_featured ON products(featured);
+CREATE INDEX idx_products_created_at ON products(created_at DESC);
+
+-- Full-text search index
+CREATE INDEX idx_products_search ON products USING gin(to_tsvector('english', title || ' ' || COALESCE(description, '')));
+```
+
+#### `users` Table
+
+```sql
+CREATE TABLE users (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT UNIQUE NOT NULL,
+  stripe_customer_id TEXT UNIQUE,
+  full_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_users_stripe_customer ON users(stripe_customer_id);
+```
+
+#### `orders` Table
+
+```sql
+CREATE TABLE orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'shipped', 'delivered', 'refunded', 'cancelled')),
+  total_amount INTEGER NOT NULL, -- Total in cents
+  stripe_payment_intent_id TEXT UNIQUE,
+  stripe_checkout_session_id TEXT UNIQUE,
+  shipping_address JSONB,
+  billing_address JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_stripe_payment_intent ON orders(stripe_payment_intent_id);
+CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
+```
+
+#### `order_items` Table
+
+```sql
+CREATE TABLE order_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+  product_id UUID REFERENCES products(id) ON DELETE RESTRICT,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  price_at_purchase INTEGER NOT NULL, -- Price at time of purchase (in cents)
+  variant_metadata JSONB DEFAULT '{}', -- Store selected variant (size, color, etc.)
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX idx_order_items_product_id ON order_items(product_id);
+```
+
+#### `cart_items` Table (For logged-in users)
+
+```sql
+CREATE TABLE cart_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  variant_metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, product_id, variant_metadata) -- Prevent duplicate items
+);
+
+CREATE INDEX idx_cart_items_user_id ON cart_items(user_id);
+```
+
+#### `webhook_events` Table (Idempotency)
+
+```sql
+CREATE TABLE webhook_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  stripe_event_id TEXT UNIQUE NOT NULL,
+  event_type TEXT NOT NULL,
+  processed BOOLEAN DEFAULT false,
+  payload JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_webhook_events_stripe_event_id ON webhook_events(stripe_event_id);
+CREATE INDEX idx_webhook_events_processed ON webhook_events(processed);
+```
+
+### 1.2 Database Functions & Triggers
+
+#### Update `updated_at` Trigger
+
+```sql
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_products_updated_at
+  BEFORE UPDATE ON products
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_orders_updated_at
+  BEFORE UPDATE ON orders
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+```
+
+#### Atomic Inventory Decrement Function
+
+```sql
+CREATE OR REPLACE FUNCTION decrement_inventory(
+  p_product_id UUID,
+  p_quantity INTEGER
+)
+RETURNS BOOLEAN AS $$
+DECLARE
+  current_inventory INTEGER;
+BEGIN
+  -- Lock the row for update
+  SELECT inventory_count INTO current_inventory
+  FROM products
+  WHERE id = p_product_id
+  FOR UPDATE;
+  
+  -- Check if sufficient inventory
+  IF current_inventory IS NULL THEN
+    RAISE EXCEPTION 'Product not found';
+  END IF;
+  
+  IF current_inventory < p_quantity THEN
+    RAISE EXCEPTION 'Insufficient inventory. Available: %, Requested: %', current_inventory, p_quantity;
+  END IF;
+  
+  -- Decrement atomically
+  UPDATE products
+  SET inventory_count = inventory_count - p_quantity
+  WHERE id = p_product_id;
+  
+  RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+---
+
+## PHASE 2: BACKEND LOGIC (SERVER ACTIONS)
+
+### 2.1 Database Client Setup (Supabase)
+
+```typescript
+// lib/supabase/server.ts
+import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
+
+export function createServerClient() {
+  const cookieStore = cookies();
+  
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!, // Use service role for server actions
+    {
+      auth: {
+        persistSession: false,
+      },
+    }
+  );
+}
+```
+
+### 2.2 Product Queries
+
+```typescript
+// app/actions/products.ts
+'use server';
+
+import { createServerClient } from '@/lib/supabase/server';
+import { revalidatePath } from 'next/cache';
+
+export async function getProducts(filters?: {
+  category?: string;
+  featured?: boolean;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const supabase = createServerClient();
+  let query = supabase
+    .from('products')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (filters?.category) {
+    query = query.eq('category', filters.category);
+  }
+
+  if (filters?.featured) {
+    query = query.eq('featured', true);
+  }
+
+  if (filters?.search) {
+    query = query.textSearch('title,description', filters.search);
+  }
+
+  if (filters?.limit) {
+    query = query.limit(filters.limit);
+  }
+
+  if (filters?.offset) {
+    query = query.range(filters.offset, filters.offset + (filters.limit || 10) - 1);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(`Failed to fetch products: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+export async function getProductBySlug(slug: string) {
+  const supabase = createServerClient();
+  
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('slug', slug)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to fetch product: ${error.message}`);
+  }
+
+  return data;
+}
+
+export async function checkInventory(productId: string, quantity: number) {
+  const supabase = createServerClient();
+  
+  const { data, error } = await supabase
+    .from('products')
+    .select('inventory_count')
+    .eq('id', productId)
+    .single();
+
+  if (error || !data) {
+    return { available: false, message: 'Product not found' };
+  }
+
+  if (data.inventory_count < quantity) {
+    return {
+      available: false,
+      message: `Only ${data.inventory_count} items available`,
+      availableCount: data.inventory_count,
+    };
+  }
+
+  return { available: true, availableCount: data.inventory_count };
+}
+```
+
+### 2.3 Cart Management (Server Actions)
+
+```typescript
+// app/actions/cart.ts
+'use server';
+
+import { createServerClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
+import { z } from 'zod';
+import { cartItemSchema } from '@/lib/validations/cart';
+
+const addToCartSchema = cartItemSchema.extend({
+  productId: z.string().uuid(),
+  quantity: z.number().int().positive(),
+  variantMetadata: z.record(z.any()).optional(),
+});
+
+export async function addToCart(input: z.infer<typeof addToCartSchema>) {
+  const validated = addToCartSchema.parse(input);
+  const supabase = createServerClient();
+  const cookieStore = cookies();
+  
+  // Get user from session (if logged in)
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (user) {
+    // Logged-in user: Store in database
+    const { error } = await supabase
+      .from('cart_items')
+      .upsert({
+        user_id: user.id,
+        product_id: validated.productId,
+        quantity: validated.quantity,
+        variant_metadata: validated.variantMetadata || {},
+      }, {
+        onConflict: 'user_id,product_id,variant_metadata',
+      });
+
+    if (error) {
+      throw new Error(`Failed to add to cart: ${error.message}`);
+    }
+  } else {
+    // Guest user: Store in cookie (client will handle localStorage)
+    // This is a fallback; primary storage should be client-side localStorage
+    cookieStore.set('guest_cart', JSON.stringify([validated]), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    });
+  }
+
+  return { success: true };
+}
+
+export async function getCart(userId?: string) {
+  const supabase = createServerClient();
+  
+  if (userId) {
+    const { data, error } = await supabase
+      .from('cart_items')
+      .select(`
+        *,
+        products (*)
+      `)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error(`Failed to fetch cart: ${error.message}`);
+    }
+
+    return data || [];
+  }
+
+  return [];
+}
+
+export async function removeFromCart(itemId: string, userId?: string) {
+  const supabase = createServerClient();
+  
+  if (userId) {
+    const { error } = await supabase
+      .from('cart_items')
+      .delete()
+      .eq('id', itemId)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error(`Failed to remove from cart: ${error.message}`);
+    }
+  }
+
+  return { success: true };
+}
+
+export async function updateCartItemQuantity(
+  itemId: string,
+  quantity: number,
+  userId?: string
+) {
+  const supabase = createServerClient();
+  
+  if (userId) {
+    const { error } = await supabase
+      .from('cart_items')
+      .update({ quantity })
+      .eq('id', itemId)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error(`Failed to update cart: ${error.message}`);
+    }
+  }
+
+  return { success: true };
+}
+```
+
+### 2.4 Order Creation & Inventory Management
+
+```typescript
+// app/actions/orders.ts
+'use server';
+
+import { createServerClient } from '@/lib/supabase/server';
+import { z } from 'zod';
+
+const createOrderSchema = z.object({
+  userId: z.string().uuid().optional(),
+  items: z.array(z.object({
+    productId: z.string().uuid(),
+    quantity: z.number().int().positive(),
+    priceAtPurchase: z.number().int().positive(),
+    variantMetadata: z.record(z.any()).optional(),
+  })),
+  stripePaymentIntentId: z.string(),
+  shippingAddress: z.record(z.any()).optional(),
+  billingAddress: z.record(z.any()).optional(),
+});
+
+export async function createOrder(input: z.infer<typeof createOrderSchema>) {
+  const validated = createOrderSchema.parse(input);
+  const supabase = createServerClient();
+
+  // Calculate total
+  const totalAmount = validated.items.reduce(
+    (sum, item) => sum + item.priceAtPurchase * item.quantity,
+    0
+  );
+
+  // Start transaction (Supabase uses transactions via RPC)
+  const { data: order, error: orderError } = await supabase
+    .rpc('create_order_with_items', {
+      p_user_id: validated.userId || null,
+      p_total_amount: totalAmount,
+      p_stripe_payment_intent_id: validated.stripePaymentIntentId,
+      p_items: validated.items.map(item => ({
+        product_id: item.productId,
+        quantity: item.quantity,
+        price_at_purchase: item.priceAtPurchase,
+        variant_metadata: item.variantMetadata || {},
+      })),
+      p_shipping_address: validated.shippingAddress || null,
+      p_billing_address: validated.billingAddress || null,
+    });
+
+  if (orderError) {
+    throw new Error(`Failed to create order: ${orderError.message}`);
+  }
+
+  return order;
+}
+
+// Database function for atomic order creation + inventory decrement
+// This must be created in Supabase SQL Editor:
+/*
+CREATE OR REPLACE FUNCTION create_order_with_items(
+  p_user_id UUID,
+  p_total_amount INTEGER,
+  p_stripe_payment_intent_id TEXT,
+  p_items JSONB,
+  p_shipping_address JSONB,
+  p_billing_address JSONB
+)
+RETURNS UUID AS $$
+DECLARE
+  v_order_id UUID;
+  item JSONB;
+BEGIN
+  -- Create order
+  INSERT INTO orders (user_id, total_amount, stripe_payment_intent_id, shipping_address, billing_address, status)
+  VALUES (p_user_id, p_total_amount, p_stripe_payment_intent_id, p_shipping_address, p_billing_address, 'paid')
+  RETURNING id INTO v_order_id;
+
+  -- Process each item
+  FOR item IN SELECT * FROM jsonb_array_elements(p_items)
+  LOOP
+    -- Decrement inventory atomically
+    PERFORM decrement_inventory(
+      (item->>'product_id')::UUID,
+      (item->>'quantity')::INTEGER
+    );
+
+    -- Create order item
+    INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase, variant_metadata)
+    VALUES (
+      v_order_id,
+      (item->>'product_id')::UUID,
+      (item->>'quantity')::INTEGER,
+      (item->>'price_at_purchase')::INTEGER,
+      COALESCE(item->'variant_metadata', '{}'::JSONB)
+    );
+  END LOOP;
+
+  RETURN v_order_id;
+END;
+$$ LANGUAGE plpgsql;
+*/
+```
+
+---
+
+## PHASE 3: THE SHOPPING UI ARCHITECTURE
+
+### 3.1 Cart State Management (Zustand)
+
+```typescript
+// lib/store/cart-store.ts
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import { CartItem } from '@/types/cart';
+
+interface CartStore {
+  items: CartItem[];
+  isOpen: boolean;
+  addItem: (item: CartItem) => Promise<void>;
+  removeItem: (productId: string, variantMetadata?: Record<string, any>) => void;
+  updateQuantity: (productId: string, quantity: number, variantMetadata?: Record<string, any>) => void;
+  clearCart: () => void;
+  toggleCart: () => void;
+  getTotal: () => number;
+  getItemCount: () => number;
+  syncWithServer: (userId: string) => Promise<void>;
+}
+
+export const useCartStore = create<CartStore>()(
+  persist(
+    (set, get) => ({
+      items: [],
+      isOpen: false,
+
+      addItem: async (item) => {
+        // Optimistic update
+        set((state) => {
+          const existingIndex = state.items.findIndex(
+            (i) => i.productId === item.productId && 
+            JSON.stringify(i.variantMetadata) === JSON.stringify(item.variantMetadata)
+          );
+
+          if (existingIndex >= 0) {
+            const updated = [...state.items];
+            updated[existingIndex].quantity += item.quantity;
+            return { items: updated };
+          }
+
+          return { items: [...state.items, item] };
+        });
+
+        // Sync with server
+        try {
+          const { addToCart } = await import('@/app/actions/cart');
+          await addToCart({
+            productId: item.productId,
+            quantity: item.quantity,
+            variantMetadata: item.variantMetadata,
+          });
+        } catch (error) {
+          // Rollback on error
+          set((state) => {
+            const existingIndex = state.items.findIndex(
+              (i) => i.productId === item.productId
+            );
+            if (existingIndex >= 0) {
+              const updated = [...state.items];
+              if (updated[existingIndex].quantity <= item.quantity) {
+                updated.splice(existingIndex, 1);
+              } else {
+                updated[existingIndex].quantity -= item.quantity;
+              }
+              return { items: updated };
+            }
+            return state;
+          });
+          throw error;
+        }
+      },
+
+      removeItem: (productId, variantMetadata) => {
+        set((state) => ({
+          items: state.items.filter(
+            (i) => !(i.productId === productId && 
+            JSON.stringify(i.variantMetadata) === JSON.stringify(variantMetadata))
+          ),
+        }));
+      },
+
+      updateQuantity: (productId, quantity, variantMetadata) => {
+        if (quantity <= 0) {
+          get().removeItem(productId, variantMetadata);
+          return;
+        }
+
+        set((state) => ({
+          items: state.items.map((i) =>
+            i.productId === productId && 
+            JSON.stringify(i.variantMetadata) === JSON.stringify(variantMetadata)
+              ? { ...i, quantity }
+              : i
+          ),
+        }));
+      },
+
+      clearCart: () => set({ items: [] }),
+
+      toggleCart: () => set((state) => ({ isOpen: !state.isOpen })),
+
+      getTotal: () => {
+        return get().items.reduce(
+          (sum, item) => sum + item.price * item.quantity,
+          0
+        );
+      },
+
+      getItemCount: () => {
+        return get().items.reduce((sum, item) => sum + item.quantity, 0);
+      },
+
+      syncWithServer: async (userId) => {
+        try {
+          const { getCart } = await import('@/app/actions/cart');
+          const serverCart = await getCart(userId);
+          
+          // Merge server cart with local cart (server takes precedence)
+          set({ items: serverCart.map((item: any) => ({
+            productId: item.product_id,
+            quantity: item.quantity,
+            variantMetadata: item.variant_metadata,
+            price: item.products.price,
+            product: item.products,
+          })) });
+        } catch (error) {
+          console.error('Failed to sync cart:', error);
+        }
+      },
+    }),
+    {
+      name: 'cart-storage',
+    }
+  )
+);
+```
+
+### 3.2 ProductGrid Component (Logic Layer)
+
+```typescript
+// components/shop/ProductGrid.tsx
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useInView } from 'react-intersection-observer';
+import { getProducts } from '@/app/actions/products';
+import { ProductCard } from './ProductCard';
+import { useDesignSystem } from '@/hooks/useDesignSystem';
+
+interface ProductGridProps {
+  initialProducts?: any[];
+  filters?: {
+    category?: string;
+    featured?: boolean;
+    search?: string;
+  };
+}
+
+export function ProductGrid({ initialProducts = [], filters }: ProductGridProps) {
+  const [products, setProducts] = useState(initialProducts);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [offset, setOffset] = useState(initialProducts.length);
+  const design = useDesignSystem();
+
+  const { ref, inView } = useInView({
+    threshold: 0,
+    triggerOnce: false,
+  });
+
+  useEffect(() => {
+    if (inView && hasMore && !loading) {
+      loadMore();
+    }
+  }, [inView, hasMore, loading]);
+
+  const loadMore = async () => {
+    setLoading(true);
+    try {
+      const newProducts = await getProducts({
+        ...filters,
+        limit: 12,
+        offset,
+      });
+
+      if (newProducts.length === 0) {
+        setHasMore(false);
+      } else {
+        setProducts((prev) => [...prev, ...newProducts]);
+        setOffset((prev) => prev + newProducts.length);
+      }
+    } catch (error) {
+      console.error('Failed to load products:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className={design.grid.container}>
+      {products.map((product, index) => (
+        <ProductCard
+          key={product.id}
+          product={product}
+          index={index}
+          design={design}
+        />
+      ))}
+      {hasMore && (
+        <div ref={ref} className={design.grid.loader}>
+          {loading && <div className={design.spinner}>Loading...</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### 3.3 ProductCard Component (Design-Agnostic)
+
+```typescript
+// components/shop/ProductCard.tsx
+'use client';
+
+import Image from 'next/image';
+import Link from 'next/link';
+import { useCartStore } from '@/lib/store/cart-store';
+import { useDesignSystem } from '@/hooks/useDesignSystem';
+import { motion } from 'framer-motion';
+
+interface ProductCardProps {
+  product: {
+    id: string;
+    title: string;
+    price: number;
+    images: string[];
+    slug: string;
+    inventory_count: number;
+  };
+  index: number;
+  design: ReturnType<typeof useDesignSystem>;
+}
+
+export function ProductCard({ product, index, design }: ProductCardProps) {
+  const addItem = useCartStore((state) => state.addItem);
+  const isOutOfStock = product.inventory_count === 0;
+
+  const handleAddToCart = async () => {
+    if (isOutOfStock) return;
+    
+    await addItem({
+      productId: product.id,
+      quantity: 1,
+      price: product.price,
+      variantMetadata: {},
+    });
+  };
+
+  return (
+    <motion.div
+      initial={design.animation.initial}
+      animate={design.animation.animate}
+      transition={design.animation.transition(index)}
+      className={design.card.container}
+    >
+      <Link href={`/shop/${product.slug}`} className={design.card.link}>
+        <div className={design.card.imageContainer}>
+          <Image
+            src={product.images[0] || '/placeholder.jpg'}
+            alt={product.title}
+            fill
+            sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+            className={design.card.image}
+            priority={index < 4}
+          />
+          {isOutOfStock && (
+            <div className={design.card.badge}>
+              Out of Stock
+            </div>
+          )}
+        </div>
+        <div className={design.card.content}>
+          <h3 className={design.card.title}>{product.title}</h3>
+          <p className={design.card.price}>
+            ${(product.price / 100).toFixed(2)}
+          </p>
+        </div>
+      </Link>
+      <button
+        onClick={handleAddToCart}
+        disabled={isOutOfStock}
+        className={design.button.primary}
+      >
+        {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
+      </button>
+    </motion.div>
+  );
+}
+```
+
+### 3.4 CartDrawer Component
+
+```typescript
+// components/shop/CartDrawer.tsx
+'use client';
+
+import { useCartStore } from '@/lib/store/cart-store';
+import { useDesignSystem } from '@/hooks/useDesignSystem';
+import { createCheckoutSession } from '@/app/actions/stripe';
+import { X } from 'lucide-react';
+import Image from 'next/image';
+
+export function CartDrawer() {
+  const { items, isOpen, toggleCart, getTotal, removeItem, updateQuantity } = useCartStore();
+  const design = useDesignSystem();
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+
+  const handleCheckout = async () => {
+    setCheckoutLoading(true);
+    try {
+      const session = await createCheckoutSession({
+        items: items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+      });
+
+      // Redirect to Stripe Checkout
+      window.location.href = session.url;
+    } catch (error) {
+      console.error('Checkout failed:', error);
+      alert('Failed to start checkout. Please try again.');
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className={design.drawer.overlay} onClick={toggleCart}>
+      <div
+        className={design.drawer.container}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className={design.drawer.header}>
+          <h2 className={design.drawer.title}>Shopping Cart</h2>
+          <button onClick={toggleCart} className={design.drawer.closeButton}>
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className={design.drawer.content}>
+          {items.length === 0 ? (
+            <p className={design.drawer.empty}>Your cart is empty</p>
+          ) : (
+            <>
+              {items.map((item) => (
+                <div key={`${item.productId}-${JSON.stringify(item.variantMetadata)}`} className={design.drawer.item}>
+                  <Image
+                    src={item.product?.images?.[0] || '/placeholder.jpg'}
+                    alt={item.product?.title || 'Product'}
+                    width={80}
+                    height={80}
+                    className={design.drawer.itemImage}
+                  />
+                  <div className={design.drawer.itemContent}>
+                    <h4 className={design.drawer.itemTitle}>{item.product?.title}</h4>
+                    <p className={design.drawer.itemPrice}>
+                      ${((item.price * item.quantity) / 100).toFixed(2)}
+                    </p>
+                    <div className={design.drawer.itemControls}>
+                      <button
+                        onClick={() => updateQuantity(item.productId, item.quantity - 1, item.variantMetadata)}
+                        className={design.button.quantity}
+                      >
+                        -
+                      </button>
+                      <span className={design.drawer.itemQuantity}>{item.quantity}</span>
+                      <button
+                        onClick={() => updateQuantity(item.productId, item.quantity + 1, item.variantMetadata)}
+                        className={design.button.quantity}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => removeItem(item.productId, item.variantMetadata)}
+                    className={design.drawer.removeButton}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+
+        {items.length > 0 && (
+          <div className={design.drawer.footer}>
+            <div className={design.drawer.total}>
+              <span>Total:</span>
+              <span className={design.drawer.totalAmount}>
+                ${(getTotal() / 100).toFixed(2)}
+              </span>
+            </div>
+            <button
+              onClick={handleCheckout}
+              disabled={checkoutLoading}
+              className={design.button.checkout}
+            >
+              {checkoutLoading ? 'Processing...' : 'Checkout'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+### 3.5 ProductDetail Component (Dynamic Routing)
+
+```typescript
+// app/shop/[slug]/page.tsx
+import { getProductBySlug, getProducts } from '@/app/actions/products';
+import { ProductDetailClient } from '@/components/shop/ProductDetailClient';
+import { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+
+export async function generateStaticParams() {
+  const products = await getProducts({ limit: 100 });
+  return products.map((product) => ({
+    slug: product.slug,
+  }));
+}
+
+export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+  const product = await getProductBySlug(params.slug);
+  
+  if (!product) {
+    return {
+      title: 'Product Not Found',
+    };
+  }
+
+  return {
+    title: product.title,
+    description: product.description,
+    openGraph: {
+      title: product.title,
+      description: product.description,
+      images: product.images.length > 0 ? [product.images[0]] : [],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: product.title,
+      description: product.description,
+      images: product.images.length > 0 ? [product.images[0]] : [],
+    },
+  };
+}
+
+export default async function ProductPage({ params }: { params: { slug: string } }) {
+  const product = await getProductBySlug(params.slug);
+
+  if (!product) {
+    notFound();
+  }
+
+  return <ProductDetailClient product={product} />;
+}
+```
+
+```typescript
+// components/shop/ProductDetailClient.tsx
+'use client';
+
+import { useState } from 'react';
+import Image from 'next/image';
+import { useCartStore } from '@/lib/store/cart-store';
+import { useDesignSystem } from '@/hooks/useDesignSystem';
+
+interface ProductDetailClientProps {
+  product: {
+    id: string;
+    title: string;
+    description: string;
+    price: number;
+    images: string[];
+    inventory_count: number;
+    metadata: Record<string, any>;
+  };
+}
+
+export function ProductDetailClient({ product }: ProductDetailClientProps) {
+  const [selectedVariant, setSelectedVariant] = useState<Record<string, any>>({});
+  const [selectedImage, setSelectedImage] = useState(0);
+  const addItem = useCartStore((state) => state.addItem);
+  const design = useDesignSystem();
+
+  const handleAddToCart = async () => {
+    await addItem({
+      productId: product.id,
+      quantity: 1,
+      price: product.price,
+      variantMetadata: selectedVariant,
+    });
+  };
+
+  const isOutOfStock = product.inventory_count === 0;
+
+  return (
+    <div className={design.productDetail.container}>
+      <div className={design.productDetail.imageSection}>
+        <div className={design.productDetail.mainImage}>
+          <Image
+            src={product.images[selectedImage] || '/placeholder.jpg'}
+            alt={product.title}
+            fill
+            sizes="(max-width: 768px) 100vw, 50vw"
+            className={design.productDetail.image}
+            priority
+          />
+        </div>
+        {product.images.length > 1 && (
+          <div className={design.productDetail.thumbnailGrid}>
+            {product.images.map((image, index) => (
+              <button
+                key={index}
+                onClick={() => setSelectedImage(index)}
+                className={design.productDetail.thumbnail}
+              >
+                <Image
+                  src={image}
+                  alt={`${product.title} - View ${index + 1}`}
+                  fill
+                  sizes="80px"
+                  className={design.productDetail.thumbnailImage}
+                />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className={design.productDetail.contentSection}>
+        <h1 className={design.productDetail.title}>{product.title}</h1>
+        <p className={design.productDetail.price}>
+          ${(product.price / 100).toFixed(2)}
+        </p>
+        <p className={design.productDetail.description}>{product.description}</p>
+
+        {/* Variant Selection */}
+        {product.metadata.variants && (
+          <div className={design.productDetail.variants}>
+            {Object.entries(product.metadata.variants).map(([key, options]: [string, any]) => (
+              <div key={key} className={design.productDetail.variantGroup}>
+                <label className={design.productDetail.variantLabel}>
+                  {key.charAt(0).toUpperCase() + key.slice(1)}:
+                </label>
+                <div className={design.productDetail.variantOptions}>
+                  {options.map((option: string) => (
+                    <button
+                      key={option}
+                      onClick={() => setSelectedVariant({ ...selectedVariant, [key]: option })}
+                      className={
+                        selectedVariant[key] === option
+                          ? design.productDetail.variantOptionActive
+                          : design.productDetail.variantOption
+                      }
+                      disabled={isOutOfStock}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          onClick={handleAddToCart}
+          disabled={isOutOfStock}
+          className={design.button.primary}
+        >
+          {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
+        </button>
+
+        {isOutOfStock && (
+          <p className={design.productDetail.stockMessage}>
+            This item is currently out of stock.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## PHASE 4: STRIPE INTEGRATION
+
+### 4.1 Stripe Client Setup
+
+```typescript
+// lib/stripe/server.ts
+import Stripe from 'stripe';
+
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error('STRIPE_SECRET_KEY is not set');
+}
+
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: '2024-11-20.acacia',
+  typescript: true,
+});
+```
+
+### 4.2 Checkout Session Creation
+
+```typescript
+// app/actions/stripe.ts
+'use server';
+
+import { stripe } from '@/lib/stripe/server';
+import { createServerClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
+
+export async function createCheckoutSession(input: {
+  items: Array<{
+    productId: string;
+    quantity: number;
+    price: number;
+  }>;
+}) {
+  const supabase = createServerClient();
+  const cookieStore = cookies();
+  
+  // Get user (if logged in)
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  // Get or create Stripe customer
+  let customerId: string | undefined;
+  
+  if (user) {
+    const { data: userData } = await supabase
+      .from('users')
+      .select('stripe_customer_id')
+      .eq('id', user.id)
+      .single();
+
+    if (userData?.stripe_customer_id) {
+      customerId = userData.stripe_customer_id;
+    } else {
+      // Create Stripe customer
+      const customer = await stripe.customers.create({
+        email: user.email,
+        metadata: {
+          userId: user.id,
+        },
+      });
+
+      // Save to database
+      await supabase
+        .from('users')
+        .update({ stripe_customer_id: customer.id })
+        .eq('id', user.id);
+
+      customerId = customer.id;
+    }
+  }
+
+  // Create line items
+  const lineItems = input.items.map((item) => ({
+    price_data: {
+      currency: 'usd',
+      product_data: {
+        name: `Product ${item.productId}`, // Fetch actual product name if needed
+      },
+      unit_amount: item.price,
+    },
+    quantity: item.quantity,
+  }));
+
+  // Create checkout session
+  const session = await stripe.checkout.sessions.create({
+    customer: customerId,
+    payment_method_types: ['card'],
+    line_items: lineItems,
+    mode: 'payment',
+    success_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/shop?canceled=true`,
+    metadata: {
+      userId: user?.id || 'guest',
+      items: JSON.stringify(input.items),
+    },
+  }, {
+    idempotencyKey: `checkout-${Date.now()}-${user?.id || 'guest'}`,
+  });
+
+  return {
+    sessionId: session.id,
+    url: session.url!,
+  };
+}
+```
+
+### 4.3 Webhook Handler
+
+```typescript
+// app/api/webhooks/stripe/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { stripe } from '@/lib/stripe/server';
+import { createServerClient } from '@/lib/supabase/server';
+import { headers } from 'next/headers';
+
+export async function POST(req: NextRequest) {
+  const body = await req.text();
+  const headersList = await headers();
+  const signature = headersList.get('stripe-signature');
+
+  if (!signature) {
+    return NextResponse.json(
+      { error: 'No signature provided' },
+      { status: 400 }
+    );
+  }
+
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET!
+    );
+  } catch (err: any) {
+    console.error('Webhook signature verification failed:', err.message);
+    return NextResponse.json(
+      { error: `Webhook Error: ${err.message}` },
+      { status: 400 }
+    );
+  }
+
+  const supabase = createServerClient();
+
+  // Check idempotency (prevent duplicate processing)
+  const { data: existingEvent } = await supabase
+    .from('webhook_events')
+    .select('id, processed')
+    .eq('stripe_event_id', event.id)
+    .single();
+
+  if (existingEvent) {
+    if (existingEvent.processed) {
+      // Already processed, return success
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+    // Event exists but not processed - mark as processing
+  } else {
+    // Record new event
+    await supabase.from('webhook_events').insert({
+      stripe_event_id: event.id,
+      event_type: event.type,
+      payload: event.data.object,
+      processed: false,
+    });
+  }
+
+  // Process event
+  try {
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await handleCheckoutCompleted(session, supabase);
+        break;
+      }
+
+      case 'payment_intent.succeeded': {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        await handlePaymentSucceeded(paymentIntent, supabase);
+        break;
+      }
+
+      case 'payment_intent.payment_failed': {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        await handlePaymentFailed(paymentIntent, supabase);
+        break;
+      }
+
+      default:
+        console.log(`Unhandled event type: ${event.type}`);
+    }
+
+    // Mark event as processed
+    await supabase
+      .from('webhook_events')
+      .update({ processed: true })
+      .eq('stripe_event_id', event.id);
+
+    return NextResponse.json({ received: true });
+  } catch (error: any) {
+    console.error('Error processing webhook:', error);
+    return NextResponse.json(
+      { error: 'Webhook processing failed' },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleCheckoutCompleted(
+  session: Stripe.Checkout.Session,
+  supabase: ReturnType<typeof createServerClient>
+) {
+  const items = JSON.parse(session.metadata?.items || '[]');
+  const userId = session.metadata?.userId || null;
+
+  // Create order and decrement inventory atomically
+  const { createOrder } = await import('@/app/actions/orders');
+  
+  await createOrder({
+    userId: userId !== 'guest' ? userId : undefined,
+    items: items.map((item: any) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      priceAtPurchase: item.price,
+      variantMetadata: item.variantMetadata || {},
+    })),
+    stripePaymentIntentId: session.payment_intent as string,
+    shippingAddress: session.shipping_details?.address,
+    billingAddress: session.customer_details?.address,
+  });
+
+  // Clear cart for logged-in users
+  if (userId && userId !== 'guest') {
+    await supabase
+      .from('cart_items')
+      .delete()
+      .eq('user_id', userId);
+  }
+
+  // Send receipt email (using Resend/React-Email)
+  if (session.customer_email) {
+    await sendReceiptEmail(session.customer_email, session);
+  }
+}
+
+async function handlePaymentSucceeded(
+  paymentIntent: Stripe.PaymentIntent,
+  supabase: ReturnType<typeof createServerClient>
+) {
+  // Update order status if needed
+  await supabase
+    .from('orders')
+    .update({ status: 'paid' })
+    .eq('stripe_payment_intent_id', paymentIntent.id);
+}
+
+async function handlePaymentFailed(
+  paymentIntent: Stripe.PaymentIntent,
+  supabase: ReturnType<typeof createServerClient>
+) {
+  // Update order status
+  await supabase
+    .from('orders')
+    .update({ status: 'cancelled' })
+    .eq('stripe_payment_intent_id', paymentIntent.id);
+}
+
+async function sendReceiptEmail(email: string, session: Stripe.Checkout.Session) {
+  // Implement using Resend/React-Email
+  // Example:
+  /*
+  import { Resend } from 'resend';
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  
+  await resend.emails.send({
+    from: 'noreply@yourstore.com',
+    to: email,
+    subject: 'Order Confirmation',
+    react: ReceiptEmail({ session }),
+  });
+  */
+}
+```
+
+---
+
+## PHASE 5: DESIGN SYSTEM BRIDGE
+
+### 5.1 useDesignSystem Hook
+
+```typescript
+// hooks/useDesignSystem.ts
+'use client';
+
+import { useMemo } from 'react';
+
+type DesignSystem = 'apple' | 'brutalist' | 'swiss' | 'luxury' | 'default';
+
+interface DesignTokens {
+  grid: {
+    container: string;
+    loader: string;
+  };
+  card: {
+    container: string;
+    link: string;
+    imageContainer: string;
+    image: string;
+    badge: string;
+    content: string;
+    title: string;
+    price: string;
+  };
+  button: {
+    primary: string;
+    quantity: string;
+    checkout: string;
+  };
+  drawer: {
+    overlay: string;
+    container: string;
+    header: string;
+    title: string;
+    closeButton: string;
+    content: string;
+    empty: string;
+    item: string;
+    itemImage: string;
+    itemContent: string;
+    itemTitle: string;
+    itemPrice: string;
+    itemControls: string;
+    itemQuantity: string;
+    removeButton: string;
+    footer: string;
+    total: string;
+    totalAmount: string;
+  };
+  productDetail: {
+    container: string;
+    imageSection: string;
+    mainImage: string;
+    image: string;
+    thumbnailGrid: string;
+    thumbnail: string;
+    thumbnailImage: string;
+    contentSection: string;
+    title: string;
+    price: string;
+    description: string;
+    variants: string;
+    variantGroup: string;
+    variantLabel: string;
+    variantOptions: string;
+    variantOption: string;
+    variantOptionActive: string;
+    stockMessage: string;
+  };
+  animation: {
+    initial: any;
+    animate: any;
+    transition: (index: number) => any;
+  };
+  spinner: string;
+}
+
+export function useDesignSystem(): DesignTokens {
+  const designSystem = useMemo<DesignSystem>(() => {
+    // Detect active design system from environment or context
+    // This could be set via environment variable, cookie, or user preference
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('design-system');
+      if (stored && ['apple', 'brutalist', 'swiss', 'luxury'].includes(stored)) {
+        return stored as DesignSystem;
+      }
+    }
+    return 'default';
+  }, []);
+
+  return useMemo(() => {
+    switch (designSystem) {
+      case 'apple':
+        return getAppleDesignTokens();
+      case 'brutalist':
+        return getBrutalistDesignTokens();
+      case 'swiss':
+        return getSwissDesignTokens();
+      case 'luxury':
+        return getLuxuryDesignTokens();
+      default:
+        return getDefaultDesignTokens();
+    }
+  }, [designSystem]);
+}
+
+function getAppleDesignTokens(): DesignTokens {
+  return {
+    grid: {
+      container: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6',
+      loader: 'col-span-full flex justify-center py-12',
+    },
+    card: {
+      container: 'bg-[var(--bg-card-light)] dark:bg-[var(--bg-card-dark)] rounded-[var(--radius-large)] p-[var(--card-padding)] shadow-[var(--shadow-card)] transition-all duration-300 hover:scale-[1.02]',
+      link: 'block',
+      imageContainer: 'relative w-full aspect-square rounded-[var(--radius-small)] overflow-hidden mb-4',
+      image: 'object-cover',
+      badge: 'absolute top-4 right-4 bg-black/80 text-white px-3 py-1 rounded-full text-sm',
+      content: 'space-y-2',
+      title: 'text-lg font-semibold text-[#1D1D1F] dark:text-white',
+      price: 'text-xl font-bold text-[var(--brand-primary)]',
+    },
+    button: {
+      primary: 'w-full bg-[var(--brand-primary)] text-white px-8 py-3 rounded-full hover:bg-[var(--brand-dark)] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed',
+      quantity: 'w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-100',
+      checkout: 'w-full bg-[var(--brand-primary)] text-white px-8 py-4 rounded-full hover:bg-[var(--brand-dark)] transition-all duration-300 font-semibold',
+    },
+    drawer: {
+      overlay: 'fixed inset-0 bg-black/50 backdrop-blur-sm z-50',
+      container: 'fixed right-0 top-0 h-full w-full max-w-md bg-[var(--bg-card-light)] dark:bg-[var(--bg-card-dark)] shadow-2xl flex flex-col',
+      header: 'flex items-center justify-between p-6 border-b',
+      title: 'text-2xl font-semibold',
+      closeButton: 'p-2 hover:bg-gray-100 rounded-full transition-colors',
+      content: 'flex-1 overflow-y-auto p-6 space-y-4',
+      empty: 'text-center text-gray-500 py-12',
+      item: 'flex gap-4 p-4 border rounded-[var(--radius-small)]',
+      itemImage: 'rounded-[var(--radius-small)] object-cover',
+      itemContent: 'flex-1 space-y-2',
+      itemTitle: 'font-semibold',
+      itemPrice: 'text-[var(--brand-primary)] font-bold',
+      itemControls: 'flex items-center gap-2',
+      itemQuantity: 'font-semibold',
+      removeButton: 'text-red-500 hover:text-red-700 text-sm',
+      footer: 'border-t p-6 space-y-4',
+      total: 'flex justify-between text-xl font-bold',
+      totalAmount: 'text-[var(--brand-primary)]',
+    },
+    productDetail: {
+      container: 'grid grid-cols-1 lg:grid-cols-2 gap-12',
+      imageSection: 'space-y-4',
+      mainImage: 'relative w-full aspect-square rounded-[var(--radius-large)] overflow-hidden',
+      image: 'object-cover',
+      thumbnailGrid: 'grid grid-cols-4 gap-4',
+      thumbnail: 'relative aspect-square rounded-[var(--radius-small)] overflow-hidden border-2 border-transparent hover:border-[var(--brand-primary)] transition-colors',
+      thumbnailImage: 'object-cover',
+      contentSection: 'space-y-6',
+      title: 'text-4xl font-bold',
+      price: 'text-3xl font-bold text-[var(--brand-primary)]',
+      description: 'text-lg text-gray-600 dark:text-gray-400',
+      variants: 'space-y-4',
+      variantGroup: 'space-y-2',
+      variantLabel: 'font-semibold',
+      variantOptions: 'flex gap-2 flex-wrap',
+      variantOption: 'px-4 py-2 border rounded-full hover:border-[var(--brand-primary)] transition-colors',
+      variantOptionActive: 'px-4 py-2 border-2 border-[var(--brand-primary)] bg-[var(--brand-surface)] rounded-full',
+      stockMessage: 'text-red-500 text-sm',
+    },
+    animation: {
+      initial: { y: 30, opacity: 0 },
+      animate: { y: 0, opacity: 1 },
+      transition: (index: number) => ({
+        duration: 0.8,
+        delay: index * 0.1,
+        ease: [0.2, 0.8, 0.2, 1],
+      }),
+    },
+    spinner: 'animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--brand-primary)]',
+  };
+}
+
+function getBrutalistDesignTokens(): DesignTokens {
+  return {
+    grid: {
+      container: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 border border-black',
+      loader: 'col-span-full flex justify-center py-12 border-t border-black',
+    },
+    card: {
+      container: 'border-r border-b border-black p-4 bg-white hover:bg-black hover:text-white transition-colors',
+      link: 'block',
+      imageContainer: 'relative w-full aspect-square border-2 border-black mb-4',
+      image: 'object-cover',
+      badge: 'absolute top-2 right-2 bg-black text-white px-2 py-1 text-xs font-bold',
+      content: 'space-y-2',
+      title: 'text-lg font-bold uppercase',
+      price: 'text-xl font-black',
+    },
+    button: {
+      primary: 'w-full bg-black text-white px-4 py-3 border-2 border-black font-bold uppercase hover:bg-white hover:text-black transition-colors disabled:opacity-50',
+      quantity: 'w-8 h-8 border-2 border-black flex items-center justify-center font-bold hover:bg-black hover:text-white',
+      checkout: 'w-full bg-black text-white px-4 py-4 border-2 border-black font-bold uppercase hover:bg-white hover:text-black transition-colors',
+    },
+    drawer: {
+      overlay: 'fixed inset-0 bg-black/80 z-50',
+      container: 'fixed right-0 top-0 h-full w-full max-w-md bg-white border-l-4 border-black flex flex-col',
+      header: 'flex items-center justify-between p-4 border-b-4 border-black',
+      title: 'text-2xl font-black uppercase',
+      closeButton: 'p-2 border-2 border-black hover:bg-black hover:text-white font-bold',
+      content: 'flex-1 overflow-y-auto p-4 space-y-4',
+      empty: 'text-center py-12 font-bold',
+      item: 'flex gap-4 p-4 border-2 border-black',
+      itemImage: 'border-2 border-black object-cover',
+      itemContent: 'flex-1 space-y-2',
+      itemTitle: 'font-bold uppercase',
+      itemPrice: 'font-black',
+      itemControls: 'flex items-center gap-2',
+      itemQuantity: 'font-bold',
+      removeButton: 'text-red-600 hover:text-red-800 font-bold text-sm',
+      footer: 'border-t-4 border-black p-4 space-y-4',
+      total: 'flex justify-between text-xl font-black uppercase',
+      totalAmount: 'text-black',
+    },
+    productDetail: {
+      container: 'grid grid-cols-1 lg:grid-cols-2 gap-0 border-2 border-black',
+      imageSection: 'space-y-4 p-4 border-r-2 border-black',
+      mainImage: 'relative w-full aspect-square border-4 border-black',
+      image: 'object-cover',
+      thumbnailGrid: 'grid grid-cols-4 gap-2',
+      thumbnail: 'relative aspect-square border-2 border-black hover:border-4 transition-all',
+      thumbnailImage: 'object-cover',
+      contentSection: 'space-y-6 p-8',
+      title: 'text-4xl font-black uppercase',
+      price: 'text-3xl font-black',
+      description: 'text-lg',
+      variants: 'space-y-4',
+      variantGroup: 'space-y-2',
+      variantLabel: 'font-bold uppercase',
+      variantOptions: 'flex gap-2 flex-wrap',
+      variantOption: 'px-4 py-2 border-2 border-black font-bold uppercase hover:bg-black hover:text-white',
+      variantOptionActive: 'px-4 py-2 border-4 border-black bg-black text-white font-bold uppercase',
+      stockMessage: 'text-red-600 font-bold',
+    },
+    animation: {
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      transition: (index: number) => ({
+        duration: 0.3,
+        delay: index * 0.05,
+      }),
+    },
+    spinner: 'animate-spin rounded-full h-8 w-8 border-4 border-black border-t-transparent',
+  };
+}
+
+function getSwissDesignTokens(): DesignTokens {
+  return {
+    grid: {
+      container: 'grid grid-cols-12 gap-0',
+      loader: 'col-span-12 flex justify-center py-12 border-t border-[var(--color-grid-line)]',
+    },
+    card: {
+      container: 'col-span-12 md:col-span-6 lg:col-span-4 xl:col-span-3 border-r border-b border-[var(--color-grid-line)] p-8',
+      link: 'block',
+      imageContainer: 'relative w-full aspect-square mb-6 border border-[var(--color-grid-line)]',
+      image: 'object-cover',
+      badge: 'absolute top-2 right-2 bg-[var(--color-black)] text-[var(--color-white)] px-2 py-1 text-xs',
+      content: 'space-y-1',
+      title: 'text-sm font-medium uppercase tracking-wide',
+      price: 'text-lg font-bold',
+    },
+    button: {
+      primary: 'w-full bg-[var(--color-black)] text-[var(--color-white)] px-4 py-2 text-sm font-medium uppercase tracking-wide hover:bg-[var(--color-white)] hover:text-[var(--color-black)] border border-[var(--color-black)] transition-colors',
+      quantity: 'w-8 h-8 border border-[var(--color-grid-line)] flex items-center justify-center text-sm hover:bg-[var(--color-black)] hover:text-[var(--color-white)]',
+      checkout: 'w-full bg-[var(--color-black)] text-[var(--color-white)] px-4 py-3 text-sm font-medium uppercase tracking-wide hover:bg-[var(--color-white)] hover:text-[var(--color-black)] border border-[var(--color-black)] transition-colors',
+    },
+    drawer: {
+      overlay: 'fixed inset-0 bg-black/20 z-50',
+      container: 'fixed right-0 top-0 h-full w-full max-w-md bg-[var(--color-white)] border-l border-[var(--color-grid-line)] flex flex-col',
+      header: 'flex items-center justify-between p-6 border-b border-[var(--color-grid-line)]',
+      title: 'text-sm font-medium uppercase tracking-wide',
+      closeButton: 'p-2 hover:bg-[var(--color-black)] hover:text-[var(--color-white)] transition-colors',
+      content: 'flex-1 overflow-y-auto p-6 space-y-4',
+      empty: 'text-center text-[var(--color-text-secondary)] py-12 text-sm',
+      item: 'flex gap-4 p-4 border-b border-[var(--color-grid-line)]',
+      itemImage: 'border border-[var(--color-grid-line)] object-cover',
+      itemContent: 'flex-1 space-y-1',
+      itemTitle: 'text-sm font-medium uppercase',
+      itemPrice: 'font-bold',
+      itemControls: 'flex items-center gap-2',
+      itemQuantity: 'text-sm font-medium',
+      removeButton: 'text-[var(--color-text-secondary)] hover:text-[var(--color-black)] text-xs uppercase',
+      footer: 'border-t border-[var(--color-grid-line)] p-6 space-y-4',
+      total: 'flex justify-between text-sm font-bold uppercase tracking-wide',
+      totalAmount: 'text-[var(--color-black)]',
+    },
+    productDetail: {
+      container: 'grid grid-cols-12 gap-0 border-t border-[var(--color-grid-line)]',
+      imageSection: 'col-span-12 lg:col-span-6 space-y-4 p-8 border-r border-[var(--color-grid-line)]',
+      mainImage: 'relative w-full aspect-square border border-[var(--color-grid-line)]',
+      image: 'object-cover',
+      thumbnailGrid: 'grid grid-cols-4 gap-2',
+      thumbnail: 'relative aspect-square border border-[var(--color-grid-line)] hover:border-[var(--color-black)]',
+      thumbnailImage: 'object-cover',
+      contentSection: 'col-span-12 lg:col-span-6 space-y-6 p-8',
+      title: 'text-2xl font-bold uppercase tracking-wide',
+      price: 'text-xl font-bold',
+      description: 'text-sm text-[var(--color-text-secondary)] leading-relaxed',
+      variants: 'space-y-4',
+      variantGroup: 'space-y-2',
+      variantLabel: 'text-xs font-medium uppercase tracking-wide',
+      variantOptions: 'flex gap-2 flex-wrap',
+      variantOption: 'px-3 py-1 border border-[var(--color-grid-line)] text-xs uppercase hover:border-[var(--color-black)]',
+      variantOptionActive: 'px-3 py-1 border-2 border-[var(--color-black)] bg-[var(--color-black)] text-[var(--color-white)]',
+      stockMessage: 'text-xs text-[var(--color-text-secondary)] uppercase',
+    },
+    animation: {
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      transition: (index: number) => ({
+        duration: 0.4,
+        delay: index * 0.05,
+      }),
+    },
+    spinner: 'animate-spin rounded-full h-6 w-6 border-2 border-[var(--color-black)] border-t-transparent',
+  };
+}
+
+function getLuxuryDesignTokens(): DesignTokens {
+  return {
+    grid: {
+      container: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-[var(--gap-grid-x)]',
+      loader: 'col-span-full flex justify-center py-[var(--spacing-xl)]',
+    },
+    card: {
+      container: 'group cursor-pointer',
+      link: 'block',
+      imageContainer: 'relative w-full aspect-[3/4] mb-[var(--spacing-md)] overflow-hidden',
+      image: 'object-cover transition-transform duration-[var(--duration-slow)] group-hover:scale-105',
+      badge: 'absolute top-[var(--spacing-sm)] right-[var(--spacing-sm)] bg-[var(--color-bg-secondary)] text-[var(--color-text-on-light)] px-3 py-1 text-xs tracking-[var(--letter-spacing-wide)] uppercase',
+      content: 'space-y-2',
+      title: 'text-[var(--font-size-base)] font-normal tracking-[var(--letter-spacing-wide)] uppercase',
+      price: 'text-[var(--font-size-base)] font-normal',
+    },
+    button: {
+      primary: 'w-full bg-[var(--color-bg-secondary)] text-[var(--color-text-on-light)] px-[var(--spacing-md)] py-[var(--spacing-sm)] text-[var(--font-size-sm)] tracking-[var(--letter-spacing-wide)] uppercase hover:bg-[var(--color-bg-primary)] transition-colors duration-[var(--duration-normal)] disabled:opacity-50',
+      quantity: 'w-8 h-8 border border-[var(--color-border)] flex items-center justify-center text-[var(--font-size-sm)] hover:bg-[var(--color-bg-secondary)] transition-colors',
+      checkout: 'w-full bg-[var(--color-bg-secondary)] text-[var(--color-text-on-light)] px-[var(--spacing-md)] py-[var(--spacing-md)] text-[var(--font-size-sm)] tracking-[var(--letter-spacing-wide)] uppercase hover:bg-[var(--color-bg-primary)] transition-colors duration-[var(--duration-normal)]',
+    },
+    drawer: {
+      overlay: 'fixed inset-0 bg-black/40 backdrop-blur-sm z-50',
+      container: 'fixed right-0 top-0 h-full w-full max-w-lg bg-[var(--color-bg-primary)] flex flex-col',
+      header: 'flex items-center justify-between p-[var(--spacing-lg)] border-b border-[var(--color-border)]',
+      title: 'text-[var(--font-size-lg)] font-normal tracking-[var(--letter-spacing-wide)] uppercase',
+      closeButton: 'p-2 hover:bg-[var(--color-bg-secondary)] transition-colors',
+      content: 'flex-1 overflow-y-auto p-[var(--spacing-lg)] space-y-[var(--spacing-md)]',
+      empty: 'text-center text-[var(--color-text-on-light)] py-[var(--spacing-xl)] text-[var(--font-size-sm)]',
+      item: 'flex gap-[var(--spacing-md)] p-[var(--spacing-md)] border-b border-[var(--color-border)]',
+      itemImage: 'border border-[var(--color-border)] object-cover',
+      itemContent: 'flex-1 space-y-2',
+      itemTitle: 'text-[var(--font-size-sm)] font-normal tracking-[var(--letter-spacing-wide)]',
+      itemPrice: 'text-[var(--font-size-base)] font-normal',
+      itemControls: 'flex items-center gap-2',
+      itemQuantity: 'text-[var(--font-size-sm)] font-normal',
+      removeButton: 'text-[var(--color-text-on-light)] hover:opacity-60 text-xs uppercase tracking-wide',
+      footer: 'border-t border-[var(--color-border)] p-[var(--spacing-lg)] space-y-[var(--spacing-md)]',
+      total: 'flex justify-between text-[var(--font-size-base)] font-normal tracking-[var(--letter-spacing-wide)] uppercase',
+      totalAmount: 'text-[var(--color-text-on-light)]',
+    },
+    productDetail: {
+      container: 'grid grid-cols-1 lg:grid-cols-2 gap-[var(--gap-grid-x)]',
+      imageSection: 'space-y-[var(--spacing-md)]',
+      mainImage: 'relative w-full aspect-square',
+      image: 'object-cover',
+      thumbnailGrid: 'grid grid-cols-4 gap-[var(--spacing-sm)]',
+      thumbnail: 'relative aspect-square border border-[var(--color-border)] hover:border-[var(--color-text-on-light)] transition-colors',
+      thumbnailImage: 'object-cover',
+      contentSection: 'space-y-[var(--spacing-lg)]',
+      title: 'text-[var(--font-size-2xl)] font-normal tracking-[var(--letter-spacing-wide)] uppercase',
+      price: 'text-[var(--font-size-xl)] font-normal',
+      description: 'text-[var(--font-size-base)] text-[var(--color-text-on-light)] leading-[var(--line-height-relaxed)]',
+      variants: 'space-y-[var(--spacing-md)]',
+      variantGroup: 'space-y-[var(--spacing-sm)]',
+      variantLabel: 'text-[var(--font-size-sm)] font-normal tracking-[var(--letter-spacing-wide)] uppercase',
+      variantOptions: 'flex gap-[var(--spacing-sm)] flex-wrap',
+      variantOption: 'px-[var(--spacing-md)] py-[var(--spacing-sm)] border border-[var(--color-border)] text-[var(--font-size-sm)] tracking-[var(--letter-spacing-wide)] uppercase hover:border-[var(--color-text-on-light)] transition-colors',
+      variantOptionActive: 'px-[var(--spacing-md)] py-[var(--spacing-sm)] border-2 border-[var(--color-text-on-light)] text-[var(--font-size-sm)] tracking-[var(--letter-spacing-wide)] uppercase',
+      stockMessage: 'text-[var(--font-size-sm)] text-[var(--color-text-on-light)] tracking-[var(--letter-spacing-wide)]',
+    },
+    animation: {
+      initial: { opacity: 0, y: 20 },
+      animate: { opacity: 1, y: 0 },
+      transition: (index: number) => ({
+        duration: 0.6,
+        delay: index * 0.1,
+        ease: [0.4, 0, 0.2, 1],
+      }),
+    },
+    spinner: 'animate-spin rounded-full h-6 w-6 border border-[var(--color-border)] border-t-[var(--color-text-on-light)]',
+  };
+}
+
+function getDefaultDesignTokens(): DesignTokens {
+  // Fallback design tokens
+  return getAppleDesignTokens();
+}
+```
+
+---
+
+## PHASE 6: PERFORMANCE & CACHING
+
+### 6.1 Next.js Caching Strategy
+
+```typescript
+// app/shop/page.tsx
+import { getProducts } from '@/app/actions/products';
+import { ProductGrid } from '@/components/shop/ProductGrid';
+
+export const revalidate = 3600; // Revalidate every hour
+
+export default async function ShopPage({
+  searchParams,
+}: {
+  searchParams: { category?: string; search?: string };
+}) {
+  const products = await getProducts({
+    category: searchParams.category,
+    search: searchParams.search,
+    limit: 12,
+  });
+
+  return (
+    <div>
+      <h1>Shop</h1>
+      <ProductGrid initialProducts={products} filters={searchParams} />
+    </div>
+  );
+}
+```
+
+### 6.2 Image Optimization
+
+```typescript
+// next.config.js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  images: {
+    domains: ['your-image-cdn.com', 'supabase.co'],
+    formats: ['image/avif', 'image/webp'],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+  },
+};
+
+module.exports = nextConfig;
+```
+
+### 6.3 Revalidation on Product Update
+
+```typescript
+// app/actions/admin/products.ts
+'use server';
+
+import { createServerClient } from '@/lib/supabase/server';
+import { revalidatePath } from 'next/cache';
+
+export async function updateProduct(productId: string, data: any) {
+  const supabase = createServerClient();
+  
+  const { error } = await supabase
+    .from('products')
+    .update(data)
+    .eq('id', productId);
+
+  if (error) {
+    throw new Error(`Failed to update product: ${error.message}`);
+  }
+
+  // Revalidate product pages
+  revalidatePath('/shop');
+  revalidatePath(`/shop/${data.slug || '*'}`);
+  
+  return { success: true };
+}
+```
+
+---
+
+## PHASE 7: VALIDATION SCHEMAS
+
+### 7.1 Zod Schemas
+
+```typescript
+// lib/validations/cart.ts
+import { z } from 'zod';
+
+export const cartItemSchema = z.object({
+  productId: z.string().uuid('Invalid product ID'),
+  quantity: z.number().int('Quantity must be an integer').positive('Quantity must be positive'),
+  price: z.number().int('Price must be in cents').positive('Price must be positive'),
+  variantMetadata: z.record(z.any()).optional(),
+});
+
+export const addToCartSchema = cartItemSchema;
+
+export const updateCartItemSchema = z.object({
+  itemId: z.string().uuid('Invalid item ID'),
+  quantity: z.number().int().positive(),
+});
+
+export const checkoutSchema = z.object({
+  items: z.array(cartItemSchema).min(1, 'Cart cannot be empty'),
+  shippingAddress: z.object({
+    line1: z.string().min(1),
+    line2: z.string().optional(),
+    city: z.string().min(1),
+    state: z.string().min(1),
+    postal_code: z.string().min(1),
+    country: z.string().min(2).max(2),
+  }).optional(),
+});
+```
+
+```typescript
+// lib/validations/products.ts
+import { z } from 'zod';
+
+export const productSchema = z.object({
+  title: z.string().min(1, 'Title is required').max(200, 'Title too long'),
+  description: z.string().optional(),
+  price: z.number().int('Price must be in cents').positive('Price must be positive'),
+  inventory_count: z.number().int().min(0, 'Inventory cannot be negative'),
+  images: z.array(z.string().url('Invalid image URL')).min(1, 'At least one image is required'),
+  slug: z.string().min(1).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+  category: z.string().optional(),
+  featured: z.boolean().default(false),
+  metadata: z.record(z.any()).optional(),
+});
+
+export const productFiltersSchema = z.object({
+  category: z.string().optional(),
+  featured: z.boolean().optional(),
+  search: z.string().optional(),
+  limit: z.number().int().positive().max(100).default(12),
+  offset: z.number().int().min(0).default(0),
+});
+```
+
+---
+
+## INTEGRATION CHECKLIST
+
+### ✅ Design System Integration
+- [ ] Import `useDesignSystem` hook in all UI components
+- [ ] Map design tokens to component classes
+- [ ] Test with multiple design systems (Apple, Brutalist, Swiss, Luxury)
+- [ ] Ensure animations respect design system timing
+
+### ✅ Stripe Integration
+- [ ] Set up webhook endpoint at `/api/webhooks/stripe`
+- [ ] Configure webhook secret in environment variables
+- [ ] Test webhook signature verification
+- [ ] Implement idempotency checks
+- [ ] Test checkout flow end-to-end
+
+### ✅ Database Setup
+- [ ] Run all SQL migrations in Supabase
+- [ ] Set up Row Level Security (RLS) policies
+- [ ] Create database functions for atomic operations
+- [ ] Test inventory decrement function
+
+### ✅ Performance Optimization
+- [ ] Configure Next.js image optimization
+- [ ] Set up revalidation strategies
+- [ ] Implement proper caching headers
+- [ ] Test infinite scroll performance
+
+### ✅ Error Handling
+- [ ] Add error boundaries for UI components
+- [ ] Implement proper error messages for users
+- [ ] Log errors for debugging
+- [ ] Handle network failures gracefully
+
+---
+
+## CRITICAL NOTES
+
+1. **Design System Bridge**: The `useDesignSystem` hook must be the single source of truth for all styling. Never hardcode Tailwind classes that should come from the design system.
+
+2. **Stripe Webhooks**: Always verify signatures and check idempotency. Never process the same event twice.
+
+3. **Inventory Management**: Use database transactions (via RPC functions) to ensure atomic inventory decrements. This prevents race conditions and overselling.
+
+4. **Cart Persistence**: Guest carts use `localStorage`, logged-in users use database. Always sync on login.
+
+5. **Image Optimization**: Use Next.js `Image` component with proper `sizes` attribute to prevent Layout Shift (CLS).
+
+---
+
+**END OF DOCUMENT**

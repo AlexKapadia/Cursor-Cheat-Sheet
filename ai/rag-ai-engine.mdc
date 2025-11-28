@@ -1,0 +1,1275 @@
+# RAG AI Engine: Source of Truth
+
+**Version:** 1.0  
+**Last Updated:** 2024  
+**Architecture Pattern:** Retrieval Augmented Generation with Hybrid Search
+
+---
+
+## ⚠️ CRITICAL ARCHITECTURE PRINCIPLES
+
+### The "Quality" Rule
+
+**Garbage In, Garbage Out:** The quality of the bot depends 100% on how you *chunk* the data, not just the model you use.
+
+1. **Chunking Strategy is Everything:** Poor chunking = poor retrieval = poor answers. Never split by character count alone.
+2. **Hybrid Search is Mandatory:** Vector search (semantic) is not enough. You need Keyword Search (BM25) to find specific names/IDs. Use Reciprocal Rank Fusion (RRF) to combine them.
+3. **Context Overflow Protection:** Always monitor token counts. If chunks exceed model context, prioritize top matches.
+4. **Hallucination Prevention:** The system must explicitly state when information is not in the provided context.
+
+---
+
+## 📊 PHASE 1: DATABASE SCHEMA (SUPABASE / PGVECTOR)
+
+### 1.1 Core Tables
+
+#### `documents` Table
+
+**Purpose:** Stores raw document metadata and content. Prevents re-embedding duplicate files via hash checking.
+
+```sql
+-- Create documents table
+CREATE TABLE public.documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    content TEXT NOT NULL,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    hash TEXT NOT NULL UNIQUE, -- SHA-256 hash of content to prevent duplicates
+    file_name TEXT,
+    file_type TEXT, -- 'pdf', 'docx', 'txt', 'md', etc.
+    file_size BIGINT,
+    uploaded_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+
+-- Indexes
+CREATE INDEX idx_documents_hash ON public.documents(hash);
+CREATE INDEX idx_documents_uploaded_by ON public.documents(uploaded_by);
+CREATE INDEX idx_documents_created_at ON public.documents(created_at DESC);
+
+-- Auto-update updated_at timestamp
+CREATE TRIGGER update_documents_updated_at
+    BEFORE UPDATE ON public.documents
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+```
+
+#### `document_chunks` Table
+
+**Purpose:** Stores chunked text with vector embeddings for semantic search.
+
+```sql
+-- Enable pgvector extension
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Create document_chunks table
+CREATE TABLE public.document_chunks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    document_id UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+    content_chunk TEXT NOT NULL,
+    token_count INTEGER NOT NULL, -- Pre-calculated token count for context management
+    chunk_index INTEGER NOT NULL, -- Order of chunk within document
+    embedding vector(1536), -- OpenAI text-embedding-3-small/large dimension
+    metadata JSONB DEFAULT '{}'::jsonb, -- Store page numbers, section titles, etc.
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(document_id, chunk_index)
+);
+
+-- Enable RLS
+ALTER TABLE public.document_chunks ENABLE ROW LEVEL SECURITY;
+
+-- CRITICAL: HNSW index for fast cosine similarity search
+CREATE INDEX idx_document_chunks_embedding ON public.document_chunks 
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+
+-- Performance indexes
+CREATE INDEX idx_document_chunks_document_id ON public.document_chunks(document_id);
+CREATE INDEX idx_document_chunks_token_count ON public.document_chunks(token_count);
+
+-- Auto-update updated_at timestamp
+CREATE TRIGGER update_document_chunks_updated_at
+    BEFORE UPDATE ON public.document_chunks
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+```
+
+#### `query_history` Table
+
+**Purpose:** Stores chat history for query rewriting and context awareness.
+
+```sql
+-- Create query_history table
+CREATE TABLE public.query_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL, -- Groups messages in a conversation
+    query_text TEXT NOT NULL,
+    rewritten_query TEXT, -- Standalone version after query rewriting
+    query_embedding vector(1536), -- Embedding of rewritten query
+    retrieved_chunk_ids UUID[], -- Array of chunk IDs used in response
+    response_text TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE public.query_history ENABLE ROW LEVEL SECURITY;
+
+-- Indexes
+CREATE INDEX idx_query_history_user_id ON public.query_history(user_id);
+CREATE INDEX idx_query_history_session_id ON public.query_history(session_id, created_at DESC);
+CREATE INDEX idx_query_history_created_at ON public.query_history(created_at DESC);
+```
+
+---
+
+## 🔄 PHASE 2: THE INGESTION PIPELINE
+
+### 2.1 Document Processing Flow
+
+**Purpose:** Convert raw documents into searchable, chunked embeddings.
+
+#### Step 1: Document Upload & Validation
+
+```typescript
+// lib/ingestion/upload-document.ts
+import { createHash } from 'crypto';
+import { createClient } from '@supabase/supabase-js';
+import { OpenAI } from 'openai';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
+interface UploadDocumentParams {
+  content: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  userId: string;
+  metadata?: Record<string, any>;
+}
+
+export async function uploadDocument(params: UploadDocumentParams) {
+  const { content, fileName, fileType, fileSize, userId, metadata = {} } = params;
+
+  // 1. Generate hash to check for duplicates
+  const hash = createHash('sha256').update(content).digest('hex');
+
+  // 2. Check if document already exists
+  const { data: existingDoc } = await supabase
+    .from('documents')
+    .select('id')
+    .eq('hash', hash)
+    .single();
+
+  if (existingDoc) {
+    return { documentId: existingDoc.id, isDuplicate: true };
+  }
+
+  // 3. Insert document
+  const { data: document, error } = await supabase
+    .from('documents')
+    .insert({
+      content,
+      hash,
+      file_name: fileName,
+      file_type: fileType,
+      file_size: fileSize,
+      uploaded_by: userId,
+      metadata: metadata,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  // 4. Process document into chunks
+  await processDocumentIntoChunks(document.id, content, metadata);
+
+  return { documentId: document.id, isDuplicate: false };
+}
+```
+
+#### Step 2: Intelligent Chunking Strategy
+
+**CRITICAL:** Use Recursive Character Splitter with overlap to preserve context.
+
+```typescript
+// lib/ingestion/chunking.ts
+import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
+import { encoding_for_model } from 'tiktoken';
+
+interface Chunk {
+  content: string;
+  tokenCount: number;
+  chunkIndex: number;
+  metadata: Record<string, any>;
+}
+
+export async function chunkDocument(
+  content: string,
+  metadata: Record<string, any> = {}
+): Promise<Chunk[]> {
+  // CRITICAL: Use RecursiveCharacterTextSplitter
+  // Splits by: Paragraphs → Sentences → Characters
+  const splitter = new RecursiveCharacterTextSplitter({
+    chunkSize: 1000, // Target chunk size in characters
+    chunkOverlap: 200, // 20% overlap to preserve context
+    separators: [
+      '\n\n',  // Paragraphs first
+      '\n',    // Then lines
+      '. ',    // Then sentences
+      ' ',     // Then words
+      '',      // Finally characters
+    ],
+  });
+
+  const chunks = await splitter.createDocuments([content]);
+
+  // Calculate token counts using tiktoken
+  const encoding = encoding_for_model('gpt-4');
+  const processedChunks: Chunk[] = chunks.map((chunk, index) => {
+    const tokens = encoding.encode(chunk.pageContent);
+    return {
+      content: chunk.pageContent,
+      tokenCount: tokens.length,
+      chunkIndex: index,
+      metadata: {
+        ...metadata,
+        ...chunk.metadata, // Preserve original metadata (page numbers, etc.)
+      },
+    };
+  });
+
+  encoding.free(); // Clean up
+
+  return processedChunks;
+}
+
+export async function processDocumentIntoChunks(
+  documentId: string,
+  content: string,
+  documentMetadata: Record<string, any>
+) {
+  const chunks = await chunkDocument(content, documentMetadata);
+
+  // Generate embeddings for all chunks in parallel
+  const embeddingPromises = chunks.map((chunk) =>
+    generateEmbedding(chunk.content)
+  );
+  const embeddings = await Promise.all(embeddingPromises);
+
+  // Insert chunks with embeddings
+  const chunkInserts = chunks.map((chunk, index) => ({
+    document_id: documentId,
+    content_chunk: chunk.content,
+    token_count: chunk.tokenCount,
+    chunk_index: chunk.chunkIndex,
+    embedding: embeddings[index],
+    metadata: chunk.metadata,
+  }));
+
+  const { error } = await supabase
+    .from('document_chunks')
+    .insert(chunkInserts);
+
+  if (error) throw error;
+
+  return { chunkCount: chunks.length };
+}
+```
+
+#### Step 3: Embedding Generation
+
+```typescript
+// lib/ingestion/embeddings.ts
+import { OpenAI } from 'openai';
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
+// Use text-embedding-3-small for speed/cost, or text-embedding-3-large for accuracy
+const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-3-small';
+
+export async function generateEmbedding(text: string): Promise<number[]> {
+  const response = await openai.embeddings.create({
+    model: EMBEDDING_MODEL,
+    input: text,
+  });
+
+  return response.data[0].embedding;
+}
+
+// Batch embedding generation for efficiency
+export async function generateEmbeddingsBatch(
+  texts: string[],
+  batchSize: number = 100
+): Promise<number[][]> {
+  const embeddings: number[][] = [];
+
+  for (let i = 0; i < texts.length; i += batchSize) {
+    const batch = texts.slice(i, i + batchSize);
+    const response = await openai.embeddings.create({
+      model: EMBEDDING_MODEL,
+      input: batch,
+    });
+    embeddings.push(...response.data.map((item) => item.embedding));
+  }
+
+  return embeddings;
+}
+```
+
+---
+
+## 🔍 PHASE 3: THE QUERY ENGINE
+
+### 3.1 Query Rewriting (History Awareness)
+
+**Purpose:** Convert conversational queries into standalone queries that can be effectively embedded.
+
+```typescript
+// lib/query/query-rewriting.ts
+import { OpenAI } from 'openai';
+import { createClient } from '@supabase/supabase-js';
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+interface QueryRewriteParams {
+  currentQuery: string;
+  sessionId: string;
+  userId: string;
+}
+
+export async function rewriteQuery(params: QueryRewriteParams): Promise<string> {
+  const { currentQuery, sessionId, userId } = params;
+
+  // 1. Fetch recent conversation history (last 5 messages)
+  const { data: history } = await supabase
+    .from('query_history')
+    .select('query_text, response_text')
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  if (!history || history.length === 0) {
+    // No history, return query as-is
+    return currentQuery;
+  }
+
+  // 2. Build context from history
+  const historyContext = history
+    .reverse() // Oldest first
+    .map((msg, idx) => `Q${idx + 1}: ${msg.query_text}\nA${idx + 1}: ${msg.response_text}`)
+    .join('\n\n');
+
+  // 3. Use LLM to rewrite query into standalone form
+  const prompt = `You are a query rewriting assistant. Your task is to convert a conversational query into a standalone query that can be understood without context.
+
+Previous conversation:
+${historyContext}
+
+Current query: "${currentQuery}"
+
+Rewrite the current query as a standalone question that includes all necessary context from the conversation. If the current query is already standalone, return it as-is.
+
+Standalone query:`;
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4-turbo-preview',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.3,
+    max_tokens: 200,
+  });
+
+  const rewrittenQuery = completion.choices[0].message.content?.trim() || currentQuery;
+  return rewrittenQuery;
+}
+```
+
+### 3.2 Hybrid Search: Vector + BM25 with RRF
+
+**Purpose:** Combine semantic (vector) and keyword (BM25) search for best results.
+
+```sql
+-- Create function for hybrid search with RRF
+CREATE OR REPLACE FUNCTION match_documents_hybrid(
+    query_embedding vector(1536),
+    query_text TEXT,
+    match_threshold FLOAT DEFAULT 0.7,
+    match_count INTEGER DEFAULT 5,
+    rrf_k INTEGER DEFAULT 60
+)
+RETURNS TABLE (
+    id UUID,
+    document_id UUID,
+    content_chunk TEXT,
+    token_count INTEGER,
+    chunk_index INTEGER,
+    metadata JSONB,
+    similarity_score FLOAT,
+    keyword_score FLOAT,
+    combined_score FLOAT
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    vector_results RECORD;
+    keyword_results RECORD;
+    rrf_rank INTEGER;
+BEGIN
+    -- Step 1: Vector similarity search
+    CREATE TEMP TABLE vector_matches AS
+    SELECT 
+        dc.id,
+        dc.document_id,
+        dc.content_chunk,
+        dc.token_count,
+        dc.chunk_index,
+        dc.metadata,
+        1 - (dc.embedding <=> query_embedding) AS similarity_score,
+        ROW_NUMBER() OVER (ORDER BY dc.embedding <=> query_embedding) AS vector_rank
+    FROM public.document_chunks dc
+    WHERE 1 - (dc.embedding <=> query_embedding) >= match_threshold
+    ORDER BY dc.embedding <=> query_embedding
+    LIMIT match_count * 2; -- Get more candidates for RRF
+
+    -- Step 2: BM25 keyword search (simplified - use full-text search)
+    CREATE TEMP TABLE keyword_matches AS
+    SELECT 
+        dc.id,
+        dc.document_id,
+        dc.content_chunk,
+        dc.token_count,
+        dc.chunk_index,
+        dc.metadata,
+        ts_rank(to_tsvector('english', dc.content_chunk), plainto_tsquery('english', query_text)) AS keyword_score,
+        ROW_NUMBER() OVER (ORDER BY ts_rank(to_tsvector('english', dc.content_chunk), plainto_tsquery('english', query_text)) DESC) AS keyword_rank
+    FROM public.document_chunks dc
+    WHERE to_tsvector('english', dc.content_chunk) @@ plainto_tsquery('english', query_text)
+    ORDER BY keyword_score DESC
+    LIMIT match_count * 2;
+
+    -- Step 3: Reciprocal Rank Fusion (RRF)
+    -- RRF score = 1 / (k + rank)
+    -- Combined score = sum of RRF scores from both rankings
+    CREATE TEMP TABLE combined_results AS
+    SELECT 
+        COALESCE(v.id, k.id) AS id,
+        COALESCE(v.document_id, k.document_id) AS document_id,
+        COALESCE(v.content_chunk, k.content_chunk) AS content_chunk,
+        COALESCE(v.token_count, k.token_count) AS token_count,
+        COALESCE(v.chunk_index, k.chunk_index) AS chunk_index,
+        COALESCE(v.metadata, k.metadata) AS metadata,
+        COALESCE(v.similarity_score, 0) AS similarity_score,
+        COALESCE(k.keyword_score, 0) AS keyword_score,
+        (COALESCE(1.0 / (rrf_k + v.vector_rank), 0) + 
+         COALESCE(1.0 / (rrf_k + k.keyword_rank), 0)) AS combined_score
+    FROM vector_matches v
+    FULL OUTER JOIN keyword_matches k ON v.id = k.id;
+
+    -- Return top results sorted by combined RRF score
+    RETURN QUERY
+    SELECT 
+        cr.id,
+        cr.document_id,
+        cr.content_chunk,
+        cr.token_count,
+        cr.chunk_index,
+        cr.metadata,
+        cr.similarity_score,
+        cr.keyword_score,
+        cr.combined_score
+    FROM combined_results cr
+    ORDER BY cr.combined_score DESC
+    LIMIT match_count;
+
+    -- Cleanup
+    DROP TABLE IF EXISTS vector_matches;
+    DROP TABLE IF EXISTS keyword_matches;
+    DROP TABLE IF EXISTS combined_results;
+END;
+$$;
+```
+
+### 3.3 Server-Side Retrieval Logic
+
+```typescript
+// lib/query/retrieval.ts
+import { createClient } from '@supabase/supabase-js';
+import { generateEmbedding } from '../ingestion/embeddings';
+import { rewriteQuery } from './query-rewriting';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+interface RetrievalParams {
+  query: string;
+  sessionId: string;
+  userId: string;
+  matchThreshold?: number;
+  matchCount?: number;
+}
+
+interface RetrievedChunk {
+  id: string;
+  documentId: string;
+  content: string;
+  tokenCount: number;
+  chunkIndex: number;
+  metadata: Record<string, any>;
+  similarityScore: number;
+  keywordScore: number;
+  combinedScore: number;
+}
+
+export async function retrieveChunks(params: RetrievalParams): Promise<RetrievedChunk[]> {
+  const {
+    query,
+    sessionId,
+    userId,
+    matchThreshold = 0.7,
+    matchCount = 5,
+  } = params;
+
+  // Step 1: Rewrite query for history awareness
+  const rewrittenQuery = await rewriteQuery({
+    currentQuery: query,
+    sessionId,
+    userId,
+  });
+
+  // Step 2: Generate embedding for rewritten query
+  const queryEmbedding = await generateEmbedding(rewrittenQuery);
+
+  // Step 3: Perform hybrid search via RPC
+  const { data: chunks, error } = await supabase.rpc('match_documents_hybrid', {
+    query_embedding: queryEmbedding,
+    query_text: rewrittenQuery,
+    match_threshold: matchThreshold,
+    match_count: matchCount,
+    rrf_k: 60, // RRF constant
+  });
+
+  if (error) throw error;
+
+  return (chunks || []).map((chunk: any) => ({
+    id: chunk.id,
+    documentId: chunk.document_id,
+    content: chunk.content_chunk,
+    tokenCount: chunk.token_count,
+    chunkIndex: chunk.chunk_index,
+    metadata: chunk.metadata,
+    similarityScore: chunk.similarity_score,
+    keywordScore: chunk.keyword_score,
+    combinedScore: chunk.combined_score,
+  }));
+}
+
+// Optional: Reranking with Cohere or similar
+export async function rerankChunks(
+  query: string,
+  chunks: RetrievedChunk[],
+  topK: number = 3
+): Promise<RetrievedChunk[]> {
+  // If using Cohere reranker
+  // const cohere = new CohereClient({ token: process.env.COHERE_API_KEY! });
+  // const rerankResponse = await cohere.rerank({
+  //   model: 'rerank-english-v3.0',
+  //   query: query,
+  //   documents: chunks.map(c => c.content),
+  //   topN: topK,
+  // });
+  // 
+  // return rerankResponse.results.map((result, idx) => ({
+  //   ...chunks[result.index],
+  //   rerankScore: result.relevance_score,
+  // }));
+
+  // For now, return top chunks by combined score
+  return chunks.slice(0, topK);
+}
+```
+
+### 3.4 Context Construction with Token Management
+
+```typescript
+// lib/query/context-construction.ts
+import { encoding_for_model } from 'tiktoken';
+import { RetrievedChunk } from './retrieval';
+
+const MAX_CONTEXT_TOKENS = 8000; // Adjust based on model context window
+const MODEL_NAME = 'gpt-4-turbo-preview';
+
+export interface ContextualChunks {
+  chunks: RetrievedChunk[];
+  totalTokens: number;
+  truncated: boolean;
+}
+
+export function buildContext(
+  retrievedChunks: RetrievedChunk[],
+  maxTokens: number = MAX_CONTEXT_TOKENS
+): ContextualChunks {
+  const encoding = encoding_for_model(MODEL_NAME);
+  let totalTokens = 0;
+  const selectedChunks: RetrievedChunk[] = [];
+
+  // Prioritize chunks by combined score, but respect token limits
+  for (const chunk of retrievedChunks) {
+    const chunkTokens = chunk.tokenCount;
+    
+    if (totalTokens + chunkTokens > maxTokens) {
+      // Stop if adding this chunk would exceed limit
+      break;
+    }
+
+    selectedChunks.push(chunk);
+    totalTokens += chunkTokens;
+  }
+
+  encoding.free();
+
+  return {
+    chunks: selectedChunks,
+    totalTokens,
+    truncated: selectedChunks.length < retrievedChunks.length,
+  };
+}
+
+export function formatContextForPrompt(chunks: RetrievedChunk[]): string {
+  return chunks
+    .map((chunk, index) => {
+      const metadataStr = chunk.metadata?.pageNumber
+        ? ` (Page ${chunk.metadata.pageNumber})`
+        : '';
+      return `[Chunk ${index + 1}${metadataStr}]\n${chunk.content}`;
+    })
+    .join('\n\n---\n\n');
+}
+```
+
+---
+
+## 💬 PHASE 4: PROMPT CONSTRUCTION & LLM INTERACTION
+
+### 4.1 The Hallucination Guard Prompt Template
+
+**CRITICAL:** Always instruct the model to say "I do not know" when information is missing.
+
+```typescript
+// lib/prompts/rag-prompt.ts
+import { formatContextForPrompt } from '../query/context-construction';
+import { RetrievedChunk } from '../query/retrieval';
+
+export function buildRAGPrompt(
+  userQuery: string,
+  contextChunks: RetrievedChunk[]
+): string {
+  const contextText = formatContextForPrompt(contextChunks);
+
+  return `You are a helpful assistant that answers questions based ONLY on the provided context below.
+
+CRITICAL INSTRUCTIONS:
+- Use ONLY the information provided in the context to answer the question.
+- If the answer is NOT in the context, you MUST respond with: "I do not know. The information is not available in the provided context."
+- Do NOT make up information, even if you think you know the answer.
+- If the context is insufficient to fully answer the question, state what information is available and what is missing.
+- Cite specific chunks when referencing information (e.g., "According to Chunk 1...").
+
+Context:
+${contextText}
+
+Question: ${userQuery}
+
+Answer:`;
+}
+```
+
+### 4.2 Streaming Response Generation
+
+```typescript
+// lib/llm/stream-response.ts
+import { OpenAI } from 'openai';
+import { buildRAGPrompt } from '../prompts/rag-prompt';
+import { RetrievedChunk } from '../query/retrieval';
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
+interface StreamResponseParams {
+  userQuery: string;
+  contextChunks: RetrievedChunk[];
+  sessionId: string;
+  userId: string;
+  model?: string;
+}
+
+export async function* streamRAGResponse(
+  params: StreamResponseParams
+): AsyncGenerator<string, void, unknown> {
+  const {
+    userQuery,
+    contextChunks,
+    sessionId,
+    userId,
+    model = 'gpt-4-turbo-preview',
+  } = params;
+
+  const prompt = buildRAGPrompt(userQuery, contextChunks);
+
+  const stream = await openai.chat.completions.create({
+    model,
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.7,
+    stream: true,
+  });
+
+  let fullResponse = '';
+
+  for await (const chunk of stream) {
+    const content = chunk.choices[0]?.delta?.content || '';
+    if (content) {
+      fullResponse += content;
+      yield content;
+    }
+  }
+
+  // Store in query history after streaming completes
+  await storeQueryHistory({
+    userId,
+    sessionId,
+    queryText: userQuery,
+    contextChunks,
+    responseText: fullResponse,
+  });
+}
+
+async function storeQueryHistory(params: {
+  userId: string;
+  sessionId: string;
+  queryText: string;
+  contextChunks: RetrievedChunk[];
+  responseText: string;
+}) {
+  // Implementation to store in query_history table
+  // Include rewritten query, embeddings, and retrieved chunk IDs
+}
+```
+
+---
+
+## 🎨 PHASE 5: FRONTEND UX (CITATIONS & TRUST)
+
+### 5.1 Citation System
+
+**Purpose:** Display source chunks with clickable references.
+
+```typescript
+// lib/citations/extract-citations.ts
+import { RetrievedChunk } from '../query/retrieval';
+
+export interface Citation {
+  chunkId: string;
+  chunkIndex: number;
+  documentId: string;
+  pageNumber?: number;
+  snippet: string;
+  score: number;
+}
+
+export function extractCitations(chunks: RetrievedChunk[]): Citation[] {
+  return chunks.map((chunk, index) => ({
+    chunkId: chunk.id,
+    chunkIndex: index + 1,
+    documentId: chunk.documentId,
+    pageNumber: chunk.metadata?.pageNumber,
+    snippet: chunk.content.substring(0, 200) + '...',
+    score: chunk.combinedScore,
+  }));
+}
+```
+
+### 5.2 React Component with Citations
+
+```typescript
+// components/RAGChatMessage.tsx
+'use client';
+
+import { useState } from 'react';
+import { Citation } from '@/lib/citations/extract-citations';
+
+interface RAGChatMessageProps {
+  query: string;
+  response: string;
+  citations: Citation[];
+  onCitationClick: (citation: Citation) => void;
+}
+
+export function RAGChatMessage({
+  query,
+  response,
+  citations,
+  onCitationClick,
+}: RAGChatMessageProps) {
+  const [hoveredCitation, setHoveredCitation] = useState<number | null>(null);
+
+  // Parse response to find citation markers [1], [2], etc.
+  const parseResponseWithCitations = (text: string) => {
+    const parts: Array<{ type: 'text' | 'citation'; content: string; index?: number }> = [];
+    const citationRegex = /\[(\d+)\]/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = citationRegex.exec(text)) !== null) {
+      // Add text before citation
+      if (match.index > lastIndex) {
+        parts.push({
+          type: 'text',
+          content: text.substring(lastIndex, match.index),
+        });
+      }
+
+      // Add citation
+      const citationIndex = parseInt(match[1], 10) - 1;
+      if (citationIndex >= 0 && citationIndex < citations.length) {
+        parts.push({
+          type: 'citation',
+          content: match[0],
+          index: citationIndex,
+        });
+      } else {
+        // Invalid citation, treat as text
+        parts.push({
+          type: 'text',
+          content: match[0],
+        });
+      }
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+      parts.push({
+        type: 'text',
+        content: text.substring(lastIndex),
+      });
+    }
+
+    return parts;
+  };
+
+  const responseParts = parseResponseWithCitations(response);
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <p className="font-semibold text-sm text-gray-700 mb-2">Question:</p>
+        <p className="text-gray-900">{query}</p>
+      </div>
+
+      <div className="bg-white p-4 rounded-lg border">
+        <p className="font-semibold text-sm text-gray-700 mb-2">Answer:</p>
+        <div className="prose max-w-none">
+          {responseParts.map((part, idx) => {
+            if (part.type === 'citation' && part.index !== undefined) {
+              const citation = citations[part.index];
+              return (
+                <button
+                  key={idx}
+                  onClick={() => onCitationClick(citation)}
+                  onMouseEnter={() => setHoveredCitation(part.index!)}
+                  onMouseLeave={() => setHoveredCitation(null)}
+                  className={`
+                    inline-flex items-center justify-center
+                    px-1.5 py-0.5 mx-0.5
+                    text-xs font-semibold
+                    rounded
+                    transition-colors
+                    ${
+                      hoveredCitation === part.index
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                    }
+                  `}
+                  title={`Source: ${citation.snippet}`}
+                >
+                  {part.content}
+                </button>
+              );
+            }
+            return <span key={idx}>{part.content}</span>;
+          })}
+        </div>
+      </div>
+
+      {citations.length > 0 && (
+        <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+          <p className="text-sm font-semibold text-gray-700 mb-2">Sources:</p>
+          <div className="space-y-2">
+            {citations.map((citation, idx) => (
+              <button
+                key={citation.chunkId}
+                onClick={() => onCitationClick(citation)}
+                className="text-left w-full p-2 text-xs bg-white rounded border hover:border-blue-500 transition-colors"
+              >
+                <span className="font-semibold text-blue-600">[{idx + 1}]</span>{' '}
+                {citation.pageNumber && (
+                  <span className="text-gray-500">Page {citation.pageNumber} • </span>
+                )}
+                <span className="text-gray-700">{citation.snippet}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### 5.3 Citation Highlighting in Source Document
+
+```typescript
+// components/SourceDocumentViewer.tsx
+'use client';
+
+import { Citation } from '@/lib/citations/extract-citations';
+import { useEffect, useRef } from 'react';
+
+interface SourceDocumentViewerProps {
+  documentId: string;
+  citation: Citation;
+  documentContent: string;
+}
+
+export function SourceDocumentViewer({
+  documentId,
+  citation,
+  documentContent,
+}: SourceDocumentViewerProps) {
+  const highlightRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Scroll to and highlight the cited chunk
+    if (highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      highlightRef.current.classList.add('animate-pulse');
+      setTimeout(() => {
+        highlightRef.current?.classList.remove('animate-pulse');
+      }, 2000);
+    }
+  }, [citation.chunkId]);
+
+  // Split document into chunks and highlight the cited one
+  const renderDocumentWithHighlight = () => {
+    // Implementation depends on how you store/retrieve full document
+    // For PDFs, you might use a PDF viewer library
+    // For text, you can split and highlight the relevant section
+
+    return (
+      <div className="p-4">
+        {/* Document content with highlighted section */}
+        <div
+          ref={highlightRef}
+          className="bg-yellow-100 border-l-4 border-yellow-500 p-3 my-2 rounded"
+        >
+          <p className="text-sm text-gray-600 mb-1">
+            Citation [{citation.chunkIndex}] - {citation.pageNumber && `Page ${citation.pageNumber}`}
+          </p>
+          <p className="text-gray-900">{citation.snippet}</p>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="h-full overflow-auto">
+      {renderDocumentWithHighlight()}
+    </div>
+  );
+}
+```
+
+### 5.4 Streaming with Vercel AI SDK
+
+```typescript
+// app/api/chat/route.ts
+import { streamText } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { retrieveChunks, buildContext } from '@/lib/query';
+import { buildRAGPrompt } from '@/lib/prompts/rag-prompt';
+
+export async function POST(req: Request) {
+  const { query, sessionId, userId } = await req.json();
+
+  // 1. Retrieve relevant chunks
+  const retrievedChunks = await retrieveChunks({
+    query,
+    sessionId,
+    userId,
+    matchCount: 5,
+  });
+
+  // 2. Build context with token management
+  const { chunks: contextChunks } = buildContext(retrievedChunks);
+
+  // 3. Build prompt with hallucination guard
+  const prompt = buildRAGPrompt(query, contextChunks);
+
+  // 4. Stream response
+  const result = await streamText({
+    model: openai('gpt-4-turbo-preview'),
+    prompt,
+    temperature: 0.7,
+  });
+
+  return result.toDataStreamResponse({
+    headers: {
+      'X-Citations': JSON.stringify(
+        contextChunks.map((c, idx) => ({
+          id: c.id,
+          index: idx + 1,
+          documentId: c.documentId,
+          pageNumber: c.metadata?.pageNumber,
+        }))
+      ),
+    },
+  });
+}
+```
+
+---
+
+## 🔐 PHASE 6: ROW LEVEL SECURITY (RLS) POLICIES
+
+### 6.1 Documents Table Policies
+
+```sql
+-- Users can view documents they uploaded
+CREATE POLICY "Users can view own documents"
+    ON public.documents
+    FOR SELECT
+    USING (auth.uid() = uploaded_by);
+
+-- Users can insert their own documents
+CREATE POLICY "Users can insert own documents"
+    ON public.documents
+    FOR INSERT
+    WITH CHECK (auth.uid() = uploaded_by);
+
+-- Users can update their own documents
+CREATE POLICY "Users can update own documents"
+    ON public.documents
+    FOR UPDATE
+    USING (auth.uid() = uploaded_by);
+
+-- Users can delete their own documents
+CREATE POLICY "Users can delete own documents"
+    ON public.documents
+    FOR DELETE
+    USING (auth.uid() = uploaded_by);
+```
+
+### 6.2 Document Chunks Table Policies
+
+```sql
+-- Users can view chunks from their documents
+CREATE POLICY "Users can view chunks from own documents"
+    ON public.document_chunks
+    FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1
+            FROM public.documents
+            WHERE documents.id = document_chunks.document_id
+            AND documents.uploaded_by = auth.uid()
+        )
+    );
+```
+
+### 6.3 Query History Table Policies
+
+```sql
+-- Users can view their own query history
+CREATE POLICY "Users can view own query history"
+    ON public.query_history
+    FOR SELECT
+    USING (auth.uid() = user_id);
+
+-- System can insert query history (via service role)
+-- No RLS policy needed if using service role key
+```
+
+---
+
+## 📝 PHASE 7: TYPESCRIPT INTERFACES
+
+```typescript
+// types/rag.types.ts
+export interface Document {
+  id: string;
+  content: string;
+  metadata: Record<string, any>;
+  hash: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  uploadedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DocumentChunk {
+  id: string;
+  documentId: string;
+  contentChunk: string;
+  tokenCount: number;
+  chunkIndex: number;
+  embedding: number[];
+  metadata: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QueryHistory {
+  id: string;
+  userId: string;
+  sessionId: string;
+  queryText: string;
+  rewrittenQuery?: string;
+  queryEmbedding?: number[];
+  retrievedChunkIds?: string[];
+  responseText?: string;
+  createdAt: string;
+}
+
+export interface RetrievedChunk {
+  id: string;
+  documentId: string;
+  content: string;
+  tokenCount: number;
+  chunkIndex: number;
+  metadata: Record<string, any>;
+  similarityScore: number;
+  keywordScore: number;
+  combinedScore: number;
+}
+
+export interface Citation {
+  chunkId: string;
+  chunkIndex: number;
+  documentId: string;
+  pageNumber?: number;
+  snippet: string;
+  score: number;
+}
+
+export interface RAGResponse {
+  query: string;
+  response: string;
+  citations: Citation[];
+  sessionId: string;
+  timestamp: string;
+}
+```
+
+---
+
+## 🚀 PHASE 8: DEPLOYMENT CHECKLIST
+
+### Database Setup
+
+1. ✅ Enable `pgvector` extension in Supabase
+2. ✅ Run all SQL schema creation scripts
+3. ✅ Create HNSW index on `document_chunks.embedding`
+4. ✅ Verify RLS policies are enabled
+5. ✅ Test `match_documents_hybrid` RPC function
+
+### Ingestion Pipeline
+
+1. ✅ Implement document upload endpoint
+2. ✅ Test chunking with various document types
+3. ✅ Verify embedding generation (OpenAI API key configured)
+4. ✅ Test duplicate detection via hash checking
+5. ✅ Verify chunk overlap (20%) is working
+
+### Query Engine
+
+1. ✅ Test query rewriting with conversation history
+2. ✅ Verify hybrid search (vector + BM25) returns results
+3. ✅ Test RRF algorithm combining scores
+4. ✅ Verify token counting and context truncation
+5. ✅ Test reranking (if implemented)
+
+### Frontend Integration
+
+1. ✅ Implement streaming response UI
+2. ✅ Add citation display with clickable references
+3. ✅ Test source document highlighting
+4. ✅ Verify session management for query history
+5. ✅ Test hallucination guard (verify "I do not know" responses)
+
+### Security
+
+1. ✅ Verify RLS policies prevent cross-user data access
+2. ✅ Test that users can only query their own documents
+3. ✅ Verify API rate limiting
+4. ✅ Test input sanitization for queries
+
+---
+
+## 📚 ADDITIONAL NOTES
+
+### Chunking Best Practices
+
+**DO:**
+- Use RecursiveCharacterTextSplitter with paragraph/sentence boundaries
+- Include 20% overlap between chunks
+- Preserve metadata (page numbers, section titles)
+- Calculate token counts accurately
+
+**DON'T:**
+- Split by fixed character count alone
+- Create chunks that break sentences mid-thought
+- Ignore document structure (headings, lists, etc.)
+- Create chunks larger than model context window
+
+### Hybrid Search Tuning
+
+- **RRF constant (k):** Lower values (20-40) give more weight to top results. Higher values (60-100) smooth the ranking.
+- **Match threshold:** Start at 0.7 for vector search. Lower (0.5) for more results, higher (0.8) for precision.
+- **Match count:** Retrieve 2-3x more candidates than needed, then rerank to top N.
+
+### Performance Optimization
+
+1. **Batch embeddings:** Process multiple chunks in parallel
+2. **Cache embeddings:** Don't re-embed unchanged documents
+3. **Index optimization:** Monitor HNSW index performance, adjust `m` and `ef_construction` if needed
+4. **Token counting:** Pre-calculate and store token counts to avoid runtime calculation
+
+### Monitoring & Observability
+
+Track:
+- Average retrieval latency
+- Citation accuracy (user feedback)
+- Hallucination rate (manual review)
+- Token usage per query
+- Chunk retrieval quality scores
+
+---
+
+**END OF DOCUMENTATION**

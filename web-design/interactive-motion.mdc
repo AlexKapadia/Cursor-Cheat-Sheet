@@ -1,0 +1,2345 @@
+# Interactive Motion & Scroll-Linked Animations
+## Source of Truth Documentation for WebGL & Scroll Interactions
+
+> **Reference:** Webflow Interactions Page (`https://webflow.com/feature/interactions-animations`)  
+> **Vibe:** Dark, Neon, Mathematical, Smooth  
+> **Philosophy:** Elements do not just "appear." They translate, scale, and rotate based on scroll position.
+
+---
+
+## Table of Contents
+
+1. [Design DNA: Dark Mode Depth](#design-dna-dark-mode-depth)
+2. [Component Architecture](#component-architecture)
+3. [Motion & Interaction Rules](#motion--interaction-rules)
+4. [Performance Optimization (FPS)](#performance-optimization-fps)
+5. [Accessibility (ARIA for Animations)](#accessibility-aria-for-animations)
+6. [Asset Loading Strategies](#asset-loading-strategies)
+7. [Mobile Performance Considerations](#mobile-performance-considerations)
+8. [Reduced Motion Preferences](#reduced-motion-preferences)
+9. [Production-Ready Code Examples](#production-ready-code-examples)
+10. [Dos and Don'ts](#dos-and-donts)
+11. [Edge Cases & Troubleshooting](#edge-cases--troubleshooting)
+
+---
+
+## Design DNA: Dark Mode Depth
+
+### Color Logic
+
+**Background Philosophy:**
+- Never use pure black (`#000000`). Pure black creates harsh contrast and eliminates depth perception.
+- Use deeply desaturated colors that maintain subtle hue information.
+
+**Color Palette:**
+
+```javascript
+// tailwind.config.js
+module.exports = {
+  theme: {
+    extend: {
+      colors: {
+        // Background Hierarchy (Darkest to Lightest)
+        'depth-0': '#080808',      // Primary background
+        'depth-1': '#0f0f0f',      // Elevated surfaces
+        'depth-2': '#1a1a1a',      // Cards, panels
+        'depth-3': '#252525',      // Hover states
+        
+        // Desaturated Blues (Ambient backgrounds)
+        'depth-blue-0': '#0a0d12',
+        'depth-blue-1': '#0f1419',
+        'depth-blue-2': '#1a1f26',
+        
+        // Text Hierarchy
+        'text-primary': '#ffffff',     // Headings (100% white)
+        'text-secondary': '#e0e0e0',    // Subheadings
+        'text-body': '#888888',         // Body text (Grey)
+        'text-muted': '#666666',        // Labels, captions
+        
+        // Neon Accents (High Contrast Labels)
+        'neon-blue': '#00d4ff',
+        'neon-purple': '#b026ff',
+        'neon-cyan': '#00ffff',
+        'neon-pink': '#ff00ff',
+        
+        // Glow Colors (for box-shadow effects)
+        'glow-blue': 'rgba(0, 212, 255, 0.3)',
+        'glow-purple': 'rgba(176, 38, 255, 0.3)',
+        'glow-cyan': 'rgba(0, 255, 255, 0.25)',
+      }
+    }
+  }
+}
+```
+
+### The "Glow" Trick: Ambient Light System
+
+**Principle:** Instead of direct lighting, use layered `box-shadow` and blurred `divs` to create ambient light that suggests depth without harsh edges.
+
+**Implementation:**
+
+```css
+/* Base glow layer (behind content) */
+.ambient-glow {
+  position: relative;
+}
+
+.ambient-glow::before {
+  content: '';
+  position: absolute;
+  inset: -20px;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(0, 212, 255, 0.15) 0%,
+    transparent 70%
+  );
+  filter: blur(40px);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Multiple glow layers for depth */
+.ambient-glow-multi {
+  position: relative;
+}
+
+.ambient-glow-multi::before,
+.ambient-glow-multi::after {
+  content: '';
+  position: absolute;
+  inset: -30px;
+  border-radius: 50%;
+  filter: blur(60px);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.ambient-glow-multi::before {
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(0, 212, 255, 0.2) 0%,
+    transparent 60%
+  );
+}
+
+.ambient-glow-multi::after {
+  background: radial-gradient(
+    circle at 70% 70%,
+    rgba(176, 38, 255, 0.15) 0%,
+    transparent 60%
+  );
+}
+
+/* Box-shadow glow for cards */
+.card-glow {
+  box-shadow:
+    0 0 20px rgba(0, 212, 255, 0.1),
+    0 0 40px rgba(0, 212, 255, 0.05),
+    inset 0 0 20px rgba(0, 212, 255, 0.02);
+}
+```
+
+**React Component Example:**
+
+```tsx
+import { motion } from 'framer-motion';
+
+interface AmbientGlowProps {
+  color?: 'blue' | 'purple' | 'cyan';
+  intensity?: number;
+  children: React.ReactNode;
+}
+
+export const AmbientGlow: React.FC<AmbientGlowProps> = ({
+  color = 'blue',
+  intensity = 0.15,
+  children
+}) => {
+  const colorMap = {
+    blue: `rgba(0, 212, 255, ${intensity})`,
+    purple: `rgba(176, 38, 255, ${intensity})`,
+    cyan: `rgba(0, 255, 255, ${intensity})`
+  };
+
+  return (
+    <div className="relative">
+      <motion.div
+        className="absolute inset-0 -z-10 pointer-events-none"
+        style={{
+          background: `radial-gradient(circle at 50% 50%, ${colorMap[color]} 0%, transparent 70%)`,
+          filter: 'blur(40px)',
+        }}
+        animate={{
+          opacity: [0.5, 1, 0.5],
+        }}
+        transition={{
+          duration: 4,
+          repeat: Infinity,
+          ease: 'easeInOut'
+        }}
+      />
+      {children}
+    </div>
+  );
+};
+```
+
+### Typography System
+
+**Font Stack:**
+```css
+/* System font stack for performance */
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 
+               'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 
+               'Droid Sans', 'Helvetica Neue', sans-serif;
+}
+```
+
+**Typography Scale:**
+
+```css
+/* Headings - Tight Tracking */
+.heading-1 {
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  font-weight: 700;
+  letter-spacing: -0.02em; /* Tight tracking */
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+.heading-2 {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+
+.heading-3 {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  color: var(--text-secondary);
+}
+
+/* Body Text */
+.body-text {
+  font-size: clamp(1rem, 1.5vw, 1.125rem);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.6;
+  color: var(--text-body);
+}
+
+/* Labels - Uppercase, Wide Tracking */
+.label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em; /* Wide tracking */
+  color: var(--neon-blue);
+}
+```
+
+**Tailwind Typography Config:**
+
+```javascript
+// tailwind.config.js
+module.exports = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Inter', 
+               'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'sans-serif'],
+      },
+      letterSpacing: {
+        'tight-heading': '-0.02em',
+        'wide-label': '0.05em',
+      }
+    }
+  }
+}
+```
+
+---
+
+## Component Architecture
+
+### 1. The "Sticky Scroller" (Core Engine)
+
+**Architecture Pattern:**
+- Left Column: Scrollable text content
+- Right Column: Sticky visual that transitions based on scroll position
+- Each text block triggers a visual state change when it enters/exits viewport
+
+**Production Implementation:**
+
+```tsx
+import { motion, useScroll, useTransform, useInView } from 'framer-motion';
+import { useRef, useState, useEffect } from 'react';
+
+interface StickyScrollerProps {
+  sections: Array<{
+    id: string;
+    title: string;
+    content: string;
+    visual: React.ReactNode;
+  }>;
+}
+
+export const StickyScroller: React.FC<StickyScrollerProps> = ({ sections }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ['start start', 'end end']
+  });
+
+  const [activeSection, setActiveSection] = useState(0);
+
+  // Calculate which section should be active based on scroll
+  useEffect(() => {
+    const unsubscribe = scrollYProgress.on('change', (latest) => {
+      const sectionIndex = Math.floor(latest * sections.length);
+      setActiveSection(Math.min(sectionIndex, sections.length - 1));
+    });
+
+    return () => unsubscribe();
+  }, [scrollYProgress, sections.length]);
+
+  return (
+    <div ref={containerRef} className="relative min-h-[300vh]">
+      <div className="sticky top-0 h-screen overflow-hidden">
+        <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
+          {/* Left Column - Scrollable Text */}
+          <div className="flex flex-col justify-center px-8 lg:px-16">
+            {sections.map((section, index) => {
+              const sectionRef = useRef<HTMLDivElement>(null);
+              const isInView = useInView(sectionRef, {
+                margin: '-20%',
+                amount: 0.3
+              });
+
+              return (
+                <motion.div
+                  key={section.id}
+                  ref={sectionRef}
+                  className="mb-32 lg:mb-64"
+                  initial={{ opacity: 0, y: 50 }}
+                  animate={{
+                    opacity: isInView ? 1 : 0.3,
+                    y: isInView ? 0 : 20
+                  }}
+                  transition={{
+                    duration: 0.6,
+                    ease: [0.22, 1, 0.36, 1] // Custom cubic-bezier
+                  }}
+                >
+                  <motion.span
+                    className="label text-neon-blue mb-4 block"
+                    animate={{
+                      opacity: isInView ? 1 : 0.5
+                    }}
+                  >
+                    {String(index + 1).padStart(2, '0')}
+                  </motion.span>
+                  <h2 className="heading-2 mb-6">{section.title}</h2>
+                  <p className="body-text">{section.content}</p>
+                </motion.div>
+              );
+            })}
+          </div>
+
+          {/* Right Column - Sticky Visual */}
+          <div className="hidden lg:flex items-center justify-center bg-depth-1">
+            <motion.div
+              key={activeSection}
+              initial={{ opacity: 0, scale: 0.9, rotateY: -15 }}
+              animate={{ opacity: 1, scale: 1, rotateY: 0 }}
+              exit={{ opacity: 0, scale: 0.9, rotateY: 15 }}
+              transition={{
+                duration: 0.8,
+                ease: [0.22, 1, 0.36, 1]
+              }}
+              className="w-full h-full flex items-center justify-center"
+            >
+              {sections[activeSection].visual}
+            </motion.div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+```
+
+**Advanced: Scroll-Linked Visual Transitions**
+
+```tsx
+import { motion, useScroll, useTransform } from 'framer-motion';
+
+export const ScrollLinkedVisual: React.FC<{ 
+  scrollProgress: MotionValue<number>;
+  visualStates: React.ReactNode[];
+}> = ({ scrollProgress, visualStates }) => {
+  // Map scroll progress to visual state index
+  const stateIndex = useTransform(
+    scrollProgress,
+    [0, 1],
+    [0, visualStates.length - 1]
+  );
+
+  // Interpolate between states
+  const opacity1 = useTransform(
+    scrollProgress,
+    [0, 0.5, 1],
+    [1, 0, 0]
+  );
+  
+  const opacity2 = useTransform(
+    scrollProgress,
+    [0, 0.5, 1],
+    [0, 1, 0]
+  );
+  
+  const opacity3 = useTransform(
+    scrollProgress,
+    [0, 0.5, 1],
+    [0, 0, 1]
+  );
+
+  return (
+    <div className="relative w-full h-full">
+      <motion.div
+        style={{ opacity: opacity1 }}
+        className="absolute inset-0"
+      >
+        {visualStates[0]}
+      </motion.div>
+      <motion.div
+        style={{ opacity: opacity2 }}
+        className="absolute inset-0"
+      >
+        {visualStates[1]}
+      </motion.div>
+      <motion.div
+        style={{ opacity: opacity3 }}
+        className="absolute inset-0"
+      >
+        {visualStates[2]}
+      </motion.div>
+    </div>
+  );
+};
+```
+
+### 2. The "3D Panel" Component
+
+**CSS 3D Transform Setup:**
+
+```css
+.panel-3d-container {
+  perspective: 1000px;
+  perspective-origin: 50% 50%;
+  transform-style: preserve-3d;
+}
+
+.panel-3d-item {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* Z-axis translation for depth */
+.panel-3d-item-1 {
+  transform: translateZ(0px);
+}
+
+.panel-3d-item-2 {
+  transform: translateZ(50px);
+}
+
+.panel-3d-item-3 {
+  transform: translateZ(100px);
+}
+
+.panel-3d-item-4 {
+  transform: translateZ(150px);
+}
+```
+
+**React Implementation with Scroll Parallax:**
+
+```tsx
+import { motion, useScroll, useTransform, useMotionValueEvent } from 'framer-motion';
+import { useRef } from 'react';
+
+interface Panel3DProps {
+  children: React.ReactNode[];
+  scrollContainer?: React.RefObject<HTMLElement>;
+}
+
+export const Panel3D: React.FC<Panel3DProps> = ({ 
+  children, 
+  scrollContainer 
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: scrollContainer || containerRef,
+    offset: ['start end', 'end start']
+  });
+
+  // Parallax transforms for each child
+  const transforms = children.map((_, index) => {
+    const baseZ = index * 50;
+    const parallaxY = useTransform(
+      scrollYProgress,
+      [0, 1],
+      [0, -100 * (index + 1)]
+    );
+    const rotateX = useTransform(
+      scrollYProgress,
+      [0, 1],
+      [0, 5 * (index % 2 === 0 ? 1 : -1)]
+    );
+
+    return {
+      z: baseZ,
+      y: parallaxY,
+      rotateX
+    };
+  });
+
+  return (
+    <div
+      ref={containerRef}
+      className="panel-3d-container"
+      style={{
+        perspective: '1000px',
+        perspectiveOrigin: '50% 50%'
+      }}
+    >
+      {children.map((child, index) => (
+        <motion.div
+          key={index}
+          className="panel-3d-item"
+          style={{
+            transformStyle: 'preserve-3d',
+            z: transforms[index].z,
+            y: transforms[index].y,
+            rotateX: transforms[index].rotateX,
+            willChange: 'transform'
+          }}
+        >
+          {child}
+        </motion.div>
+      ))}
+    </div>
+  );
+};
+```
+
+**Mouse-Interactive 3D Panel:**
+
+```tsx
+import { motion, useMotionValue, useSpring } from 'framer-motion';
+import { useRef } from 'react';
+
+export const Interactive3DPanel: React.FC<{ children: React.ReactNode }> = ({
+  children
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+
+  const rotateX = useSpring(useTransform(mouseY, [-0.5, 0.5], [15, -15]), {
+    stiffness: 150,
+    damping: 15
+  });
+  const rotateY = useSpring(useTransform(mouseX, [-0.5, 0.5], [-15, 15]), {
+    stiffness: 150,
+    damping: 15
+  });
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return;
+    
+    const rect = containerRef.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    
+    mouseX.set((e.clientX - centerX) / rect.width);
+    mouseY.set((e.clientY - centerY) / rect.height);
+  };
+
+  const handleMouseLeave = () => {
+    mouseX.set(0);
+    mouseY.set(0);
+  };
+
+  return (
+    <motion.div
+      ref={containerRef}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        perspective: '1000px',
+        rotateX,
+        rotateY,
+        transformStyle: 'preserve-3d'
+      }}
+      className="panel-3d-container"
+    >
+      {children}
+    </motion.div>
+  );
+};
+```
+
+### 3. The "Beam" Border (Traveling Light Effect)
+
+**CSS-Only Implementation:**
+
+```css
+@keyframes beam-travel {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.beam-border {
+  position: relative;
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.beam-border::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  right: -1px;
+  bottom: -1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 30%,
+    rgba(0, 212, 255, 0.8) 50%,
+    transparent 70%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: beam-travel 3s linear infinite;
+  border-radius: 8px;
+  z-index: -1;
+}
+```
+
+**Framer Motion Implementation (More Control):**
+
+```tsx
+import { motion } from 'framer-motion';
+
+interface BeamBorderProps {
+  children: React.ReactNode;
+  speed?: number;
+  color?: string;
+  width?: string;
+}
+
+export const BeamBorder: React.FC<BeamBorderProps> = ({
+  children,
+  speed = 3,
+  color = 'rgba(0, 212, 255, 0.8)',
+  width = '200px'
+}) => {
+  return (
+    <div className="relative border border-neon-blue/30 rounded-lg overflow-hidden">
+      <motion.div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: `linear-gradient(
+            90deg,
+            transparent 0%,
+            transparent 30%,
+            ${color} 50%,
+            transparent 70%,
+            transparent 100%
+          )`,
+          backgroundSize: '200% 100%',
+          width: width,
+          height: '100%'
+        }}
+        animate={{
+          x: ['-100%', '200%']
+        }}
+        transition={{
+          duration: speed,
+          repeat: Infinity,
+          ease: 'linear'
+        }}
+      />
+      <div className="relative z-10">{children}</div>
+    </div>
+  );
+};
+```
+
+**Advanced: Multi-Directional Beam:**
+
+```tsx
+import { motion } from 'framer-motion';
+
+export const MultiBeamBorder: React.FC<{ children: React.ReactNode }> = ({
+  children
+}) => {
+  const beamVariants = {
+    top: {
+      x: ['-100%', '200%'],
+      transition: { duration: 2, repeat: Infinity, ease: 'linear' }
+    },
+    right: {
+      y: ['-100%', '200%'],
+      transition: { duration: 2.5, repeat: Infinity, ease: 'linear', delay: 0.5 }
+    },
+    bottom: {
+      x: ['200%', '-100%'],
+      transition: { duration: 2, repeat: Infinity, ease: 'linear', delay: 1 }
+    },
+    left: {
+      y: ['200%', '-100%'],
+      transition: { duration: 2.5, repeat: Infinity, ease: 'linear', delay: 1.5 }
+    }
+  };
+
+  return (
+    <div className="relative border border-neon-blue/30 rounded-lg overflow-hidden">
+      {/* Top beam */}
+      <motion.div
+        className="absolute top-0 left-0 right-0 h-[1px]"
+        style={{
+          background: 'linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.8), transparent)',
+          width: '200px'
+        }}
+        variants={beamVariants}
+        animate="top"
+      />
+      
+      {/* Right beam */}
+      <motion.div
+        className="absolute top-0 right-0 bottom-0 w-[1px]"
+        style={{
+          background: 'linear-gradient(180deg, transparent, rgba(0, 212, 255, 0.8), transparent)',
+          height: '200px'
+        }}
+        variants={beamVariants}
+        animate="right"
+      />
+      
+      {/* Bottom beam */}
+      <motion.div
+        className="absolute bottom-0 left-0 right-0 h-[1px]"
+        style={{
+          background: 'linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.8), transparent)',
+          width: '200px'
+        }}
+        variants={beamVariants}
+        animate="bottom"
+      />
+      
+      {/* Left beam */}
+      <motion.div
+        className="absolute top-0 left-0 bottom-0 w-[1px]"
+        style={{
+          background: 'linear-gradient(180deg, transparent, rgba(0, 212, 255, 0.8), transparent)',
+          height: '200px'
+        }}
+        variants={beamVariants}
+        animate="left"
+      />
+      
+      <div className="relative z-10">{children}</div>
+    </div>
+  );
+};
+```
+
+---
+
+## Motion & Interaction Rules
+
+### Scroll Library Setup
+
+**Lenis Smooth Scrolling Integration:**
+
+```tsx
+import { useEffect } from 'react';
+import Lenis from '@studio-freight/lenis';
+import { ReactLenis } from '@studio-freight/react-lenis';
+
+export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({
+  children
+}) => {
+  useEffect(() => {
+    const lenis = new Lenis({
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      orientation: 'vertical',
+      gestureOrientation: 'vertical',
+      smoothWheel: true,
+      wheelMultiplier: 1,
+      smoothTouch: false, // Disable on touch devices for better performance
+      touchMultiplier: 2,
+      infinite: false,
+    });
+
+    function raf(time: number) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+
+    requestAnimationFrame(raf);
+
+    return () => {
+      lenis.destroy();
+    };
+  }, []);
+
+  return (
+    <ReactLenis root options={{ duration: 1.2, smoothWheel: true }}>
+      {children}
+    </ReactLenis>
+  );
+};
+```
+
+**Framer Motion + Lenis Integration:**
+
+```tsx
+import { useEffect } from 'react';
+import { useScroll } from 'framer-motion';
+import Lenis from '@studio-freight/lenis';
+
+export const useLenisScroll = () => {
+  const { scrollYProgress } = useScroll();
+
+  useEffect(() => {
+    const lenis = new Lenis({
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+    });
+
+    lenis.on('scroll', ({ scroll, limit, velocity, direction, progress }) => {
+      // Sync framer-motion scroll progress
+      scrollYProgress.set(progress);
+    });
+
+    function raf(time: number) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+
+    requestAnimationFrame(raf);
+
+    return () => {
+      lenis.destroy();
+    };
+  }, [scrollYProgress]);
+};
+```
+
+### The "Parallax" Formula
+
+**Standard Parallax Velocities:**
+
+```typescript
+// Parallax velocity constants
+export const PARALLAX_VELOCITIES = {
+  // Background layers (move slower)
+  background: 0.3,
+  backgroundMid: 0.5,
+  
+  // Midground (standard)
+  midground: 0.7,
+  
+  // Foreground (moves faster)
+  foreground: 1.2,
+  foregroundFast: 1.5,
+  
+  // Text (minimal parallax)
+  text: 0.1,
+} as const;
+
+// Usage
+const parallaxY = useTransform(
+  scrollYProgress,
+  [0, 1],
+  [0, window.innerHeight * PARALLAX_VELOCITIES.background]
+);
+```
+
+**Multi-Layer Parallax Component:**
+
+```tsx
+import { motion, useScroll, useTransform } from 'framer-motion';
+import { useRef } from 'react';
+
+interface ParallaxLayerProps {
+  speed: number;
+  children: React.ReactNode;
+  className?: string;
+}
+
+export const ParallaxLayer: React.FC<ParallaxLayerProps> = ({
+  speed,
+  children,
+  className
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ['start end', 'end start']
+  });
+
+  const y = useTransform(
+    scrollYProgress,
+    [0, 1],
+    [0, -100 * speed]
+  );
+
+  return (
+    <motion.div
+      ref={ref}
+      style={{ y }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+};
+
+// Usage
+<ParallaxLayer speed={0.3}>
+  <BackgroundImage />
+</ParallaxLayer>
+<ParallaxLayer speed={0.7}>
+  <MidgroundContent />
+</ParallaxLayer>
+<ParallaxLayer speed={1.2}>
+  <ForegroundText />
+</ParallaxLayer>
+```
+
+### Trigger Logic: Viewport Detection
+
+**Standard Trigger Settings:**
+
+```typescript
+// Framer Motion viewport settings
+const viewportSettings = {
+  // Trigger when element is 20% into viewport
+  margin: '-20%',
+  
+  // Amount of element that must be visible (0-1)
+  amount: 0.3, // 30% of element visible
+  
+  // Once: trigger only once
+  once: false, // Set to true for one-time animations
+} as const;
+```
+
+**Production Scroll Trigger Hook:**
+
+```tsx
+import { useInView, useScroll, useTransform, MotionValue } from 'framer-motion';
+import { useRef, useEffect, useState } from 'react';
+
+interface UseScrollTriggerOptions {
+  margin?: string;
+  amount?: number | 'some' | 'all';
+  once?: boolean;
+  threshold?: number;
+}
+
+export const useScrollTrigger = (options: UseScrollTriggerOptions = {}) => {
+  const {
+    margin = '-20%',
+    amount = 0.3,
+    once = false,
+    threshold = 0
+  } = options;
+
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { margin, amount, once });
+  
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ['start end', 'end start']
+  });
+
+  const [hasTriggered, setHasTriggered] = useState(false);
+
+  useEffect(() => {
+    if (isInView && !hasTriggered) {
+      setHasTriggered(true);
+    }
+    if (!once && !isInView) {
+      setHasTriggered(false);
+    }
+  }, [isInView, once, hasTriggered]);
+
+  return {
+    ref,
+    isInView,
+    scrollYProgress,
+    hasTriggered
+  };
+};
+```
+
+**Advanced: Scroll Progress-Based Animation:**
+
+```tsx
+import { motion, useScroll, useTransform } from 'framer-motion';
+import { useRef } from 'react';
+
+export const ScrollProgressAnimation: React.FC<{
+  children: React.ReactNode;
+  animationConfig: {
+    start: string;
+    end: string;
+    opacity?: [number, number];
+    scale?: [number, number];
+    y?: [number, number];
+    rotate?: [number, number];
+  };
+}> = ({ children, animationConfig }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: [animationConfig.start, animationConfig.end]
+  });
+
+  const opacity = useTransform(
+    scrollYProgress,
+    [0, 1],
+    animationConfig.opacity || [0, 1]
+  );
+
+  const scale = useTransform(
+    scrollYProgress,
+    [0, 1],
+    animationConfig.scale || [1, 1]
+  );
+
+  const y = useTransform(
+    scrollYProgress,
+    [0, 1],
+    animationConfig.y || [0, 0]
+  );
+
+  const rotate = useTransform(
+    scrollYProgress,
+    [0, 1],
+    animationConfig.rotate || [0, 0]
+  );
+
+  return (
+    <motion.div
+      ref={ref}
+      style={{ opacity, scale, y, rotate }}
+    >
+      {children}
+    </motion.div>
+  );
+};
+```
+
+---
+
+## Performance Optimization (FPS)
+
+### The 60 FPS Rule
+
+**Properties to Animate (GPU-Accelerated):**
+- ✅ `transform` (translate, scale, rotate)
+- ✅ `opacity`
+- ✅ `filter` (with caution)
+
+**Properties to Avoid:**
+- ❌ `width`, `height`
+- ❌ `top`, `left`, `right`, `bottom`
+- ❌ `margin`, `padding`
+- ❌ `background-color` (use `opacity` on overlay instead)
+
+### Will-Change Optimization
+
+```css
+/* Apply will-change to animated elements */
+.animated-element {
+  will-change: transform, opacity;
+}
+
+/* Remove will-change after animation completes */
+.animated-element.animation-complete {
+  will-change: auto;
+}
+```
+
+**React Implementation:**
+
+```tsx
+import { motion, useAnimation } from 'framer-motion';
+import { useEffect } from 'react';
+
+export const OptimizedAnimatedElement: React.FC<{
+  children: React.ReactNode;
+}> = ({ children }) => {
+  const controls = useAnimation();
+
+  useEffect(() => {
+    controls.start({
+      opacity: 1,
+      y: 0,
+      transition: { duration: 0.6 }
+    }).then(() => {
+      // Remove will-change after animation
+      // This is handled automatically by Framer Motion
+    });
+  }, [controls]);
+
+  return (
+    <motion.div
+      animate={controls}
+      initial={{ opacity: 0, y: 20 }}
+      style={{
+        willChange: 'transform, opacity'
+      }}
+    >
+      {children}
+    </motion.div>
+  );
+};
+```
+
+### Intersection Observer for Performance
+
+**Lazy Animation Triggering:**
+
+```tsx
+import { useEffect, useRef, useState } from 'react';
+import { useInView } from 'framer-motion';
+
+export const useLazyAnimation = (options?: {
+  margin?: string;
+  amount?: number;
+  once?: boolean;
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, {
+    margin: options?.margin || '-10%',
+    amount: options?.amount || 0.2,
+    once: options?.once || false
+  });
+
+  const [shouldAnimate, setShouldAnimate] = useState(false);
+
+  useEffect(() => {
+    if (isInView && !shouldAnimate) {
+      // Small delay to ensure element is ready
+      const timer = setTimeout(() => {
+        setShouldAnimate(true);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isInView, shouldAnimate]);
+
+  return { ref, shouldAnimate };
+};
+```
+
+### Debounced Scroll Handlers
+
+```tsx
+import { useEffect, useRef } from 'react';
+
+export const useDebouncedScroll = (
+  callback: () => void,
+  delay: number = 16 // ~60fps
+) => {
+  const timeoutRef = useRef<NodeJS.Timeout>();
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = setTimeout(callback, delay);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [callback, delay]);
+};
+```
+
+### FPS Monitoring Hook
+
+```tsx
+import { useEffect, useRef, useState } from 'react';
+
+export const useFPS = () => {
+  const [fps, setFPS] = useState(60);
+  const frameCount = useRef(0);
+  const lastTime = useRef(performance.now());
+
+  useEffect(() => {
+    const measureFPS = () => {
+      frameCount.current++;
+      const currentTime = performance.now();
+      const elapsed = currentTime - lastTime.current;
+
+      if (elapsed >= 1000) {
+        setFPS(Math.round((frameCount.current * 1000) / elapsed));
+        frameCount.current = 0;
+        lastTime.current = currentTime;
+      }
+
+      requestAnimationFrame(measureFPS);
+    };
+
+    const rafId = requestAnimationFrame(measureFPS);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  return fps;
+};
+```
+
+---
+
+## Accessibility (ARIA for Animations)
+
+### Reduced Motion Support
+
+**CSS Media Query:**
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+```
+
+**React Hook for Reduced Motion:**
+
+```tsx
+import { useEffect, useState } from 'react';
+
+export const useReducedMotion = () => {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReducedMotion(mediaQuery.matches);
+
+    const handleChange = (event: MediaQueryListEvent) => {
+      setPrefersReducedMotion(event.matches);
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
+
+  return prefersReducedMotion;
+};
+```
+
+**Framer Motion Reduced Motion Config:**
+
+```tsx
+import { motion, MotionConfig } from 'framer-motion';
+import { useReducedMotion } from './hooks/useReducedMotion';
+
+export const MotionProvider: React.FC<{ children: React.ReactNode }> = ({
+  children
+}) => {
+  const prefersReducedMotion = useReducedMotion();
+
+  return (
+    <MotionConfig
+      reducedMotion={prefersReducedMotion ? 'always' : 'user'}
+      transition={{
+        type: 'tween',
+        ease: [0.22, 1, 0.36, 1],
+        duration: prefersReducedMotion ? 0 : 0.6
+      }}
+    >
+      {children}
+    </MotionConfig>
+  );
+};
+```
+
+**Accessible Animation Component:**
+
+```tsx
+import { motion, Variants } from 'framer-motion';
+import { useReducedMotion } from './hooks/useReducedMotion';
+
+interface AccessibleAnimateProps {
+  children: React.ReactNode;
+  variants: Variants;
+}
+
+export const AccessibleAnimate: React.FC<AccessibleAnimateProps> = ({
+  children,
+  variants
+}) => {
+  const prefersReducedMotion = useReducedMotion();
+
+  const reducedVariants: Variants = prefersReducedMotion
+    ? {
+        visible: { opacity: 1 },
+        hidden: { opacity: 0 }
+      }
+    : variants;
+
+  return (
+    <motion.div
+      initial="hidden"
+      whileInView="visible"
+      viewport={{ margin: '-20%', amount: 0.3 }}
+      variants={reducedVariants}
+      transition={{
+        duration: prefersReducedMotion ? 0 : 0.6
+      }}
+    >
+      {children}
+    </motion.div>
+  );
+};
+```
+
+### ARIA Labels for Animated Content
+
+```tsx
+import { motion } from 'framer-motion';
+
+export const AnimatedSection: React.FC<{
+  title: string;
+  children: React.ReactNode;
+  id: string;
+}> = ({ title, children, id }) => {
+  return (
+    <motion.section
+      id={id}
+      aria-labelledby={`${id}-title`}
+      initial={{ opacity: 0 }}
+      whileInView={{ opacity: 1 }}
+      viewport={{ margin: '-20%' }}
+      transition={{ duration: 0.6 }}
+    >
+      <h2 id={`${id}-title`} className="sr-only">
+        {title}
+      </h2>
+      {children}
+    </motion.section>
+  );
+};
+```
+
+### Focus Management During Animations
+
+```tsx
+import { useEffect, useRef } from 'react';
+import { useInView } from 'framer-motion';
+
+export const useFocusOnView = (enabled: boolean = true) => {
+  const ref = useRef<HTMLElement>(null);
+  const isInView = useInView(ref, { margin: '-10%', amount: 0.5 });
+
+  useEffect(() => {
+    if (enabled && isInView && ref.current) {
+      // Only focus if element is focusable and not already focused
+      if (
+        ref.current.tabIndex >= 0 &&
+        document.activeElement !== ref.current
+      ) {
+        ref.current.focus({ preventScroll: true });
+      }
+    }
+  }, [isInView, enabled]);
+
+  return ref;
+};
+```
+
+---
+
+## Asset Loading Strategies
+
+### Image Lazy Loading with Intersection Observer
+
+```tsx
+import { useState, useRef, useEffect } from 'react';
+import { useInView } from 'framer-motion';
+
+interface LazyImageProps {
+  src: string;
+  alt: string;
+  placeholder?: string;
+  className?: string;
+}
+
+export const LazyImage: React.FC<LazyImageProps> = ({
+  src,
+  alt,
+  placeholder,
+  className
+}) => {
+  const ref = useRef<HTMLImageElement>(null);
+  const isInView = useInView(ref, { margin: '50%' });
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (isInView && !loaded && !error) {
+      const img = new Image();
+      img.onload = () => setLoaded(true);
+      img.onerror = () => setError(true);
+      img.src = src;
+    }
+  }, [isInView, src, loaded, error]);
+
+  return (
+    <div ref={ref} className={className}>
+      {loaded ? (
+        <img src={src} alt={alt} loading="lazy" />
+      ) : placeholder ? (
+        <img src={placeholder} alt="" aria-hidden="true" />
+      ) : (
+        <div className="bg-depth-2 animate-pulse" style={{ aspectRatio: '16/9' }} />
+      )}
+    </div>
+  );
+};
+```
+
+### Progressive Image Loading
+
+```tsx
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+interface ProgressiveImageProps {
+  lowResSrc: string;
+  highResSrc: string;
+  alt: string;
+}
+
+export const ProgressiveImage: React.FC<ProgressiveImageProps> = ({
+  lowResSrc,
+  highResSrc,
+  alt
+}) => {
+  const [highResLoaded, setHighResLoaded] = useState(false);
+
+  return (
+    <div className="relative">
+      {/* Low-res placeholder */}
+      <motion.img
+        src={lowResSrc}
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover blur-sm"
+        initial={{ opacity: 1 }}
+        animate={{ opacity: highResLoaded ? 0 : 1 }}
+        transition={{ duration: 0.3 }}
+      />
+      
+      {/* High-res image */}
+      <motion.img
+        src={highResSrc}
+        alt={alt}
+        className="relative w-full h-full object-cover"
+        onLoad={() => setHighResLoaded(true)}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: highResLoaded ? 1 : 0 }}
+        transition={{ duration: 0.3 }}
+        loading="lazy"
+      />
+    </div>
+  );
+};
+```
+
+### WebGL/Three.js Lazy Loading
+
+```tsx
+import { useEffect, useRef, useState } from 'react';
+import { useInView } from 'framer-motion';
+import * as THREE from 'three';
+
+export const useLazyWebGL = () => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isInView = useInView(containerRef, { margin: '100%' });
+  const [scene, setScene] = useState<THREE.Scene | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (isInView && !isLoaded && containerRef.current) {
+      // Dynamically import Three.js only when needed
+      import('three').then((THREE) => {
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(
+          75,
+          window.innerWidth / window.innerHeight,
+          0.1,
+          1000
+        );
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        
+        renderer.setSize(
+          containerRef.current!.clientWidth,
+          containerRef.current!.clientHeight
+        );
+        containerRef.current!.appendChild(renderer.domElement);
+
+        setScene(scene);
+        setIsLoaded(true);
+      });
+    }
+  }, [isInView, isLoaded]);
+
+  return { containerRef, scene, isLoaded };
+};
+```
+
+### Font Loading Strategy
+
+```css
+/* Preload critical fonts */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap; /* Show fallback until font loads */
+  src: url('/fonts/inter-regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/inter-semibold.woff2') format('woff2');
+}
+
+/* Font loading optimization */
+.font-loading {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.font-loaded {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+```
+
+**React Font Loader:**
+
+```tsx
+import { useEffect, useState } from 'react';
+
+export const useFontLoader = (fontFamily: string) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    if ('fonts' in document) {
+      document.fonts.ready.then(() => {
+        const font = new FontFace(
+          fontFamily,
+          `url(/fonts/${fontFamily.toLowerCase()}.woff2)`
+        );
+        
+        font.load().then((loadedFont) => {
+          document.fonts.add(loadedFont);
+          setIsLoaded(true);
+        });
+      });
+    } else {
+      // Fallback for browsers without Font Loading API
+      setIsLoaded(true);
+    }
+  }, [fontFamily]);
+
+  return isLoaded;
+};
+```
+
+---
+
+## Mobile Performance Considerations
+
+### Touch Device Optimization
+
+**Disable Smooth Scrolling on Touch:**
+
+```tsx
+import { useEffect, useState } from 'react';
+
+export const useIsTouchDevice = () => {
+  const [isTouch, setIsTouch] = useState(false);
+
+  useEffect(() => {
+    setIsTouch('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
+
+  return isTouch;
+};
+
+// Lenis config for touch devices
+const lenisConfig = {
+  smoothWheel: !isTouchDevice,
+  smoothTouch: false, // Disable on touch for better performance
+  touchMultiplier: isTouchDevice ? 1 : 2,
+};
+```
+
+### Reduced Animations on Mobile
+
+```tsx
+import { useEffect, useState } from 'react';
+
+export const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  return isMobile;
+};
+
+// Usage in animation config
+const animationDuration = isMobile ? 0.3 : 0.6;
+const parallaxSpeed = isMobile ? 0.5 : 1.2; // Reduce parallax on mobile
+```
+
+### Viewport-Based Animation Scaling
+
+```tsx
+import { useTransform, useScroll, MotionValue } from 'framer-motion';
+import { useRef } from 'react';
+
+export const useResponsiveParallax = (
+  scrollProgress: MotionValue<number>,
+  baseSpeed: number = 1
+) => {
+  const isMobile = window.innerWidth < 768;
+  const speed = isMobile ? baseSpeed * 0.3 : baseSpeed; // Reduce on mobile
+
+  return useTransform(scrollProgress, [0, 1], [0, -100 * speed]);
+};
+```
+
+### Battery-Aware Animations
+
+```tsx
+import { useEffect, useState } from 'react';
+
+export const useBatteryLevel = () => {
+  const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
+  const [isCharging, setIsCharging] = useState(false);
+
+  useEffect(() => {
+    if ('getBattery' in navigator) {
+      (navigator as any).getBattery().then((battery: any) => {
+        setBatteryLevel(battery.level);
+        setIsCharging(battery.charging);
+
+        const updateBattery = () => {
+          setBatteryLevel(battery.level);
+          setIsCharging(battery.charging);
+        };
+
+        battery.addEventListener('levelchange', updateBattery);
+        battery.addEventListener('chargingchange', updateBattery);
+
+        return () => {
+          battery.removeEventListener('levelchange', updateBattery);
+          battery.removeEventListener('chargingchange', updateBattery);
+        };
+      });
+    }
+  }, []);
+
+  return { batteryLevel, isCharging };
+};
+
+// Reduce animations when battery is low
+const shouldReduceAnimations = batteryLevel !== null && batteryLevel < 0.2;
+```
+
+---
+
+## Reduced Motion Preferences
+
+### Comprehensive Reduced Motion Implementation
+
+```tsx
+import { motion, MotionConfig, Variants } from 'framer-motion';
+import { useReducedMotion } from './hooks/useReducedMotion';
+
+export const ReducedMotionWrapper: React.FC<{
+  children: React.ReactNode;
+  variants: Variants;
+}> = ({ children, variants }) => {
+  const prefersReducedMotion = useReducedMotion();
+
+  const reducedVariants: Variants = prefersReducedMotion
+    ? {
+        visible: {
+          opacity: 1,
+          // No transform animations
+        },
+        hidden: {
+          opacity: 0,
+        }
+      }
+    : variants;
+
+  return (
+    <MotionConfig
+      reducedMotion={prefersReducedMotion ? 'always' : 'user'}
+      transition={{
+        duration: prefersReducedMotion ? 0 : 0.6,
+        ease: [0.22, 1, 0.36, 1]
+      }}
+    >
+      <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ margin: '-20%', amount: 0.3 }}
+        variants={reducedVariants}
+      >
+        {children}
+      </motion.div>
+    </MotionConfig>
+  );
+};
+```
+
+### Disable Parallax on Reduced Motion
+
+```tsx
+import { useReducedMotion } from './hooks/useReducedMotion';
+import { useTransform, MotionValue } from 'framer-motion';
+
+export const useAccessibleParallax = (
+  scrollProgress: MotionValue<number>,
+  speed: number
+) => {
+  const prefersReducedMotion = useReducedMotion();
+
+  return useTransform(
+    scrollProgress,
+    [0, 1],
+    [0, prefersReducedMotion ? 0 : -100 * speed] // No parallax if reduced motion
+  );
+};
+```
+
+---
+
+## Production-Ready Code Examples
+
+### Complete Scroll-Linked Hero Section
+
+```tsx
+import { motion, useScroll, useTransform } from 'framer-motion';
+import { useRef } from 'react';
+import { useReducedMotion } from './hooks/useReducedMotion';
+
+export const ScrollLinkedHero: React.FC = () => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const prefersReducedMotion = useReducedMotion();
+  
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ['start start', 'end start']
+  });
+
+  // Parallax transforms
+  const backgroundY = useTransform(
+    scrollYProgress,
+    [0, 1],
+    [0, prefersReducedMotion ? 0 : -100]
+  );
+  
+  const foregroundY = useTransform(
+    scrollYProgress,
+    [0, 1],
+    [0, prefersReducedMotion ? 0 : 150]
+  );
+  
+  const opacity = useTransform(
+    scrollYProgress,
+    [0, 0.5, 1],
+    [1, 0.5, 0]
+  );
+  
+  const scale = useTransform(
+    scrollYProgress,
+    [0, 1],
+    [1, 1.2]
+  );
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative h-screen overflow-hidden bg-depth-0"
+    >
+      {/* Background layer */}
+      <motion.div
+        style={{ y: backgroundY }}
+        className="absolute inset-0 z-0"
+      >
+        <div className="ambient-glow-multi w-full h-full" />
+      </motion.div>
+
+      {/* Foreground content */}
+      <motion.div
+        style={{ y: foregroundY, opacity, scale }}
+        className="relative z-10 flex items-center justify-center h-full"
+      >
+        <div className="text-center px-8">
+          <motion.h1
+            className="heading-1 mb-6"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
+          >
+            Motion that moves the needle
+          </motion.h1>
+          <motion.p
+            className="body-text text-text-body max-w-2xl mx-auto"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.4 }}
+          >
+            Create interactive web experiences that differentiate, delight, and convert.
+          </motion.p>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+```
+
+### Staggered List Animation
+
+```tsx
+import { motion } from 'framer-motion';
+import { useInView } from 'framer-motion';
+import { useRef } from 'react';
+
+interface StaggeredListProps {
+  items: Array<{ id: string; content: React.ReactNode }>;
+  staggerDelay?: number;
+}
+
+export const StaggeredList: React.FC<StaggeredListProps> = ({
+  items,
+  staggerDelay = 0.1
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { margin: '-20%', amount: 0.3 });
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: staggerDelay
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: {
+      opacity: 0,
+      y: 20,
+      scale: 0.95
+    },
+    visible: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        duration: 0.6,
+        ease: [0.22, 1, 0.36, 1]
+      }
+    }
+  };
+
+  return (
+    <motion.div
+      ref={ref}
+      variants={containerVariants}
+      initial="hidden"
+      animate={isInView ? 'visible' : 'hidden'}
+    >
+      {items.map((item) => (
+        <motion.div key={item.id} variants={itemVariants}>
+          {item.content}
+        </motion.div>
+      ))}
+    </motion.div>
+  );
+};
+```
+
+### Custom useScrollProgress Hook
+
+```tsx
+import { useScroll, useTransform, MotionValue } from 'framer-motion';
+import { useRef } from 'react';
+
+interface UseScrollProgressOptions {
+  offset?: [string, string];
+  target?: React.RefObject<HTMLElement>;
+}
+
+export const useScrollProgress = (
+  options: UseScrollProgressOptions = {}
+): {
+  scrollYProgress: MotionValue<number>;
+  scrollY: MotionValue<number>;
+  ref: React.RefObject<HTMLDivElement>;
+} => {
+  const ref = useRef<HTMLDivElement>(null);
+  
+  const { scrollYProgress, scrollY } = useScroll({
+    target: options.target || ref,
+    offset: options.offset || ['start end', 'end start']
+  });
+
+  return {
+    scrollYProgress,
+    scrollY,
+    ref
+  };
+};
+
+// Usage
+const { scrollYProgress, ref } = useScrollProgress({
+  offset: ['start start', 'end end']
+});
+
+const opacity = useTransform(scrollYProgress, [0, 0.5, 1], [0, 1, 0]);
+```
+
+---
+
+## Dos and Don'ts
+
+### ✅ DO
+
+1. **Animate only `transform` and `opacity`**
+   ```tsx
+   // ✅ Good
+   <motion.div
+     animate={{ opacity: 1, y: 0, scale: 1 }}
+   />
+   
+   // ❌ Bad
+   <motion.div
+     animate={{ width: '100%', height: '100%', top: 0 }}
+   />
+   ```
+
+2. **Use `will-change` sparingly and remove after animation**
+   ```tsx
+   // ✅ Good
+   <motion.div
+     style={{ willChange: 'transform, opacity' }}
+     onAnimationComplete={() => {
+       // Framer Motion handles this automatically
+     }}
+   />
+   ```
+
+3. **Debounce scroll handlers**
+   ```tsx
+   // ✅ Good
+   const debouncedScroll = useDebouncedScroll(() => {
+     // Handle scroll
+   }, 16);
+   ```
+
+4. **Use Intersection Observer for viewport detection**
+   ```tsx
+   // ✅ Good
+   const isInView = useInView(ref, { margin: '-20%' });
+   ```
+
+5. **Respect `prefers-reduced-motion`**
+   ```tsx
+   // ✅ Good
+   const prefersReducedMotion = useReducedMotion();
+   const duration = prefersReducedMotion ? 0 : 0.6;
+   ```
+
+6. **Lazy load heavy assets (WebGL, large images)**
+   ```tsx
+   // ✅ Good
+   const { scene, isLoaded } = useLazyWebGL();
+   ```
+
+7. **Use CSS transforms for 3D effects**
+   ```css
+   /* ✅ Good */
+   .element {
+     transform: translateZ(50px) rotateY(15deg);
+   }
+   ```
+
+### ❌ DON'T
+
+1. **Don't animate layout properties**
+   ```tsx
+   // ❌ Bad - triggers layout recalculation
+   <motion.div animate={{ width: '100%', margin: '20px' }} />
+   ```
+
+2. **Don't use `setInterval` for animations**
+   ```tsx
+   // ❌ Bad
+   setInterval(() => {
+     element.style.transform = `translateY(${y}px)`;
+   }, 16);
+   
+   // ✅ Good
+   requestAnimationFrame(() => {
+     // Animation logic
+   });
+   ```
+
+3. **Don't create too many animated elements simultaneously**
+   ```tsx
+   // ❌ Bad - 100+ elements animating at once
+   {items.map(item => (
+     <motion.div animate={{ opacity: 1 }} />
+   ))}
+   
+   // ✅ Good - Batch animations with stagger
+   <motion.div
+     variants={containerVariants}
+     initial="hidden"
+     animate="visible"
+   >
+     {items.map(item => (
+       <motion.div variants={itemVariants} />
+     ))}
+   </motion.div>
+   ```
+
+4. **Don't ignore mobile performance**
+   ```tsx
+   // ❌ Bad - Same animations on all devices
+   const parallaxSpeed = 1.2;
+   
+   // ✅ Good - Reduce on mobile
+   const parallaxSpeed = isMobile ? 0.3 : 1.2;
+   ```
+
+5. **Don't forget to clean up event listeners**
+   ```tsx
+   // ❌ Bad
+   useEffect(() => {
+     window.addEventListener('scroll', handleScroll);
+   });
+   
+   // ✅ Good
+   useEffect(() => {
+     window.addEventListener('scroll', handleScroll, { passive: true });
+     return () => window.removeEventListener('scroll', handleScroll);
+   }, []);
+   ```
+
+6. **Don't use `!important` in animations**
+   ```css
+   /* ❌ Bad */
+   .animated {
+     transform: translateY(0) !important;
+   }
+   ```
+
+7. **Don't animate elements outside viewport**
+   ```tsx
+   // ❌ Bad - Animates even when not visible
+   <motion.div animate={{ opacity: 1 }} />
+   
+   // ✅ Good - Only animates when in view
+   <motion.div
+     whileInView={{ opacity: 1 }}
+     viewport={{ margin: '-20%' }}
+   />
+   ```
+
+---
+
+## Edge Cases & Troubleshooting
+
+### Scroll Jank on Mobile
+
+**Problem:** Scroll feels janky on mobile devices.
+
+**Solution:**
+```tsx
+// Disable smooth scroll on touch devices
+const lenis = new Lenis({
+  smoothTouch: false,
+  touchMultiplier: 1,
+  wheelMultiplier: 1
+});
+```
+
+### Animation Not Triggering
+
+**Problem:** Scroll-triggered animation doesn't fire.
+
+**Solution:**
+```tsx
+// Check viewport settings
+const isInView = useInView(ref, {
+  margin: '-20%', // Adjust if element is too far
+  amount: 0.3,    // Ensure enough is visible
+  once: false     // Check if once: true is preventing re-trigger
+});
+
+// Debug
+useEffect(() => {
+  console.log('Is in view:', isInView);
+}, [isInView]);
+```
+
+### Parallax Too Fast/Slow
+
+**Problem:** Parallax effect is too aggressive or too subtle.
+
+**Solution:**
+```tsx
+// Adjust velocity multiplier
+const PARALLAX_VELOCITIES = {
+  subtle: 0.2,
+  normal: 0.5,
+  moderate: 0.8,
+  aggressive: 1.2
+};
+
+// Use responsive values
+const speed = isMobile ? PARALLAX_VELOCITIES.subtle : PARALLAX_VELOCITIES.normal;
+```
+
+### 3D Transform Not Working
+
+**Problem:** `perspective` and `transform-style: preserve-3d` not applying.
+
+**Solution:**
+```css
+/* Ensure parent has perspective */
+.parent {
+  perspective: 1000px;
+  perspective-origin: 50% 50%;
+}
+
+/* Child must have transform-style */
+.child {
+  transform-style: preserve-3d;
+  /* Any transform will work now */
+  transform: translateZ(50px);
+}
+```
+
+### FPS Drops During Scroll
+
+**Problem:** Frame rate drops below 60fps during scroll animations.
+
+**Solution:**
+```tsx
+// 1. Reduce number of animated elements
+// 2. Use transform and opacity only
+// 3. Debounce scroll handlers
+// 4. Use will-change strategically
+// 5. Monitor FPS and adjust
+
+const fps = useFPS();
+if (fps < 30) {
+  // Reduce animation complexity
+}
+```
+
+### Reduced Motion Not Working
+
+**Problem:** Animations still play despite `prefers-reduced-motion`.
+
+**Solution:**
+```tsx
+// Ensure MotionConfig is applied
+<MotionConfig reducedMotion={prefersReducedMotion ? 'always' : 'user'}>
+  {children}
+</MotionConfig>
+
+// Check media query
+const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+console.log('Reduced motion:', mediaQuery.matches);
+```
+
+### Sticky Element Not Sticking
+
+**Problem:** `position: sticky` not working.
+
+**Solution:**
+```css
+/* Ensure parent has height and no overflow: hidden */
+.sticky-container {
+  height: 200vh; /* Enough height to scroll */
+  /* Don't use overflow: hidden on parent */
+}
+
+.sticky-element {
+  position: sticky;
+  top: 0;
+  /* Parent must be taller than element */
+}
+```
+
+### Lenis Not Smooth
+
+**Problem:** Lenis smooth scroll feels choppy.
+
+**Solution:**
+```tsx
+const lenis = new Lenis({
+  duration: 1.2, // Increase for smoother scroll
+  easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+  smoothWheel: true,
+  wheelMultiplier: 0.8, // Reduce if too fast
+});
+```
+
+---
+
+## Complete Tailwind Config
+
+```javascript
+// tailwind.config.js
+module.exports = {
+  content: ['./src/**/*.{js,jsx,ts,tsx}'],
+  theme: {
+    extend: {
+      colors: {
+        // Background Hierarchy
+        'depth-0': '#080808',
+        'depth-1': '#0f0f0f',
+        'depth-2': '#1a1a1a',
+        'depth-3': '#252525',
+        'depth-blue-0': '#0a0d12',
+        'depth-blue-1': '#0f1419',
+        'depth-blue-2': '#1a1f26',
+        
+        // Text Hierarchy
+        'text-primary': '#ffffff',
+        'text-secondary': '#e0e0e0',
+        'text-body': '#888888',
+        'text-muted': '#666666',
+        
+        // Neon Accents
+        'neon-blue': '#00d4ff',
+        'neon-purple': '#b026ff',
+        'neon-cyan': '#00ffff',
+        'neon-pink': '#ff00ff',
+        
+        // Glow Colors
+        'glow-blue': 'rgba(0, 212, 255, 0.3)',
+        'glow-purple': 'rgba(176, 38, 255, 0.3)',
+        'glow-cyan': 'rgba(0, 255, 255, 0.25)',
+      },
+      fontFamily: {
+        sans: [
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'Segoe UI',
+          'Inter',
+          'Roboto',
+          'Oxygen',
+          'Ubuntu',
+          'Cantarell',
+          'sans-serif'
+        ],
+      },
+      letterSpacing: {
+        'tight-heading': '-0.02em',
+        'wide-label': '0.05em',
+      },
+      animation: {
+        'beam-travel': 'beam-travel 3s linear infinite',
+      },
+      keyframes: {
+        'beam-travel': {
+          '0%': { backgroundPosition: '-200% 0' },
+          '100%': { backgroundPosition: '200% 0' },
+        },
+      },
+    },
+  },
+  plugins: [],
+}
+```
+
+---
+
+## Final Checklist
+
+Before deploying, ensure:
+
+- [ ] All animations use `transform` and `opacity` only
+- [ ] `prefers-reduced-motion` is respected
+- [ ] Mobile performance is optimized (reduced parallax, disabled smooth scroll on touch)
+- [ ] Images are lazy-loaded
+- [ ] WebGL/Three.js scenes are lazy-loaded
+- [ ] FPS is monitored and stays above 30fps on mobile
+- [ ] Scroll handlers are debounced
+- [ ] Event listeners are cleaned up
+- [ ] ARIA labels are present for animated content
+- [ ] Focus management is handled during animations
+- [ ] Battery level is considered on mobile devices
+- [ ] All edge cases are handled (scroll jank, animation not triggering, etc.)
+
+---
+
+**End of Documentation**
+
+This document serves as the complete source of truth for building scroll-linked, 3D depth websites with dark mode aesthetics. All code examples are production-ready and follow best practices for performance, accessibility, and user experience.

@@ -1,0 +1,2379 @@
+# Motion Graphics Library: The Source of Truth
+
+> **A Centralized Animation Repository**  
+> 50+ High-Fidelity Animation Patterns using Framer Motion & GSAP Concepts
+
+---
+
+## 🎛️ THE PHYSICS SWITCH: Core Animation Profiles
+
+Every component in this library accepts a `variant` prop to toggle between three distinct physics profiles:
+
+### 1. `"luxury"` - Heavy Mass, High Damping
+*Matches: Apple, Alaïa, High-end luxury brands*
+
+```typescript
+const luxuryPhysics = {
+  type: "spring",
+  stiffness: 50,
+  damping: 30,
+  mass: 1.5,
+  restSpeed: 0.01,
+  restDelta: 0.01
+};
+```
+
+### 2. `"snap"` - Instant, Linear, Stepped
+*Matches: Brutalist, Telemetry, Data-driven interfaces*
+
+```typescript
+const snapPhysics = {
+  type: "tween",
+  duration: 0.3,
+  ease: [0.4, 0, 0.2, 1] // cubic-bezier for sharp transitions
+};
+```
+
+### 3. `"playful"` - High Bounciness, Low Stiffness
+*Matches: Kokuyo, Playful brands, Interactive experiences*
+
+```typescript
+const playfulPhysics = {
+  type: "spring",
+  stiffness: 200,
+  damping: 15,
+  mass: 0.8,
+  bounce: 0.4
+};
+```
+
+### Physics Helper Function
+
+```typescript
+const getPhysics = (variant: "luxury" | "snap" | "playful" = "luxury") => {
+  const physicsMap = {
+    luxury: {
+      type: "spring" as const,
+      stiffness: 50,
+      damping: 30,
+      mass: 1.5,
+      restSpeed: 0.01,
+      restDelta: 0.01
+    },
+    snap: {
+      type: "tween" as const,
+      duration: 0.3,
+      ease: [0.4, 0, 0.2, 1]
+    },
+    playful: {
+      type: "spring" as const,
+      stiffness: 200,
+      damping: 15,
+      mass: 0.8,
+      bounce: 0.4
+    }
+  };
+  return physicsMap[variant];
+};
+```
+
+---
+
+## 📝 PHASE 1: THE TEXT ENGINE (HERO TYPOGRAPHY)
+
+*Text is the voice of the site. It must never just "appear."*
+
+---
+
+### 1.1 Split-Text Reveals
+
+#### The "Word Stagger" - Words Slide Up from Mask
+
+```typescript
+import { motion, useInView } from "framer-motion";
+import { useRef } from "react";
+
+interface WordStaggerProps {
+  text: string;
+  variant?: "luxury" | "snap" | "playful";
+  delay?: number;
+}
+
+const WordStagger: React.FC<WordStaggerProps> = ({ 
+  text, 
+  variant = "luxury",
+  delay = 0 
+}) => {
+  const words = text.split(" ");
+  const containerRef = useRef(null);
+  const isInView = useInView(containerRef, { once: true, margin: "-100px" });
+  const physics = getPhysics(variant);
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.08,
+        delayChildren: delay
+      }
+    }
+  };
+
+  const wordVariants = {
+    hidden: { 
+      y: "100%",
+      opacity: 0
+    },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: {
+        ...physics,
+        duration: variant === "snap" ? 0.4 : undefined
+      }
+    }
+  };
+
+  return (
+    <motion.div
+      ref={containerRef}
+      variants={containerVariants}
+      initial="hidden"
+      animate={isInView ? "visible" : "hidden"}
+      style={{ 
+        overflow: "hidden",
+        display: "inline-block"
+      }}
+    >
+      {words.map((word, i) => (
+        <motion.span
+          key={i}
+          variants={wordVariants}
+          style={{
+            display: "inline-block",
+            marginRight: "0.25em",
+            willChange: "transform"
+          }}
+        >
+          {word}
+        </motion.span>
+      ))}
+    </motion.div>
+  );
+};
+```
+
+#### The "Char Scramble" - Text Decodes from Random Characters
+
+```typescript
+import { motion, useMotionValue, useTransform, animate } from "framer-motion";
+import { useEffect, useState } from "react";
+
+interface CharScrambleProps {
+  text: string;
+  variant?: "luxury" | "snap" | "playful";
+  trigger?: "hover" | "load" | "scroll";
+}
+
+const CharScramble: React.FC<CharScrambleProps> = ({ 
+  text, 
+  variant = "luxury",
+  trigger = "load"
+}) => {
+  const [displayText, setDisplayText] = useState(text);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+  
+  const physics = getPhysics(variant);
+  const scrambleDuration = variant === "snap" ? 0.2 : variant === "playful" ? 0.5 : 0.4;
+
+  const scramble = async () => {
+    if (isAnimating) return;
+    setIsAnimating(true);
+
+    const iterations = 10;
+    for (let i = 0; i < iterations; i++) {
+      setDisplayText(
+        text
+          .split("")
+          .map((char, idx) => {
+            if (char === " ") return " ";
+            if (Math.random() < 0.5) return chars[Math.floor(Math.random() * chars.length)];
+            return char;
+          })
+          .join("")
+      );
+      await new Promise(resolve => setTimeout(resolve, scrambleDuration * 100));
+    }
+    setDisplayText(text);
+    setIsAnimating(false);
+  };
+
+  useEffect(() => {
+    if (trigger === "load") {
+      scramble();
+    }
+  }, []);
+
+  return (
+    <motion.span
+      onHoverStart={trigger === "hover" ? scramble : undefined}
+      style={{
+        fontFamily: "monospace",
+        willChange: "contents"
+      }}
+    >
+      {displayText}
+    </motion.span>
+  );
+};
+```
+
+#### The "Typewriter" - Robust Multiline Typewriter Effect
+
+```typescript
+import { motion, useAnimation } from "framer-motion";
+import { useEffect, useState } from "react";
+
+interface TypewriterProps {
+  text: string | string[];
+  variant?: "luxury" | "snap" | "playful";
+  speed?: number;
+  deleteSpeed?: number;
+  delay?: number;
+  loop?: boolean;
+}
+
+const Typewriter: React.FC<TypewriterProps> = ({
+  text,
+  variant = "luxury",
+  speed = 50,
+  deleteSpeed = 30,
+  delay = 0,
+  loop = false
+}) => {
+  const [displayedText, setDisplayedText] = useState("");
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [lineIndex, setLineIndex] = useState(0);
+  
+  const lines = Array.isArray(text) ? text : [text];
+  const physics = getPhysics(variant);
+
+  useEffect(() => {
+    const currentLine = lines[lineIndex];
+    let timeout: NodeJS.Timeout;
+
+    if (!isDeleting && displayedText.length < currentLine.length) {
+      timeout = setTimeout(() => {
+        setDisplayedText(currentLine.slice(0, displayedText.length + 1));
+        setCurrentIndex(currentIndex + 1);
+      }, speed);
+    } else if (!isDeleting && displayedText.length === currentLine.length) {
+      timeout = setTimeout(() => {
+        if (lineIndex < lines.length - 1) {
+          setLineIndex(lineIndex + 1);
+          setDisplayedText("");
+          setCurrentIndex(0);
+        } else if (loop) {
+          setIsDeleting(true);
+        }
+      }, 2000);
+    } else if (isDeleting && displayedText.length > 0) {
+      timeout = setTimeout(() => {
+        setDisplayedText(currentLine.slice(0, displayedText.length - 1));
+        setCurrentIndex(currentIndex - 1);
+      }, deleteSpeed);
+    } else if (isDeleting && displayedText.length === 0) {
+      setIsDeleting(false);
+      setLineIndex(0);
+      setCurrentIndex(0);
+    }
+
+    return () => clearTimeout(timeout);
+  }, [displayedText, isDeleting, currentIndex, lineIndex, lines, speed, deleteSpeed, loop]);
+
+  return (
+    <motion.span
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay, ...physics }}
+      style={{
+        willChange: "contents",
+        fontFamily: "monospace"
+      }}
+    >
+      {displayedText}
+      <motion.span
+        animate={{ opacity: [1, 0] }}
+        transition={{ duration: 0.8, repeat: Infinity, repeatType: "reverse" }}
+        style={{ marginLeft: "2px" }}
+      >
+        |
+      </motion.span>
+    </motion.span>
+  );
+};
+```
+
+---
+
+### 1.2 Scroll-Linked Text
+
+#### The "Highlight" - Text Fills Word-by-Word on Scroll
+
+```typescript
+import { motion, useScroll, useTransform } from "framer-motion";
+import { useRef } from "react";
+
+interface HighlightTextProps {
+  text: string;
+  variant?: "luxury" | "snap" | "playful";
+}
+
+const HighlightText: React.FC<HighlightTextProps> = ({ 
+  text, 
+  variant = "luxury" 
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ["start 0.8", "start 0.2"]
+  });
+
+  const words = text.split(" ");
+  const physics = getPhysics(variant);
+
+  return (
+    <div ref={containerRef} style={{ padding: "2rem 0" }}>
+      {words.map((word, i) => {
+        const wordProgress = useTransform(
+          scrollYProgress,
+          [i / words.length, (i + 1) / words.length],
+          [0, 1]
+        );
+        
+        const opacity = useTransform(wordProgress, [0, 1], [0.3, 1]);
+        const color = useTransform(
+          wordProgress,
+          [0, 1],
+          ["rgb(100, 100, 100)", "rgb(0, 0, 0)"]
+        );
+
+        return (
+          <motion.span
+            key={i}
+            style={{
+              opacity,
+              color,
+              marginRight: "0.25em",
+              willChange: "opacity, color",
+              transition: variant === "snap" ? undefined : physics
+            }}
+          >
+            {word}
+          </motion.span>
+        );
+      })}
+    </div>
+  );
+};
+```
+
+#### The "Marquee" - Infinite Scrolling with Velocity Scroll
+
+```typescript
+import { motion, useScroll, useTransform, useMotionValue } from "framer-motion";
+import { useEffect } from "react";
+
+interface MarqueeProps {
+  text: string;
+  variant?: "luxury" | "snap" | "playful";
+  speed?: number;
+  direction?: "left" | "right";
+  velocityMultiplier?: number;
+}
+
+const Marquee: React.FC<MarqueeProps> = ({
+  text,
+  variant = "luxury",
+  speed = 1,
+  direction = "left",
+  velocityMultiplier = 0.5
+}) => {
+  const { scrollY } = useScroll();
+  const scrollVelocity = useMotionValue(0);
+  const lastScrollY = useMotionValue(0);
+
+  useEffect(() => {
+    const unsubscribe = scrollY.on("change", (latest) => {
+      const velocity = Math.abs(latest - lastScrollY.get());
+      scrollVelocity.set(velocity);
+      lastScrollY.set(latest);
+    });
+    return unsubscribe;
+  }, [scrollY, scrollVelocity, lastScrollY]);
+
+  const baseX = useMotionValue(0);
+  const velocityOffset = useTransform(scrollVelocity, (v) => v * velocityMultiplier);
+  const x = useTransform(
+    [baseX, velocityOffset],
+    ([base, vel]) => base + vel
+  );
+
+  useEffect(() => {
+    const animation = motion.animate(baseX, direction === "left" ? -100 : 100, {
+      duration: 10000 / speed,
+      repeat: Infinity,
+      ease: "linear"
+    });
+    return () => animation.stop();
+  }, [baseX, speed, direction]);
+
+  const duplicatedText = `${text} ${text} ${text} ${text}`;
+
+  return (
+    <div style={{ overflow: "hidden", whiteSpace: "nowrap" }}>
+      <motion.div
+        style={{
+          x,
+          display: "inline-block",
+          willChange: "transform"
+        }}
+      >
+        <span style={{ marginRight: "4rem" }}>{duplicatedText}</span>
+      </motion.div>
+    </div>
+  );
+};
+```
+
+---
+
+## 🎬 PHASE 2: SCROLL CHOREOGRAPHY (THE JOURNEY)
+
+*Motion that reacts to the viewport position.*
+
+---
+
+### 2.1 Parallax Systems
+
+#### `ParallaxImage` - Image Moves Slower Than Container
+
+```typescript
+import { motion, useScroll, useTransform } from "framer-motion";
+import { useRef } from "react";
+
+interface ParallaxImageProps {
+  src: string;
+  alt: string;
+  speed?: number; // 0-1, where 0.5 = moves at half container speed
+  variant?: "luxury" | "snap" | "playful";
+}
+
+const ParallaxImage: React.FC<ParallaxImageProps> = ({
+  src,
+  alt,
+  speed = 0.5,
+  variant = "luxury"
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start end", "end start"]
+  });
+
+  const y = useTransform(scrollYProgress, [0, 1], ["0%", `${(1 - speed) * 100}%`]);
+  const physics = getPhysics(variant);
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        overflow: "hidden",
+        height: "100vh",
+        position: "relative"
+      }}
+    >
+      <motion.img
+        src={src}
+        alt={alt}
+        style={{
+          y,
+          width: "100%",
+          height: "120%",
+          objectFit: "cover",
+          willChange: "transform"
+        }}
+        transition={physics}
+      />
+    </div>
+  );
+};
+```
+
+#### `ParallaxStack` - The "Apple Stack" Effect
+
+```typescript
+import { motion, useScroll, useTransform } from "framer-motion";
+import { useRef } from "react";
+
+interface ParallaxStackProps {
+  items: Array<{ id: string; content: React.ReactNode }>;
+  variant?: "luxury" | "snap" | "playful";
+}
+
+const ParallaxStack: React.FC<ParallaxStackProps> = ({
+  items,
+  variant = "luxury"
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ["start start", "end end"]
+  });
+
+  const physics = getPhysics(variant);
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        position: "relative",
+        height: `${items.length * 100}vh`,
+        perspective: "1000px"
+      }}
+    >
+      {items.map((item, index) => {
+        const itemProgress = useTransform(
+          scrollYProgress,
+          [index / items.length, (index + 1) / items.length],
+          [0, 1]
+        );
+
+        const scale = useTransform(itemProgress, [0, 0.5, 1], [1, 0.95, 0.9]);
+        const y = useTransform(itemProgress, [0, 1], [0, -100]);
+        const z = useTransform(itemProgress, [0, 1], [0, -50]);
+        const opacity = useTransform(itemProgress, [0, 0.3, 0.7, 1], [1, 1, 0.8, 0.5]);
+
+        return (
+          <motion.div
+            key={item.id}
+            style={{
+              position: "sticky",
+              top: 0,
+              scale,
+              y,
+              z,
+              opacity,
+              willChange: "transform, opacity",
+              transformStyle: "preserve-3d"
+            }}
+            transition={physics}
+          >
+            {item.content}
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+};
+```
+
+---
+
+### 2.2 Reveal Systems
+
+#### The "Curtain" - Solid Color Slides Away
+
+```typescript
+import { motion, useScroll, useTransform } from "framer-motion";
+import { useRef } from "react";
+
+interface CurtainRevealProps {
+  children: React.ReactNode;
+  color?: string;
+  direction?: "left" | "right" | "up" | "down";
+  variant?: "luxury" | "snap" | "playful";
+}
+
+const CurtainReveal: React.FC<CurtainRevealProps> = ({
+  children,
+  color = "#000",
+  direction = "left",
+  variant = "luxury"
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start end", "start center"]
+  });
+
+  const physics = getPhysics(variant);
+
+  const getX = () => {
+    if (direction === "left") return useTransform(scrollYProgress, [0, 1], ["0%", "-100%"]);
+    if (direction === "right") return useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
+    return useTransform(scrollYProgress, [0, 1], [0, 0]);
+  };
+
+  const getY = () => {
+    if (direction === "up") return useTransform(scrollYProgress, [0, 1], ["0%", "-100%"]);
+    if (direction === "down") return useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
+    return useTransform(scrollYProgress, [0, 1], [0, 0]);
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative", overflow: "hidden" }}>
+      {children}
+      <motion.div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          backgroundColor: color,
+          x: direction === "left" || direction === "right" ? getX() : undefined,
+          y: direction === "up" || direction === "down" ? getY() : undefined,
+          willChange: "transform"
+        }}
+        transition={physics}
+      />
+    </div>
+  );
+};
+```
+
+#### The "Image Unroll" - Scale from `scaleY: 0` to `1`
+
+```typescript
+import { motion, useScroll, useTransform } from "framer-motion";
+import { useRef } from "react";
+
+interface ImageUnrollProps {
+  src: string;
+  alt: string;
+  variant?: "luxury" | "snap" | "playful";
+  origin?: "top" | "bottom" | "center";
+}
+
+const ImageUnroll: React.FC<ImageUnrollProps> = ({
+  src,
+  alt,
+  variant = "luxury",
+  origin = "top"
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start end", "start center"]
+  });
+
+  const physics = getPhysics(variant);
+  const scaleY = useTransform(scrollYProgress, [0, 1], [0, 1]);
+  const transformOrigin = origin === "top" ? "top" : origin === "bottom" ? "bottom" : "center";
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        overflow: "hidden",
+        transformOrigin
+      }}
+    >
+      <motion.img
+        src={src}
+        alt={alt}
+        style={{
+          scaleY,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          willChange: "transform"
+        }}
+        transition={physics}
+      />
+    </div>
+  );
+};
+```
+
+#### The "3D Tilt" - Cards Rotate on Mouse Position
+
+```typescript
+import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
+import { useRef, MouseEvent } from "react";
+
+interface Tilt3DCardProps {
+  children: React.ReactNode;
+  variant?: "luxury" | "snap" | "playful";
+  intensity?: number;
+}
+
+const Tilt3DCard: React.FC<Tilt3DCardProps> = ({
+  children,
+  variant = "luxury",
+  intensity = 15
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+
+  const physics = getPhysics(variant);
+  const springConfig = {
+    stiffness: variant === "luxury" ? 50 : variant === "snap" ? 300 : 200,
+    damping: variant === "luxury" ? 30 : variant === "snap" ? 25 : 15
+  };
+
+  const rotateX = useSpring(useTransform(y, [-0.5, 0.5], [intensity, -intensity]), springConfig);
+  const rotateY = useSpring(useTransform(x, [-0.5, 0.5], [-intensity, intensity]), springConfig);
+
+  const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    x.set((e.clientX - centerX) / rect.width);
+    y.set((e.clientY - centerY) / rect.height);
+  };
+
+  const handleMouseLeave = () => {
+    x.set(0);
+    y.set(0);
+  };
+
+  return (
+    <motion.div
+      ref={ref}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        rotateX,
+        rotateY,
+        transformStyle: "preserve-3d",
+        willChange: "transform"
+      }}
+      transition={physics}
+    >
+      {children}
+    </motion.div>
+  );
+};
+```
+
+---
+
+## ✨ PHASE 3: MICRO-INTERACTIONS (THE FEEL)
+
+*Small details that make the user smile.*
+
+---
+
+### 3.1 Button Physics
+
+#### `MagneticButton` - Moves Towards Cursor
+
+```typescript
+import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
+import { useRef, MouseEvent } from "react";
+
+interface MagneticButtonProps {
+  children: React.ReactNode;
+  variant?: "luxury" | "snap" | "playful";
+  strength?: number;
+}
+
+const MagneticButton: React.FC<MagneticButtonProps> = ({
+  children,
+  variant = "luxury",
+  strength = 0.3
+}) => {
+  const ref = useRef<HTMLButtonElement>(null);
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+
+  const physics = getPhysics(variant);
+  const springConfig = {
+    stiffness: variant === "luxury" ? 150 : variant === "snap" ? 400 : 300,
+    damping: variant === "luxury" ? 20 : variant === "snap" ? 30 : 15
+  };
+
+  const springX = useSpring(x, springConfig);
+  const springY = useSpring(y, springConfig);
+
+  const handleMouseMove = (e: MouseEvent<HTMLButtonElement>) => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    x.set((e.clientX - centerX) * strength);
+    y.set((e.clientY - centerY) * strength);
+  };
+
+  const handleMouseLeave = () => {
+    x.set(0);
+    y.set(0);
+  };
+
+  return (
+    <motion.button
+      ref={ref}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        x: springX,
+        y: springY,
+        willChange: "transform"
+      }}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      transition={physics}
+    >
+      {children}
+    </motion.button>
+  );
+};
+```
+
+#### `LiquidButton` - SVG Fluid Distortion on Hover
+
+```typescript
+import { motion } from "framer-motion";
+import { useState } from "react";
+
+interface LiquidButtonProps {
+  children: React.ReactNode;
+  variant?: "luxury" | "snap" | "playful";
+}
+
+const LiquidButton: React.FC<LiquidButtonProps> = ({
+  children,
+  variant = "luxury"
+}) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const physics = getPhysics(variant);
+
+  const svgVariants = {
+    idle: {
+      pathLength: 0,
+      opacity: 0
+    },
+    hover: {
+      pathLength: 1,
+      opacity: 0.8,
+      transition: {
+        ...physics,
+        pathLength: { duration: 0.6 }
+      }
+    }
+  };
+
+  return (
+    <motion.button
+      onHoverStart={() => setIsHovered(true)}
+      onHoverEnd={() => setIsHovered(false)}
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        padding: "1rem 2rem",
+        border: "none",
+        background: "transparent",
+        cursor: "pointer"
+      }}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+    >
+      <motion.svg
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          pointerEvents: "none"
+        }}
+        variants={svgVariants}
+        initial="idle"
+        animate={isHovered ? "hover" : "idle"}
+      >
+        <motion.path
+          d="M0,0 Q50,20 100,0 T200,0"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          style={{
+            willChange: "pathLength"
+          }}
+        />
+      </motion.svg>
+      <span style={{ position: "relative", zIndex: 1 }}>
+        {children}
+      </span>
+    </motion.button>
+  );
+};
+```
+
+#### `SpotlightCard` - Radial Gradient Follows Cursor
+
+```typescript
+import { motion, useMotionValue, useTransform } from "framer-motion";
+import { useRef, MouseEvent } from "react";
+
+interface SpotlightCardProps {
+  children: React.ReactNode;
+  variant?: "luxury" | "snap" | "playful";
+  glowColor?: string;
+}
+
+const SpotlightCard: React.FC<SpotlightCardProps> = ({
+  children,
+  variant = "luxury",
+  glowColor = "rgba(255, 255, 255, 0.1)"
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+
+  const physics = getPhysics(variant);
+  const springConfig = {
+    stiffness: variant === "luxury" ? 100 : variant === "snap" ? 400 : 250,
+    damping: variant === "luxury" ? 25 : variant === "snap" ? 30 : 20
+  };
+
+  const springX = useSpring(x, springConfig);
+  const springY = useSpring(y, springConfig);
+
+  const background = useTransform(
+    [springX, springY],
+    ([xPos, yPos]) => {
+      return `radial-gradient(circle at ${xPos}px ${yPos}px, ${glowColor} 0%, transparent 50%)`;
+    }
+  );
+
+  const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    x.set(e.clientX - rect.left);
+    y.set(e.clientY - rect.top);
+  };
+
+  const handleMouseLeave = () => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    x.set(rect.width / 2);
+    y.set(rect.height / 2);
+  };
+
+  return (
+    <motion.div
+      ref={ref}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        position: "relative",
+        background,
+        willChange: "background"
+      }}
+      transition={physics}
+    >
+      {children}
+    </motion.div>
+  );
+};
+```
+
+---
+
+### 3.2 Navigation Motion
+
+#### The "Underline" - Nav Link Underline Animation
+
+```typescript
+import { motion } from "framer-motion";
+import { useState } from "react";
+
+interface NavLinkProps {
+  href: string;
+  children: React.ReactNode;
+  variant?: "luxury" | "snap" | "playful";
+}
+
+const NavLink: React.FC<NavLinkProps> = ({
+  href,
+  children,
+  variant = "luxury"
+}) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const physics = getPhysics(variant);
+
+  const underlineVariants = {
+    idle: {
+      scaleX: 0,
+      originX: 0
+    },
+    hover: {
+      scaleX: 1,
+      originX: 0,
+      transition: physics
+    },
+    exit: {
+      scaleX: 0,
+      originX: 1,
+      transition: physics
+    }
+  };
+
+  return (
+    <motion.a
+      href={href}
+      onHoverStart={() => setIsHovered(true)}
+      onHoverEnd={() => setIsHovered(false)}
+      style={{
+        position: "relative",
+        textDecoration: "none",
+        display: "inline-block"
+      }}
+    >
+      {children}
+      <motion.span
+        variants={underlineVariants}
+        initial="idle"
+        animate={isHovered ? "hover" : "exit"}
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          width: "100%",
+          height: "2px",
+          backgroundColor: "currentColor",
+          willChange: "transform"
+        }}
+      />
+    </motion.a>
+  );
+};
+```
+
+#### The "Hamburger Morph" - SVG Menu Icon Morphs to X
+
+```typescript
+import { motion } from "framer-motion";
+
+interface HamburgerMorphProps {
+  isOpen: boolean;
+  variant?: "luxury" | "snap" | "playful";
+  onToggle: () => void;
+}
+
+const HamburgerMorph: React.FC<HamburgerMorphProps> = ({
+  isOpen,
+  variant = "luxury",
+  onToggle
+}) => {
+  const physics = getPhysics(variant);
+
+  const topLine = {
+    closed: {
+      rotate: 0,
+      y: 0,
+      x: 0
+    },
+    open: {
+      rotate: 45,
+      y: 8,
+      x: 0
+    }
+  };
+
+  const middleLine = {
+    closed: {
+      opacity: 1,
+      x: 0
+    },
+    open: {
+      opacity: 0,
+      x: -20
+    }
+  };
+
+  const bottomLine = {
+    closed: {
+      rotate: 0,
+      y: 0,
+      x: 0
+    },
+    open: {
+      rotate: -45,
+      y: -8,
+      x: 0
+    }
+  };
+
+  return (
+    <motion.button
+      onClick={onToggle}
+      style={{
+        width: "24px",
+        height: "24px",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        background: "transparent",
+        border: "none",
+        cursor: "pointer",
+        padding: 0
+      }}
+      whileTap={{ scale: 0.9 }}
+    >
+      <motion.span
+        variants={topLine}
+        initial="closed"
+        animate={isOpen ? "open" : "closed"}
+        transition={physics}
+        style={{
+          width: "100%",
+          height: "2px",
+          backgroundColor: "currentColor",
+          willChange: "transform"
+        }}
+      />
+      <motion.span
+        variants={middleLine}
+        initial="closed"
+        animate={isOpen ? "open" : "closed"}
+        transition={physics}
+        style={{
+          width: "100%",
+          height: "2px",
+          backgroundColor: "currentColor",
+          willChange: "opacity, transform"
+        }}
+      />
+      <motion.span
+        variants={bottomLine}
+        initial="closed"
+        animate={isOpen ? "open" : "closed"}
+        transition={physics}
+        style={{
+          width: "100%",
+          height: "2px",
+          backgroundColor: "currentColor",
+          willChange: "transform"
+        }}
+      />
+    </motion.button>
+  );
+};
+```
+
+---
+
+## 🌟 PHASE 4: COMPLEX "WOW" MOMENTS (3D & SHADERS)
+
+*Standout elements for Hero sections.*
+
+---
+
+### 4.1 The "Glass Distortion" - Backdrop Filter Distortion
+
+```typescript
+import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
+import { useRef, MouseEvent } from "react";
+
+interface GlassDistortionProps {
+  children: React.ReactNode;
+  variant?: "luxury" | "snap" | "playful";
+  intensity?: number;
+}
+
+const GlassDistortion: React.FC<GlassDistortionProps> = ({
+  children,
+  variant = "luxury",
+  intensity = 10
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+
+  const physics = getPhysics(variant);
+  const springConfig = {
+    stiffness: variant === "luxury" ? 100 : variant === "snap" ? 400 : 250,
+    damping: variant === "luxury" ? 25 : variant === "snap" ? 30 : 20
+  };
+
+  const springX = useSpring(x, springConfig);
+  const springY = useSpring(y, springConfig);
+
+  const blur = useTransform(
+    [springX, springY],
+    ([xPos, yPos]) => {
+      const distance = Math.sqrt(xPos ** 2 + yPos ** 2);
+      return Math.min(distance / intensity, 20);
+    }
+  );
+
+  const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    x.set(e.clientX - rect.left - rect.width / 2);
+    y.set(e.clientY - rect.top - rect.height / 2);
+  };
+
+  const handleMouseLeave = () => {
+    x.set(0);
+    y.set(0);
+  };
+
+  return (
+    <motion.div
+      ref={ref}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        position: "relative",
+        backdropFilter: `blur(${blur}px)`,
+        WebkitBackdropFilter: `blur(${blur}px)`,
+        willChange: "backdrop-filter"
+      }}
+      transition={physics}
+    >
+      {children}
+    </motion.div>
+  );
+};
+```
+
+### 4.2 The "Noise Grain" Overlay - Cinema Film Grain Texture
+
+```typescript
+import { motion } from "framer-motion";
+import { useEffect, useRef } from "react";
+
+interface NoiseGrainProps {
+  opacity?: number;
+  enabled?: boolean;
+  variant?: "luxury" | "snap" | "playful";
+}
+
+const NoiseGrain: React.FC<NoiseGrainProps> = ({
+  opacity = 0.15,
+  enabled = true,
+  variant = "luxury"
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    if (!enabled || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const imageData = ctx.createImageData(canvas.width, canvas.height);
+    const data = imageData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const value = Math.random() * 255;
+      data[i] = value;     // R
+      data[i + 1] = value; // G
+      data[i + 2] = value; // B
+      data[i + 3] = 255;   // A
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+
+    const handleResize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      // Regenerate noise on resize
+      const newImageData = ctx.createImageData(canvas.width, canvas.height);
+      const newData = newImageData.data;
+      for (let i = 0; i < newData.length; i += 4) {
+        const value = Math.random() * 255;
+        newData[i] = value;
+        newData[i + 1] = value;
+        newData[i + 2] = value;
+        newData[i + 3] = 255;
+      }
+      ctx.putImageData(newImageData, 0, 0);
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [enabled]);
+
+  if (!enabled) return null;
+
+  return (
+    <motion.canvas
+      ref={canvasRef}
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+        zIndex: 9999,
+        opacity,
+        mixBlendMode: "overlay",
+        willChange: "opacity"
+      }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity }}
+      transition={{ duration: 0.5 }}
+    />
+  );
+};
+```
+
+---
+
+## 🎣 PHASE 5: IMPLEMENTATION HOOKS (REUSABLE LOGIC)
+
+*Write the actual code logic for these React Hooks.*
+
+---
+
+### 5.1 `useMousePosition()` - Smooth X/Y Coordinates
+
+```typescript
+import { useMotionValue, useSpring } from "framer-motion";
+import { useEffect } from "react";
+
+interface UseMousePositionOptions {
+  variant?: "luxury" | "snap" | "playful";
+  enabled?: boolean;
+}
+
+export const useMousePosition = (options: UseMousePositionOptions = {}) => {
+  const { variant = "luxury", enabled = true } = options;
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+
+  const physics = getPhysics(variant);
+  const springConfig = {
+    stiffness: variant === "luxury" ? 100 : variant === "snap" ? 400 : 250,
+    damping: variant === "luxury" ? 25 : variant === "snap" ? 30 : 20
+  };
+
+  const springX = useSpring(x, springConfig);
+  const springY = useSpring(y, springConfig);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      x.set(e.clientX);
+      y.set(e.clientY);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, [x, y, enabled]);
+
+  return { x: springX, y: springY, rawX: x, rawY: y };
+};
+```
+
+### 5.2 `useScrollVelocity()` - Returns Scroll Speed
+
+```typescript
+import { useScroll, useMotionValue, useTransform } from "framer-motion";
+import { useEffect } from "react";
+
+export const useScrollVelocity = () => {
+  const { scrollY } = useScroll();
+  const scrollVelocity = useMotionValue(0);
+  const lastScrollY = useMotionValue(0);
+  const lastTime = useMotionValue(Date.now());
+
+  useEffect(() => {
+    const unsubscribe = scrollY.on("change", (latest) => {
+      const now = Date.now();
+      const timeDelta = now - lastTime.get();
+      const scrollDelta = Math.abs(latest - lastScrollY.get());
+      
+      if (timeDelta > 0) {
+        const velocity = scrollDelta / timeDelta; // pixels per millisecond
+        scrollVelocity.set(velocity * 1000); // convert to pixels per second
+      }
+      
+      lastScrollY.set(latest);
+      lastTime.set(now);
+    });
+
+    return unsubscribe;
+  }, [scrollY, scrollVelocity, lastScrollY, lastTime]);
+
+  const normalizedVelocity = useTransform(
+    scrollVelocity,
+    [0, 1000],
+    [0, 1],
+    { clamp: true }
+  );
+
+  return {
+    velocity: scrollVelocity,
+    normalized: normalizedVelocity
+  };
+};
+```
+
+### 5.3 `useInViewStagger()` - Auto-Stagger Children on Viewport Entry
+
+```typescript
+import { motion, useInView, Variants } from "framer-motion";
+import { useRef, ReactNode } from "react";
+
+interface UseInViewStaggerOptions {
+  variant?: "luxury" | "snap" | "playful";
+  staggerDelay?: number;
+  margin?: string;
+  once?: boolean;
+}
+
+export const useInViewStagger = (options: UseInViewStaggerOptions = {}) => {
+  const {
+    variant = "luxury",
+    staggerDelay = 0.1,
+    margin = "-100px",
+    once = true
+  } = options;
+
+  const ref = useRef(null);
+  const isInView = useInView(ref, { once, margin });
+  const physics = getPhysics(variant);
+
+  const containerVariants: Variants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: staggerDelay,
+        delayChildren: 0,
+        ...physics
+      }
+    }
+  };
+
+  const childVariants: Variants = {
+    hidden: {
+      opacity: 0,
+      y: 20
+    },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: physics
+    }
+  };
+
+  return {
+    ref,
+    isInView,
+    containerVariants,
+    childVariants
+  };
+};
+
+// Usage Example:
+const StaggeredList: React.FC<{ items: string[] }> = ({ items }) => {
+  const { ref, containerVariants, childVariants } = useInViewStagger({
+    variant: "luxury",
+    staggerDelay: 0.1
+  });
+
+  return (
+    <motion.ul
+      ref={ref}
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+    >
+      {items.map((item, i) => (
+        <motion.li key={i} variants={childVariants}>
+          {item}
+        </motion.li>
+      ))}
+    </motion.ul>
+  );
+};
+```
+
+---
+
+## 🎨 ADDITIONAL ANIMATION PATTERNS (50+ Total)
+
+### Pattern 6: "Blur Reveal" - Content Blurs In
+```typescript
+const blurRevealVariants = {
+  hidden: {
+    filter: "blur(20px)",
+    opacity: 0
+  },
+  visible: {
+    filter: "blur(0px)",
+    opacity: 1,
+    transition: getPhysics("luxury")
+  }
+};
+```
+
+### Pattern 7: "Scale Fade" - Scale + Opacity
+```typescript
+const scaleFadeVariants = {
+  hidden: {
+    scale: 0.8,
+    opacity: 0
+  },
+  visible: {
+    scale: 1,
+    opacity: 1,
+    transition: getPhysics("playful")
+  }
+};
+```
+
+### Pattern 8: "Rotate Reveal" - Rotate on Entry
+```typescript
+const rotateRevealVariants = {
+  hidden: {
+    rotate: -180,
+    opacity: 0
+  },
+  visible: {
+    rotate: 0,
+    opacity: 1,
+    transition: getPhysics("snap")
+  }
+};
+```
+
+### Pattern 9: "Slide In from Sides"
+```typescript
+const slideInVariants = {
+  left: {
+    hidden: { x: "-100%", opacity: 0 },
+    visible: { x: 0, opacity: 1, transition: getPhysics("luxury") }
+  },
+  right: {
+    hidden: { x: "100%", opacity: 0 },
+    visible: { x: 0, opacity: 1, transition: getPhysics("luxury") }
+  }
+};
+```
+
+### Pattern 10: "Bounce In" - Playful Entry
+```typescript
+const bounceInVariants = {
+  hidden: {
+    scale: 0,
+    opacity: 0
+  },
+  visible: {
+    scale: 1,
+    opacity: 1,
+    transition: {
+      ...getPhysics("playful"),
+      type: "spring",
+      bounce: 0.6
+    }
+  }
+};
+```
+
+### Pattern 11: "Flip Card" - 3D Flip on Hover
+```typescript
+const flipCardVariants = {
+  front: {
+    rotateY: 0
+  },
+  back: {
+    rotateY: 180
+  }
+};
+```
+
+### Pattern 12: "Pulse" - Continuous Pulse
+```typescript
+const pulseVariants = {
+  pulse: {
+    scale: [1, 1.05, 1],
+    transition: {
+      duration: 2,
+      repeat: Infinity,
+      ease: "easeInOut"
+    }
+  }
+};
+```
+
+### Pattern 13: "Shake" - Error Shake
+```typescript
+const shakeVariants = {
+  shake: {
+    x: [0, -10, 10, -10, 10, 0],
+    transition: {
+      duration: 0.5
+    }
+  }
+};
+```
+
+### Pattern 14: "Glow Pulse" - Glowing Effect
+```typescript
+const glowPulseVariants = {
+  pulse: {
+    boxShadow: [
+      "0 0 0px rgba(255, 255, 255, 0)",
+      "0 0 20px rgba(255, 255, 255, 0.5)",
+      "0 0 0px rgba(255, 255, 255, 0)"
+    ],
+    transition: {
+      duration: 2,
+      repeat: Infinity
+    }
+  }
+};
+```
+
+### Pattern 15: "Morphing Shape" - SVG Path Morph
+```typescript
+const morphVariants = {
+  shape1: {
+    d: "M50,50 Q100,0 150,50 T250,50"
+  },
+  shape2: {
+    d: "M50,50 Q100,100 150,50 T250,50"
+  }
+};
+```
+
+### Pattern 16: "Text Gradient Shift" - Animated Gradient
+```typescript
+const gradientShiftVariants = {
+  animate: {
+    backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
+    transition: {
+      duration: 5,
+      repeat: Infinity,
+      ease: "linear"
+    }
+  }
+};
+```
+
+### Pattern 17: "Ripple Effect" - Click Ripple
+```typescript
+const rippleVariants = {
+  initial: {
+    scale: 0,
+    opacity: 1
+  },
+  animate: {
+    scale: 4,
+    opacity: 0,
+    transition: {
+      duration: 0.6
+    }
+  }
+};
+```
+
+### Pattern 18: "Fade Through" - Opacity Sequence
+```typescript
+const fadeThroughVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: [0, 1, 1, 0],
+    transition: {
+      duration: 2,
+      times: [0, 0.2, 0.8, 1]
+    }
+  }
+};
+```
+
+### Pattern 19: "Elastic Stretch" - Elastic Deformation
+```typescript
+const elasticStretchVariants = {
+  hover: {
+    scaleX: 1.2,
+    scaleY: 0.9,
+    transition: {
+      ...getPhysics("playful"),
+      type: "spring",
+      bounce: 0.5
+    }
+  }
+};
+```
+
+### Pattern 20: "Wave Animation" - Sine Wave Motion
+```typescript
+const waveVariants = {
+  animate: {
+    y: [0, -10, 0],
+    transition: {
+      duration: 1.5,
+      repeat: Infinity,
+      ease: "easeInOut"
+    }
+  }
+};
+```
+
+### Pattern 21: "Split Reveal" - Split from Center
+```typescript
+const splitRevealVariants = {
+  hidden: {
+    clipPath: "inset(0 50% 0 50%)"
+  },
+  visible: {
+    clipPath: "inset(0 0% 0 0%)",
+    transition: getPhysics("luxury")
+  }
+};
+```
+
+### Pattern 22: "Zoom Blur" - Zoom with Blur
+```typescript
+const zoomBlurVariants = {
+  hover: {
+    scale: 1.1,
+    filter: "blur(2px)",
+    transition: getPhysics("luxury")
+  }
+};
+```
+
+### Pattern 23: "Slide Up Fade" - Combined Motion
+```typescript
+const slideUpFadeVariants = {
+  hidden: {
+    y: 50,
+    opacity: 0
+  },
+  visible: {
+    y: 0,
+    opacity: 1,
+    transition: getPhysics("snap")
+  }
+};
+```
+
+### Pattern 24: "Rotating Border" - Animated Border
+```typescript
+const rotatingBorderVariants = {
+  animate: {
+    rotate: 360,
+    transition: {
+      duration: 3,
+      repeat: Infinity,
+      ease: "linear"
+    }
+  }
+};
+```
+
+### Pattern 25: "Text Shadow Pulse" - Shadow Animation
+```typescript
+const textShadowPulseVariants = {
+  pulse: {
+    textShadow: [
+      "0 0 0px rgba(0,0,0,0)",
+      "0 0 10px rgba(0,0,0,0.5)",
+      "0 0 0px rgba(0,0,0,0)"
+    ],
+    transition: {
+      duration: 2,
+      repeat: Infinity
+    }
+  }
+};
+```
+
+### Pattern 26: "3D Card Stack" - Z-Index Animation
+```typescript
+const cardStackVariants = {
+  back: {
+    scale: 0.9,
+    z: -50,
+    opacity: 0.5
+  },
+  front: {
+    scale: 1,
+    z: 0,
+    opacity: 1
+  }
+};
+```
+
+### Pattern 27: "Color Shift" - Hue Rotation
+```typescript
+const colorShiftVariants = {
+  animate: {
+    filter: [
+      "hue-rotate(0deg)",
+      "hue-rotate(360deg)"
+    ],
+    transition: {
+      duration: 5,
+      repeat: Infinity,
+      ease: "linear"
+    }
+  }
+};
+```
+
+### Pattern 28: "Text Reveal Mask" - Clip Path Reveal
+```typescript
+const textRevealMaskVariants = {
+  hidden: {
+    clipPath: "inset(0 100% 0 0)"
+  },
+  visible: {
+    clipPath: "inset(0 0% 0 0)",
+    transition: getPhysics("luxury")
+  }
+};
+```
+
+### Pattern 29: "Elastic Bounce" - Multiple Bounces
+```typescript
+const elasticBounceVariants = {
+  bounce: {
+    y: [0, -30, 0, -15, 0, -5, 0],
+    transition: {
+      duration: 1,
+      ease: "easeOut"
+    }
+  }
+};
+```
+
+### Pattern 30: "Glitch Effect" - Random Position Jitter
+```typescript
+const glitchVariants = {
+  glitch: {
+    x: [0, -2, 2, -2, 2, 0],
+    y: [0, 2, -2, 2, -2, 0],
+    transition: {
+      duration: 0.3
+    }
+  }
+};
+```
+
+### Pattern 31: "Fade In Stagger" - Sequential Fade
+```typescript
+const fadeInStaggerVariants = {
+  container: {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1
+      }
+    }
+  },
+  item: {
+    hidden: { opacity: 0 },
+    visible: { opacity: 1, transition: getPhysics("luxury") }
+  }
+};
+```
+
+### Pattern 32: "Scale Rotate" - Combined Transform
+```typescript
+const scaleRotateVariants = {
+  hover: {
+    scale: 1.2,
+    rotate: 5,
+    transition: getPhysics("playful")
+  }
+};
+```
+
+### Pattern 33: "Text Stroke Reveal" - Stroke Animation
+```typescript
+const strokeRevealVariants = {
+  hidden: {
+    strokeDashoffset: 1000
+  },
+  visible: {
+    strokeDashoffset: 0,
+    transition: {
+      duration: 2,
+      ease: "easeInOut"
+    }
+  }
+};
+```
+
+### Pattern 34: "Magnetic Hover" - Attraction Effect
+```typescript
+// Uses useMousePosition hook
+const magneticHoverVariants = {
+  hover: {
+    x: (custom: { x: number }) => custom.x * 10,
+    y: (custom: { y: number }) => custom.y * 10,
+    transition: getPhysics("luxury")
+  }
+};
+```
+
+### Pattern 35: "Breathing" - Subtle Scale Pulse
+```typescript
+const breathingVariants = {
+  breathe: {
+    scale: [1, 1.02, 1],
+    transition: {
+      duration: 3,
+      repeat: Infinity,
+      ease: "easeInOut"
+    }
+  }
+};
+```
+
+### Pattern 36: "Slide Through" - Horizontal Slide
+```typescript
+const slideThroughVariants = {
+  enter: {
+    x: "100%",
+    opacity: 0
+  },
+  center: {
+    x: 0,
+    opacity: 1,
+    transition: getPhysics("snap")
+  },
+  exit: {
+    x: "-100%",
+    opacity: 0,
+    transition: getPhysics("snap")
+  }
+};
+```
+
+### Pattern 37: "Text Glow" - Glowing Text
+```typescript
+const textGlowVariants = {
+  hover: {
+    textShadow: [
+      "0 0 5px currentColor",
+      "0 0 20px currentColor",
+      "0 0 5px currentColor"
+    ],
+    transition: {
+      duration: 1.5,
+      repeat: Infinity
+    }
+  }
+};
+```
+
+### Pattern 38: "Flip Reveal" - Flip on Entry
+```typescript
+const flipRevealVariants = {
+  hidden: {
+    rotateX: 90,
+    opacity: 0
+  },
+  visible: {
+    rotateX: 0,
+    opacity: 1,
+    transition: getPhysics("luxury")
+  }
+};
+```
+
+### Pattern 39: "Elastic Scale" - Elastic Scaling
+```typescript
+const elasticScaleVariants = {
+  tap: {
+    scale: [1, 0.9, 1.1, 1],
+    transition: {
+      ...getPhysics("playful"),
+      type: "spring",
+      bounce: 0.6
+    }
+  }
+};
+```
+
+### Pattern 40: "Radial Reveal" - Circular Clip
+```typescript
+const radialRevealVariants = {
+  hidden: {
+    clipPath: "circle(0% at 50% 50%)"
+  },
+  visible: {
+    clipPath: "circle(150% at 50% 50%)",
+    transition: getPhysics("luxury")
+  }
+};
+```
+
+### Pattern 41: "Text Decode" - Character by Character
+```typescript
+const textDecodeVariants = {
+  container: {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.05
+      }
+    }
+  },
+  char: {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0, transition: getPhysics("snap") }
+  }
+};
+```
+
+### Pattern 42: "3D Rotate" - Perspective Rotation
+```typescript
+const rotate3DVariants = {
+  hover: {
+    rotateY: 15,
+    rotateX: 5,
+    transition: getPhysics("luxury")
+  }
+};
+```
+
+### Pattern 43: "Slide Down" - Vertical Slide
+```typescript
+const slideDownVariants = {
+  hidden: {
+    y: "-100%",
+    opacity: 0
+  },
+  visible: {
+    y: 0,
+    opacity: 1,
+    transition: getPhysics("snap")
+  }
+};
+```
+
+### Pattern 44: "Morphing Gradient" - Gradient Animation
+```typescript
+const morphingGradientVariants = {
+  animate: {
+    background: [
+      "linear-gradient(0deg, #ff0000, #00ff00)",
+      "linear-gradient(90deg, #00ff00, #0000ff)",
+      "linear-gradient(180deg, #0000ff, #ff0000)",
+      "linear-gradient(270deg, #ff0000, #00ff00)"
+    ],
+    transition: {
+      duration: 10,
+      repeat: Infinity,
+      ease: "linear"
+    }
+  }
+};
+```
+
+### Pattern 45: "Text Split" - Split Animation
+```typescript
+const textSplitVariants = {
+  hidden: {
+    x: -20,
+    opacity: 0
+  },
+  visible: {
+    x: 0,
+    opacity: 1,
+    transition: getPhysics("luxury")
+  }
+};
+```
+
+### Pattern 46: "Zoom In" - Scale Up Entry
+```typescript
+const zoomInVariants = {
+  hidden: {
+    scale: 0.5,
+    opacity: 0
+  },
+  visible: {
+    scale: 1,
+    opacity: 1,
+    transition: getPhysics("playful")
+  }
+};
+```
+
+### Pattern 47: "Slide Over" - Overlay Slide
+```typescript
+const slideOverVariants = {
+  hidden: {
+    x: "100%"
+  },
+  visible: {
+    x: 0,
+    transition: getPhysics("snap")
+  }
+};
+```
+
+### Pattern 48: "Text Fill" - Fill Animation
+```typescript
+const textFillVariants = {
+  hidden: {
+    backgroundPosition: "100% 0%"
+  },
+  visible: {
+    backgroundPosition: "0% 0%",
+    transition: {
+      duration: 1,
+      ease: "easeInOut"
+    }
+  }
+};
+```
+
+### Pattern 49: "Elastic Wobble" - Wobble Effect
+```typescript
+const elasticWobbleVariants = {
+  wobble: {
+    rotate: [0, -5, 5, -5, 5, 0],
+    transition: {
+      ...getPhysics("playful"),
+      type: "spring",
+      bounce: 0.5
+    }
+  }
+};
+```
+
+### Pattern 50: "Fade Scale Rotate" - Triple Transform
+```typescript
+const fadeScaleRotateVariants = {
+  hidden: {
+    opacity: 0,
+    scale: 0.8,
+    rotate: -10
+  },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    rotate: 0,
+    transition: getPhysics("luxury")
+  }
+};
+```
+
+---
+
+## ⚡ PERFORMANCE GUARDRAILS
+
+### Critical Performance Optimizations
+
+1. **`will-change` Property**
+   ```css
+   will-change: transform;
+   will-change: opacity;
+   will-change: filter;
+   ```
+   Apply to animated properties to hint the browser for optimization.
+
+2. **`layoutId` for Shared Element Transitions**
+   ```typescript
+   <motion.div layoutId="shared-element">
+     {/* Content */}
+   </motion.div>
+   ```
+   Enables smooth transitions between shared elements across routes.
+
+3. **GPU Acceleration**
+   ```typescript
+   // Prefer transform and opacity over position/width/height
+   style={{
+     transform: "translateX(100px)", // ✅ GPU accelerated
+     // x: 100 // ✅ Also GPU accelerated (Framer Motion)
+   }}
+   ```
+
+4. **Reduce Motion for Performance**
+   ```typescript
+   const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+   const duration = prefersReducedMotion ? 0 : 0.5;
+   ```
+
+5. **Lazy Loading Animations**
+   ```typescript
+   const { ref, inView } = useInView({
+     once: true,
+     margin: "-100px"
+   });
+   ```
+
+---
+
+## ♿ REDUCED MOTION SUPPORT
+
+### Media Query Detection
+
+```typescript
+import { useEffect, useState } from "react";
+
+export const useReducedMotion = () => {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setPrefersReducedMotion(mediaQuery.matches);
+
+    const handleChange = (e: MediaQueryListEvent) => {
+      setPrefersReducedMotion(e.matches);
+    };
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
+  return prefersReducedMotion;
+};
+```
+
+### Animation Disabler Component
+
+```typescript
+import { motion, MotionConfig } from "framer-motion";
+import { useReducedMotion } from "./hooks";
+
+export const MotionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const prefersReducedMotion = useReducedMotion();
+
+  return (
+    <MotionConfig
+      reducedMotion={prefersReducedMotion ? "always" : "user"}
+      transition={{
+        duration: prefersReducedMotion ? 0 : undefined
+      }}
+    >
+      {children}
+    </MotionConfig>
+  );
+};
+```
+
+### Conditional Animation Variants
+
+```typescript
+const getVariants = (prefersReducedMotion: boolean) => {
+  if (prefersReducedMotion) {
+    return {
+      hidden: { opacity: 0 },
+      visible: { opacity: 1, transition: { duration: 0 } }
+    };
+  }
+  
+  return {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0, transition: getPhysics("luxury") }
+  };
+};
+```
+
+---
+
+## 📚 USAGE EXAMPLES
+
+### Example 1: Hero Section with Word Stagger
+
+```typescript
+import { WordStagger } from "./motion-graphics-library";
+
+const Hero = () => {
+  return (
+    <section>
+      <WordStagger 
+        text="Welcome to the Future" 
+        variant="luxury"
+        delay={0.2}
+      />
+    </section>
+  );
+};
+```
+
+### Example 2: Scroll-Triggered Parallax Stack
+
+```typescript
+import { ParallaxStack } from "./motion-graphics-library";
+
+const ProductShowcase = () => {
+  const items = [
+    { id: "1", content: <ProductCard product="A" /> },
+    { id: "2", content: <ProductCard product="B" /> },
+    { id: "3", content: <ProductCard product="C" /> }
+  ];
+
+  return <ParallaxStack items={items} variant="luxury" />;
+};
+```
+
+### Example 3: Interactive Button with Magnetic Effect
+
+```typescript
+import { MagneticButton } from "./motion-graphics-library";
+
+const CTAButton = () => {
+  return (
+    <MagneticButton variant="playful" strength={0.4}>
+      Get Started
+    </MagneticButton>
+  );
+};
+```
+
+---
+
+## 🎯 BEST PRACTICES
+
+1. **Always use `will-change` for animated properties**
+2. **Prefer `transform` and `opacity` over layout properties**
+3. **Use `layoutId` for shared element transitions**
+4. **Respect `prefers-reduced-motion`**
+5. **Lazy load animations with `useInView`**
+6. **Choose the appropriate physics variant for your brand**
+7. **Test on low-end devices**
+8. **Use `once: true` for scroll animations to prevent re-triggering**
+
+---
+
+## 📦 INSTALLATION
+
+```bash
+npm install framer-motion
+# or
+yarn add framer-motion
+```
+
+---
+
+## 🔗 RESOURCES
+
+- [Framer Motion Documentation](https://www.framer.com/motion/)
+- [GSAP Documentation](https://greensock.com/docs/)
+- [Web Animations API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Animations_API)
+- [CSS `will-change` Property](https://developer.mozilla.org/en-US/docs/Web/CSS/will-change)
+
+---
+
+**End of Motion Graphics Library Documentation**

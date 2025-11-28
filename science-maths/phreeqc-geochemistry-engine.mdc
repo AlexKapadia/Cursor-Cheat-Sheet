@@ -1,0 +1,1379 @@
+# PHREEQC Geochemistry Engine - Source of Truth
+
+**Version:** 1.0  
+**Last Updated:** 2024  
+**Status:** Architecture Specification  
+**Author:** Principal Hydrogeochemist & PHREEQC Modeling Expert
+
+---
+
+## Table of Contents
+
+1. [Critical Architecture Principles](#critical-architecture-principles)
+2. [Phase 1: Input Blocks (Syntax Generation)](#phase-1-input-blocks-syntax-generation)
+3. [Phase 2: Simulation Operations (The Engine)](#phase-2-simulation-operations-the-engine)
+4. [Phase 3: Data Extraction (The Interface)](#phase-3-data-extraction-the-interface)
+5. [Database Dictionary](#database-dictionary)
+6. [Convergence Safety & Troubleshooting](#convergence-safety--troubleshooting)
+7. [Common Patterns & Recipes](#common-patterns--recipes)
+
+---
+
+## Critical Architecture Principles
+
+### The "Thermodynamic" Rule
+
+**⚠️ DATABASE DEPENDENCY IS CRITICAL**
+
+Code valid for `wateq4f.dat` may fail in `phreeqc.dat`. You must strictly define which database the user is targeting at the start of every file.
+
+**Database Declaration:**
+```phreeqc
+DATABASE wateq4f.dat
+# OR
+DATABASE phreeqc.dat
+# OR
+DATABASE minteq.dat
+```
+
+**Why This Matters:**
+- Different databases contain different thermodynamic data
+- Mineral names may differ between databases
+- Redox couples are defined differently
+- Activity coefficient models vary (Debye-Hückel, Pitzer, SIT)
+
+### The "Charge Balance" Rule
+
+**Real water is electrically neutral.** Every `SOLUTION` block must include a mechanism to balance charge.
+
+**Methods:**
+
+1. **Charge on pH (most common):**
+   ```phreeqc
+   SOLUTION 1
+       pH 7.0 charge
+   ```
+
+2. **Charge on specific ion:**
+   ```phreeqc
+   SOLUTION 1
+       Cl 10.0 charge
+   ```
+
+3. **Explicit charge flag:**
+   ```phreeqc
+   SOLUTION 1
+       charge 0.0
+   ```
+
+**What Happens Without Charge Balance:**
+- PHREEQC will attempt to balance automatically, but results may be physically unrealistic
+- Convergence failures are more likely
+- Saturation indices become unreliable
+
+### The "Units Matter" Rule
+
+**Default is `mol/kgw`.** If user inputs `mg/L`, you MUST set `units mg/L` in the solution block.
+
+**Unit Conversion:**
+```phreeqc
+SOLUTION 1
+    units mg/L
+    Ca 40.0    # 40 mg/L
+    Mg 20.0    # 20 mg/L
+```
+
+**Without `units mg/L`:**
+- PHREEQC assumes `mol/kgw`
+- 40.0 mol/kgw of Ca is physically impossible (would be ~1,600,000 mg/L)
+- Model will fail or produce nonsensical results
+
+**Supported Units:**
+- `mol/kgw` (default, moles per kilogram water)
+- `mg/L` (milligrams per litre)
+- `mmol/L` (millimoles per litre)
+- `mol/L` (moles per litre)
+
+---
+
+## Phase 1: Input Blocks (Syntax Generation)
+
+*Constructing the Physical Reality.*
+
+### 1. Defining Solutions (`SOLUTION`)
+
+**Purpose:** Define the initial chemical composition of water.
+
+**Structure:**
+```phreeqc
+SOLUTION 1 Initial Groundwater
+    temp    25.0
+    pH      7.0 charge
+    pe      4.0
+    redox   pe
+    units   mg/L
+    density 1.0
+    Ca      40.0
+    Mg      20.0
+    Na      15.0
+    K       2.0
+    Alk     120.0 as HCO3
+    Cl      25.0
+    S(6)    10.0
+    Fe(2)   0.5
+```
+
+**Required Parameters:**
+
+- **`temp`**: Temperature in Celsius (default: 25.0)
+- **`pH`**: pH value (typically 6.5-8.5 for natural waters)
+- **`pe`**: Redox potential (typically 2-14 for natural waters)
+- **`units`**: Concentration units (default: `mol/kgw`)
+
+**Optional Parameters:**
+
+- **`density`**: Solution density in g/cm³ (default: calculated)
+- **`pressure`**: Pressure in atmospheres (default: 1.0)
+- **`redox`**: Redox couple definition (`pe`, `O(0)/O(-2)`, `Fe(2)/Fe(3)`, etc.)
+
+**Logic Rules:**
+
+#### Redox Couples
+
+If iron is present, define `Fe(2)` and `Fe(3)` or specify the redox couple:
+
+```phreeqc
+SOLUTION 1
+    redox Fe(2)/Fe(3)
+    Fe(2) 0.5
+    Fe(3) 0.01
+```
+
+**Common Redox Couples:**
+- `pe` (generic, uses pe value)
+- `O(0)/O(-2)` (oxygen reduction)
+- `Fe(2)/Fe(3)` (iron oxidation)
+- `S(6)/S(-2)` (sulphur reduction)
+- `N(5)/N(0)` (nitrate reduction)
+
+#### Alkalinity Specification
+
+Always specify "as HCO3" or "as CaCO3" to prevent conversion errors:
+
+```phreeqc
+SOLUTION 1
+    Alk 120.0 as HCO3    # Correct
+    # Alk 120.0          # Ambiguous - avoid
+```
+
+**Conversion:**
+- 1 meq/L HCO3⁻ = 61 mg/L HCO3⁻
+- 1 meq/L as CaCO3 = 50 mg/L as CaCO3
+- 1 meq/L HCO3⁻ ≈ 0.82 meq/L as CaCO3
+
+#### Element Speciation
+
+**Total vs. Redox Species:**
+
+```phreeqc
+SOLUTION 1
+    S(6) 10.0    # Total S as SO4²⁻
+    S(-2) 0.1    # Total S as H2S
+    # OR
+    S 10.1       # Total S (PHREEQC will speciate)
+```
+
+**Best Practice:** Specify redox species explicitly when modelling redox-sensitive systems.
+
+### 2. Equilibrium Phases (`EQUILIBRIUM_PHASES`)
+
+**Purpose:** Defines what minerals *can* precipitate or dissolve.
+
+**Logic:** These phases are in equilibrium with the solution. If SI < 0, the phase dissolves. If SI > 0, the phase precipitates.
+
+**Syntax:**
+```phreeqc
+EQUILIBRIUM_PHASES 1
+    Calcite    0.0  10.0
+    Gypsum     0.0  5.0
+    Goethite   0.0  0.0
+```
+
+**Format:** `Mineral_Name  Target_SI  Amount_Moles`
+
+- **Mineral_Name**: Must match database entry exactly
+- **Target_SI**: Target saturation index (0.0 = equilibrium)
+- **Amount_Moles**: Maximum moles available to dissolve (0.0 = unlimited precipitation)
+
+**Common Equilibrium Phases:**
+
+```phreeqc
+EQUILIBRIUM_PHASES 1
+    Calcite    0.0  10.0    # Maintain Calcite equilibrium, 10 moles available
+    Gypsum     0.0  0.0     # Maintain Gypsum equilibrium, unlimited precipitation
+    Goethite   0.0  0.0     # Maintain Goethite equilibrium
+    Quartz     0.0  0.0     # Maintain Quartz equilibrium (slow kinetics)
+```
+
+**The "Gas" Trick:**
+
+To model interaction with the atmosphere (CO2), treat it as a phase:
+
+```phreeqc
+EQUILIBRIUM_PHASES 1
+    CO2(g) -3.5 10.0    # Atmospheric partial pressure 10^-3.5
+```
+
+**Common Gas Phases:**
+- `CO2(g) -3.5 10.0` (atmospheric CO2, log P = -3.5)
+- `O2(g) -0.68 10.0` (atmospheric O2, log P = -0.68)
+- `N2(g) -0.12 10.0` (atmospheric N2, log P = -0.12)
+
+**SI Calculation:**
+```
+SI = log(IAP / Ksp)
+```
+Where:
+- IAP = Ion Activity Product
+- Ksp = Solubility Product Constant
+
+**SI Interpretation:**
+- SI < 0: Undersaturated (mineral dissolves)
+- SI = 0: At equilibrium
+- SI > 0: Supersaturated (mineral precipitates)
+
+### 3. Reaction Kinetics (`KINETICS` & `RATES`)
+
+**Constraint:** Equilibrium is instant. Kinetics take time.
+
+**When to Use:**
+- Slow reactions (e.g., silicate weathering)
+- Biological processes (e.g., sulphate reduction)
+- Surface-controlled reactions (e.g., sorption)
+
+**Basic Structure:**
+```phreeqc
+KINETICS 1
+    Calcite
+        -m0 0.0
+        -m 0.0
+        -parms 1.0 0.6
+        -tol 1e-8
+        -steps 1.0 2.0 5.0 10.0
+        -step_divide 1.0
+        -runge_kutta 3
+```
+
+**The Basic Interpreter:**
+
+PHREEQC allows embedded BASIC code for rate laws:
+
+```phreeqc
+RATES
+Calcite
+-start
+10 REM Rate law for calcite dissolution
+20 REM Based on Transition State Theory
+30 k1 = 10^-0.3
+40 k2 = 10^-5.0
+50 omega = SR("Calcite")
+60 IF omega <= 0 THEN omega = 0
+70 rate = k1 * (1 - omega^0.6) + k2 * (1 - omega^2)
+80 moles = rate * TIME
+90 SAVE moles
+-end
+```
+
+**Standard Rate Variables:**
+
+- **`TIME`**: Current time step (seconds)
+- **`M`**: Current moles of phase
+- **`M0`**: Initial moles of phase
+- **`PARM(i)`**: User-defined parameters
+- **`SR("Phase")`**: Saturation ratio (10^SI)
+
+**Common Rate Laws:**
+
+**1. Linear Rate (Zero-Order):**
+```phreeqc
+10 rate = PARM(1)
+20 moles = rate * TIME
+```
+
+**2. Monod Kinetics:**
+```phreeqc
+10 rate_max = PARM(1)
+20 K_m = PARM(2)
+30 conc = TOT("Substrate")
+40 rate = rate_max * conc / (K_m + conc)
+50 moles = rate * TIME
+```
+
+**3. Transition State Theory:**
+```phreeqc
+10 k_plus = PARM(1)
+11 k_minus = PARM(2)
+20 omega = SR("Mineral")
+30 rate = k_plus * (1 - omega^PARM(3))
+40 moles = rate * TIME
+```
+
+**4. Surface Area Dependent:**
+```phreeqc
+10 A = PARM(1)  # Surface area (m²)
+20 k = PARM(2)  # Rate constant
+30 omega = SR("Mineral")
+40 rate = A * k * (1 - omega)
+50 moles = rate * TIME
+```
+
+**Kinetic Block Parameters:**
+
+- **`-m0`**: Initial moles
+- **`-m`**: Current moles (updated during simulation)
+- **`-parms`**: Rate law parameters (accessible as PARM(1), PARM(2), etc.)
+- **`-tol`**: Tolerance for convergence
+- **`-steps`**: Time steps (seconds)
+- **`-step_divide`**: Divide steps if convergence fails
+- **`-runge_kutta`**: Integration method (1-6, higher = more accurate)
+
+---
+
+## Phase 2: Simulation Operations (The Engine)
+
+### 1. Mixing & Reaction
+
+#### `MIX` Block
+
+**Purpose:** Mix two or more solutions.
+
+**Use Case:** River water + Seawater, Groundwater + Surface Water
+
+**Syntax:**
+```phreeqc
+MIX 1
+    1 0.5    # Solution 1, 50%
+    2 0.5    # Solution 2, 50%
+```
+
+**Example:**
+```phreeqc
+SOLUTION 1 River Water
+    units mg/L
+    Ca 40.0
+    Mg 10.0
+    Na 5.0
+    Cl 10.0
+    Alk 120.0 as HCO3
+
+SOLUTION 2 Seawater
+    units mg/L
+    Ca 400.0
+    Mg 1300.0
+    Na 10700.0
+    Cl 19300.0
+    Alk 120.0 as HCO3
+
+MIX 1
+    1 0.5
+    2 0.5
+
+USE solution 1
+USE mix 1
+```
+
+**Mixing Ratios:**
+- Must sum to 1.0 (100%)
+- Can mix more than two solutions
+- Ratios can be fractional (e.g., 0.33, 0.67)
+
+#### `REACTION` Block
+
+**Purpose:** Irreversible addition of reactants.
+
+**Use Case:** "Add 5 mmol of H2SO4 to simulate Acid Mine Drainage."
+
+**Syntax:**
+```phreeqc
+REACTION 1
+    H2SO4 0.005
+```
+
+**Multiple Reactants:**
+```phreeqc
+REACTION 1
+    H2SO4 0.005
+    Fe(OH)3 0.001
+```
+
+**Stepwise Addition:**
+```phreeqc
+REACTION 1
+    H2SO4 0.005
+    10 steps
+```
+
+This adds 0.005 moles in 10 equal steps (0.0005 moles per step).
+
+**Common Reactions:**
+
+**Acid Addition:**
+```phreeqc
+REACTION 1
+    H2SO4 0.01    # Add 10 mmol H2SO4
+```
+
+**Base Addition:**
+```phreeqc
+REACTION 1
+    NaOH 0.01     # Add 10 mmol NaOH
+```
+
+**Mineral Addition:**
+```phreeqc
+REACTION 1
+    Calcite 0.1   # Add 0.1 moles Calcite
+```
+
+**Gas Addition:**
+```phreeqc
+REACTION 1
+    CO2 0.01     # Add 0.01 moles CO2
+```
+
+### 2. Transport (1D Advection/Dispersion)
+
+**Purpose:** Model flow through a column or aquifer.
+
+**When to Use:**
+- Column experiments
+- 1D reactive transport
+- Aquifer contamination scenarios
+
+**Syntax:**
+```phreeqc
+TRANSPORT
+    -cells 10
+    -lengths 0.1
+    -shifts 1
+    -time_step 3600
+    -flow_direction forward
+    -boundary_conditions flux flux
+    -dispersivity 0.01
+    -diffusion_coefficient 1e-9
+```
+
+**Parameters:**
+
+- **`-cells`**: Number of grid cells (nodes)
+- **`-lengths`**: Length of each cell (metres)
+- **`-shifts`**: Number of time steps
+- **`-time_step`**: Time per shift (seconds)
+- **`-flow_direction`**: `forward` or `backward`
+- **`-boundary_conditions`**: `flux flux`, `closed closed`, `flux closed`, etc.
+- **`-dispersivity`**: Longitudinal dispersivity (metres)
+- **`-diffusion_coefficient`**: Molecular diffusion coefficient (m²/s)
+
+**Example: Column Experiment**
+
+```phreeqc
+SOLUTION 0-10 Initial Water
+    units mg/L
+    Ca 40.0
+    Mg 20.0
+    Na 15.0
+    Cl 25.0
+    Alk 120.0 as HCO3
+
+EQUILIBRIUM_PHASES 0-10
+    Calcite 0.0 10.0
+
+SOLUTION 10 Inlet Water
+    units mg/L
+    Ca 100.0
+    Mg 50.0
+    Na 30.0
+    Cl 60.0
+    Alk 200.0 as HCO3
+
+TRANSPORT
+    -cells 10
+    -lengths 0.1
+    -shifts 100
+    -time_step 3600
+    -flow_direction forward
+    -boundary_conditions flux flux
+    -dispersivity 0.01
+
+SELECTED_OUTPUT
+    -file transport.csv
+    -reset false
+    -step true
+    -pH true
+    -totals Ca Mg Na Cl
+    -saturation_indices Calcite
+```
+
+**Transport Equation:**
+```
+∂C/∂t = -v(∂C/∂x) + D(∂²C/∂x²) + R
+```
+Where:
+- v = pore velocity (m/s)
+- D = dispersion coefficient (m²/s)
+- R = reaction term (mol/L/s)
+
+---
+
+## Phase 3: Data Extraction (The Interface)
+
+*PHREEQC outputs messy text. We need clean CSVs.*
+
+### 1. `SELECTED_OUTPUT`
+
+**Purpose:** Generate a structured flat file for parsing.
+
+**Basic Configuration:**
+```phreeqc
+SELECTED_OUTPUT
+    -file output.csv
+    -reset false
+    -pH true
+    -pe true
+    -totals Ca Mg Na Cl S
+    -molalities Ca+2 Mg+2 Na+ Cl- SO4-2
+    -saturation_indices Calcite Gypsum Goethite
+    -activities Ca+2 Mg+2 H+
+```
+
+**Output Options:**
+
+**Solution Properties:**
+- `-pH`: pH value
+- `-pe`: pe value
+- `-temp`: Temperature (°C)
+- `-density`: Density (g/cm³)
+- `-alkalinity`: Alkalinity (eq/L)
+- `-ionic_strength`: Ionic strength (mol/kgw)
+- `-water`: Mass of water (kg)
+
+**Concentrations:**
+- `-totals`: Total element concentrations (mol/kgw)
+- `-molalities`: Aqueous species molalities (mol/kgw)
+- `-activities`: Activities (dimensionless)
+
+**Saturation:**
+- `-saturation_indices`: SI values for specified phases
+- `-si`: Alias for saturation_indices
+
+**Example Output:**
+```csv
+sim,state_sim,step,dist_x,time,soln,ph,pe,totals_Ca,totals_Mg,totals_Na,totals_Cl,si_Calcite,si_Gypsum
+1,1,1,0,0,1,7.0,4.0,0.001,0.0008,0.00065,0.0007,0.0,-0.5
+```
+
+**Advanced Options:**
+
+```phreeqc
+SELECTED_OUTPUT
+    -file output.csv
+    -reset false
+    -high_precision true
+    -simulation true
+    -state true
+    -step true
+    -distance true
+    -time true
+    -soln true
+    -pH true
+    -pe true
+    -totals Ca Mg Na Cl
+    -molalities Ca+2 Mg+2 Na+ Cl-
+    -saturation_indices Calcite Gypsum
+    -equilibrium_phases Calcite Gypsum
+    -kinetic_reactants Calcite
+```
+
+### 2. `USER_PUNCH` (Custom Variables)
+
+**Purpose:** Calculate derived variables inside the engine.
+
+**Syntax:**
+```phreeqc
+USER_PUNCH
+    -headings TDS_Calc Hardness LSI
+    10 PUNCH TOT("Na") * 22.99 + TOT("Cl") * 35.45 + TOT("Ca") * 40.08 + TOT("Mg") * 24.31
+    20 PUNCH (TOT("Ca") + TOT("Mg")) * 50.0
+    30 PUNCH SI("Calcite")
+```
+
+**Common Calculations:**
+
+**Total Dissolved Solids (TDS):**
+```phreeqc
+USER_PUNCH
+    -headings TDS_mgL
+    10 PUNCH (TOT("Na") * 22990) + (TOT("Cl") * 35450) + (TOT("Ca") * 40080) + (TOT("Mg") * 24310) + (TOT("S") * 96060) + (TOT("C") * 12010)
+```
+
+**Hardness (as CaCO3):**
+```phreeqc
+USER_PUNCH
+    -headings Hardness_mgL
+    10 PUNCH (TOT("Ca") + TOT("Mg")) * 50000
+```
+
+**Langelier Saturation Index (LSI):**
+```phreeqc
+USER_PUNCH
+    -headings LSI
+    10 PUNCH SI("Calcite")
+```
+
+**Ryznar Stability Index (RSI):**
+```phreeqc
+USER_PUNCH
+    -headings RSI
+    10 PUNCH 2 * SI("Calcite") - pH
+```
+
+**Charge Balance Error:**
+```phreeqc
+USER_PUNCH
+    -headings CBE_percent
+    10 charge_balance = CHARGE("Ca+2") + CHARGE("Mg+2") + CHARGE("Na+") + CHARGE("K+") - CHARGE("Cl-") - CHARGE("SO4-2") - CHARGE("HCO3-")
+    20 PUNCH charge_balance / (ABS(CHARGE("Ca+2")) + ABS(CHARGE("Cl-")) + 1e-10) * 100
+```
+
+**Available Functions:**
+
+- **`TOT("Element")`**: Total concentration of element (mol/kgw)
+- **`MOL("Species")`**: Molality of species (mol/kgw)
+- **`ACT("Species")`**: Activity of species
+- **`SI("Phase")`**: Saturation index of phase
+- **`LA("Species")`**: Log activity of species
+- **`LM("Species")`**: Log molality of species
+- **`CHARGE("Species")`**: Charge contribution of species (eq/kgw)
+
+**Multiple Output Lines:**
+
+```phreeqc
+USER_PUNCH
+    -headings Na_mgL Cl_mgL Na_Cl_ratio
+    10 PUNCH TOT("Na") * 22990
+    20 PUNCH TOT("Cl") * 35450
+    30 PUNCH TOT("Na") / TOT("Cl")
+```
+
+---
+
+## Database Dictionary
+
+**Critical:** Different databases contain different thermodynamic data. Always specify which database you're using.
+
+### `phreeqc.dat` (USGS Standard)
+
+**Best For:** General aqueous geochemistry, most common use case.
+
+**Contains:**
+- Common minerals (Calcite, Gypsum, Quartz, etc.)
+- Standard aqueous species
+- Debye-Hückel activity model
+- Redox couples
+
+**Common Minerals:**
+- Calcite (CaCO3)
+- Gypsum (CaSO4·2H2O)
+- Anhydrite (CaSO4)
+- Quartz (SiO2)
+- Goethite (FeOOH)
+- Hematite (Fe2O3)
+- Pyrite (FeS2)
+- Siderite (FeCO3)
+
+**Limitations:**
+- Limited surface complexation
+- No Pitzer model
+- Fewer trace elements
+
+### `wateq4f.dat` (WATEQ4F)
+
+**Best For:** Low-temperature aqueous systems, trace elements.
+
+**Contains:**
+- Extended trace element database
+- More aqueous complexes
+- Surface complexation data
+- Debye-Hückel activity model
+
+**Additional Minerals:**
+- Schwertmannite (Fe8O8(OH)6(SO4))
+- Ferrihydrite (Fe(OH)3)
+- Jarosite (KFe3(SO4)2(OH)6)
+- Alunite (KAl3(SO4)2(OH)6)
+
+**Advantages:**
+- Better for trace metal speciation
+- More surface complexation sites
+- Extended redox chemistry
+
+### `minteq.dat` (MINTEQA2)
+
+**Best For:** Environmental chemistry, sorption, surface complexation.
+
+**Contains:**
+- Extensive surface complexation
+- Sorption databases
+- Environmental contaminants
+- Debye-Hückel activity model
+
+**Special Features:**
+- Surface complexation on Fe(OH)3, Al(OH)3, MnO2
+- Cation exchange
+- Organic complexation
+
+### `llnl.dat` (Lawrence Livermore)
+
+**Best For:** High ionic strength, brines, Pitzer model.
+
+**Contains:**
+- Pitzer activity model
+- High ionic strength (>0.1 M)
+- Brine chemistry
+- Extended temperature range
+
+**Advantages:**
+- Accurate for brines (I > 0.1 M)
+- Pitzer model for activity coefficients
+- Better for high-salinity systems
+
+**Limitations:**
+- Slower computation
+- More complex parameterisation
+
+### Database Selection Guide
+
+| Scenario | Recommended Database |
+|----------|---------------------|
+| General groundwater | `phreeqc.dat` |
+| Trace metals | `wateq4f.dat` |
+| Surface sorption | `minteq.dat` |
+| Brines, high salinity | `llnl.dat` |
+| Acid mine drainage | `wateq4f.dat` |
+| Low-temperature systems | `wateq4f.dat` |
+| High-temperature systems | `phreeqc.dat` |
+
+### Mineral Name Variations
+
+**Calcite:**
+- `phreeqc.dat`: `Calcite`
+- `wateq4f.dat`: `Calcite`
+- `minteq.dat`: `Calcite`
+
+**Iron Oxides:**
+- `phreeqc.dat`: `Goethite`, `Hematite`
+- `wateq4f.dat`: `Goethite`, `Hematite`, `Ferrihydrite`, `Schwertmannite`
+- `minteq.dat`: `Goethite`, `Hematite`, `Ferrihydrite`
+
+**Sulphates:**
+- `phreeqc.dat`: `Gypsum`, `Anhydrite`
+- `wateq4f.dat`: `Gypsum`, `Anhydrite`, `Jarosite`, `Alunite`
+- `minteq.dat`: `Gypsum`, `Anhydrite`
+
+**Always Check:**
+```phreeqc
+PHASES
+    # Lists all available phases in current database
+```
+
+---
+
+## Convergence Safety & Troubleshooting
+
+### The Convergence Problem
+
+**What is Convergence?**
+PHREEQC solves a system of nonlinear equations iteratively. Convergence means the solution satisfies mass balance, charge balance, and equilibrium constraints within specified tolerances.
+
+**Common Failure Modes:**
+1. High ionic strength (>0.1 M without Pitzer model)
+2. Extreme pH (<4 or >10)
+3. Multiple competing equilibria
+4. Kinetic reactions with large time steps
+5. Transport with high dispersivity
+
+### `KNOBS` Block
+
+**Purpose:** Adjust numerical parameters to improve convergence.
+
+**Syntax:**
+```phreeqc
+KNOBS
+    -iterations 500
+    -convergence_tolerance 1e-8
+    -step_size 10.0
+    -pe_step_size 0.1
+    -diagonal_scale true
+    -debug_strings true
+```
+
+**Parameters:**
+
+- **`-iterations`**: Maximum iterations (default: 100, increase to 500-1000 for difficult problems)
+- **`-convergence_tolerance`**: Convergence criterion (default: 1e-8, relax to 1e-6 if needed)
+- **`-step_size`**: Maximum step size in Newton-Raphson (default: 10.0, reduce to 1.0 for stability)
+- **`-pe_step_size`**: Step size for pe (default: 0.1, reduce to 0.01 for redox problems)
+- **`-diagonal_scale`**: Scale diagonal elements (default: true, keep true)
+- **`-debug_strings`**: Print debug information (default: false, set true for troubleshooting)
+
+**Example: High Ionic Strength Solution**
+
+```phreeqc
+KNOBS
+    -iterations 1000
+    -convergence_tolerance 1e-6
+    -step_size 1.0
+
+DATABASE llnl.dat
+
+SOLUTION 1 Brine
+    units mg/L
+    Na 10000.0
+    Cl 15000.0
+    Ca 500.0
+    Mg 300.0
+```
+
+### Common Convergence Issues
+
+#### 1. High Ionic Strength
+
+**Problem:** Default Debye-Hückel model fails at I > 0.1 M.
+
+**Solution:**
+```phreeqc
+DATABASE llnl.dat    # Use Pitzer model
+# OR
+KNOBS
+    -iterations 500
+    -convergence_tolerance 1e-6
+```
+
+#### 2. Extreme pH
+
+**Problem:** Very low or high pH causes numerical instability.
+
+**Solution:**
+```phreeqc
+KNOBS
+    -step_size 0.1    # Reduce step size
+    -iterations 500
+
+SOLUTION 1
+    pH 2.0 charge    # Let pH adjust gradually
+```
+
+#### 3. Multiple Competing Equilibria
+
+**Problem:** Many phases competing for same elements.
+
+**Solution:**
+```phreeqc
+KNOBS
+    -iterations 1000
+    -convergence_tolerance 1e-7
+
+EQUILIBRIUM_PHASES 1
+    Calcite 0.0 10.0
+    Gypsum 0.0 10.0
+    # Add phases one at a time to identify problem
+```
+
+#### 4. Kinetic Reactions
+
+**Problem:** Large time steps cause overshoot.
+
+**Solution:**
+```phreeqc
+KINETICS 1
+    Calcite
+        -steps 0.1 0.2 0.5 1.0 2.0 5.0    # Start small
+        -step_divide 1.0
+        -runge_kutta 6    # Higher order method
+```
+
+#### 5. Transport Convergence
+
+**Problem:** Numerical dispersion or Courant number issues.
+
+**Solution:**
+```phreeqc
+KNOBS
+    -iterations 500
+
+TRANSPORT
+    -cells 20    # More cells = better resolution
+    -lengths 0.05
+    -shifts 200
+    -time_step 1800    # Smaller time steps
+    -dispersivity 0.005    # Reduce dispersivity
+```
+
+### Error Messages & Solutions
+
+**"Maximum iterations exceeded":**
+```phreeqc
+KNOBS
+    -iterations 1000
+```
+
+**"Convergence failure":**
+```phreeqc
+KNOBS
+    -convergence_tolerance 1e-6    # Relax tolerance
+    -step_size 1.0                 # Reduce step size
+```
+
+**"Negative concentration":**
+- Check input units (mg/L vs mol/kgw)
+- Verify charge balance
+- Check for typos in element names
+
+**"Phase not found":**
+- Verify database contains the phase
+- Check spelling (case-sensitive)
+- Use `PHASES` command to list available phases
+
+**"Redox convergence failure":**
+```phreeqc
+KNOBS
+    -pe_step_size 0.01
+    -iterations 500
+```
+
+### Best Practices for Convergence
+
+1. **Start Simple:** Begin with basic solution, add complexity gradually
+2. **Check Units:** Always verify `units mg/L` if inputting mg/L
+3. **Charge Balance:** Always include `charge` on pH or major ion
+4. **Database Match:** Ensure minerals exist in selected database
+5. **Incremental Steps:** For reactions, use multiple small steps
+6. **Monitor Output:** Check `SELECTED_OUTPUT` for unrealistic values
+7. **Validate Results:** Compare SI values to expected ranges
+
+---
+
+## Common Patterns & Recipes
+
+### Recipe 1: Simple Groundwater Speciation
+
+```phreeqc
+DATABASE phreeqc.dat
+
+SOLUTION 1 Groundwater
+    temp 15.0
+    pH 7.2 charge
+    pe 4.0
+    units mg/L
+    Ca 80.0
+    Mg 25.0
+    Na 15.0
+    K 3.0
+    Alk 250.0 as HCO3
+    Cl 20.0
+    S(6) 30.0
+    N(5) 5.0
+
+EQUILIBRIUM_PHASES 1
+    Calcite 0.0 10.0
+
+SELECTED_OUTPUT
+    -file speciation.csv
+    -reset false
+    -pH true
+    -totals Ca Mg Na Cl S
+    -molalities Ca+2 Mg+2 Na+ Cl- SO4-2 HCO3-
+    -saturation_indices Calcite Gypsum
+
+END
+```
+
+### Recipe 2: Acid Mine Drainage Simulation
+
+```phreeqc
+DATABASE wateq4f.dat
+
+SOLUTION 1 Initial Water
+    temp 10.0
+    pH 6.5 charge
+    pe 8.0
+    units mg/L
+    Ca 40.0
+    Mg 20.0
+    Na 10.0
+    Alk 120.0 as HCO3
+    Fe(2) 0.1
+    S(6) 50.0
+
+EQUILIBRIUM_PHASES 1
+    Goethite 0.0 0.0
+    Schwertmannite 0.0 0.0
+
+REACTION 1
+    Pyrite 0.01
+    O2 0.0275
+    10 steps
+
+SELECTED_OUTPUT
+    -file amd.csv
+    -reset false
+    -step true
+    -pH true
+    -pe true
+    -totals Fe S
+    -molalities Fe+2 Fe+3 SO4-2
+    -saturation_indices Goethite Schwertmannite Jarosite
+
+END
+```
+
+### Recipe 3: Seawater Mixing
+
+```phreeqc
+DATABASE phreeqc.dat
+
+SOLUTION 1 Freshwater
+    temp 20.0
+    pH 7.0 charge
+    units mg/L
+    Ca 40.0
+    Mg 10.0
+    Na 5.0
+    Cl 10.0
+    Alk 120.0 as HCO3
+
+SOLUTION 2 Seawater
+    temp 20.0
+    pH 8.0 charge
+    units mg/L
+    Ca 400.0
+    Mg 1300.0
+    Na 10700.0
+    K 390.0
+    Cl 19300.0
+    S(6) 2700.0
+    Alk 120.0 as HCO3
+
+EQUILIBRIUM_PHASES 2
+    Calcite 0.0 10.0
+    Gypsum 0.0 10.0
+
+MIX 1
+    1 0.9
+    2 0.1
+
+MIX 2
+    1 0.5
+    2 0.5
+
+MIX 3
+    1 0.1
+    2 0.9
+
+SELECTED_OUTPUT
+    -file mixing.csv
+    -reset false
+    -pH true
+    -totals Ca Mg Na Cl
+    -saturation_indices Calcite Gypsum
+
+USE solution 1
+USE mix 1
+SAVE solution 3
+
+USE solution 1
+USE mix 2
+SAVE solution 4
+
+USE solution 1
+USE mix 3
+SAVE solution 5
+
+END
+```
+
+### Recipe 4: Kinetic Calcite Dissolution
+
+```phreeqc
+DATABASE phreeqc.dat
+
+RATES
+Calcite
+-start
+10 REM Calcite dissolution rate (mol/m²/s)
+20 REM Based on Plummer et al. (1978)
+30 k1 = 10^-0.3
+40 k2 = 10^-5.0
+50 k3 = 10^-3.5
+60 omega = SR("Calcite")
+70 IF omega <= 0 THEN omega = 0
+80 rate = k1 * (1 - omega^0.6) + k2 * (1 - omega^2) + k3 * (ACT("H+") - ACT("H+")_eq)
+90 IF rate < 0 THEN rate = 0
+100 moles = rate * TIME * PARM(1)  # PARM(1) = surface area (m²)
+110 SAVE moles
+-end
+
+SOLUTION 1 Acidic Water
+    temp 25.0
+    pH 4.0 charge
+    units mg/L
+    Ca 10.0
+    Alk 5.0 as HCO3
+
+KINETICS 1
+    Calcite
+        -m0 0.0
+        -m 0.0
+        -parms 0.1    # Surface area = 0.1 m²
+        -tol 1e-8
+        -steps 1 10 100 1000 10000 seconds
+        -step_divide 1.0
+        -runge_kutta 3
+
+SELECTED_OUTPUT
+    -file kinetics.csv
+    -reset false
+    -step true
+    -time true
+    -pH true
+    -totals Ca C
+    -saturation_indices Calcite
+
+END
+```
+
+### Recipe 5: 1D Reactive Transport
+
+```phreeqc
+DATABASE phreeqc.dat
+
+SOLUTION 0-10 Initial Groundwater
+    temp 15.0
+    pH 7.0 charge
+    units mg/L
+    Ca 40.0
+    Mg 20.0
+    Na 15.0
+    Cl 25.0
+    Alk 120.0 as HCO3
+
+EQUILIBRIUM_PHASES 0-10
+    Calcite 0.0 10.0
+
+SOLUTION 10 Contaminated Inlet
+    temp 15.0
+    pH 6.0 charge
+    units mg/L
+    Ca 100.0
+    Mg 50.0
+    Na 30.0
+    Cl 60.0
+    Alk 200.0 as HCO3
+    S(6) 100.0
+
+KNOBS
+    -iterations 500
+
+TRANSPORT
+    -cells 10
+    -lengths 0.1
+    -shifts 100
+    -time_step 3600
+    -flow_direction forward
+    -boundary_conditions flux flux
+    -dispersivity 0.01
+
+SELECTED_OUTPUT
+    -file transport.csv
+    -reset false
+    -step true
+    -distance true
+    -time true
+    -pH true
+    -totals Ca Mg Na Cl S
+    -saturation_indices Calcite Gypsum
+
+END
+```
+
+### Recipe 6: Redox Zonation
+
+```phreeqc
+DATABASE wateq4f.dat
+
+SOLUTION 1 Oxic Zone
+    temp 10.0
+    pH 7.5 charge
+    pe 12.0
+    redox O(0)/O(-2)
+    units mg/L
+    Ca 50.0
+    Mg 20.0
+    Na 15.0
+    Alk 150.0 as HCO3
+    Fe(2) 0.01
+    Fe(3) 0.001
+    S(6) 20.0
+
+EQUILIBRIUM_PHASES 1
+    Goethite 0.0 0.0
+
+SOLUTION 2 Suboxic Zone
+    temp 10.0
+    pH 7.0 charge
+    pe 4.0
+    redox Fe(2)/Fe(3)
+    units mg/L
+    Ca 50.0
+    Mg 20.0
+    Na 15.0
+    Alk 150.0 as HCO3
+    Fe(2) 1.0
+    Fe(3) 0.1
+    S(6) 20.0
+
+EQUILIBRIUM_PHASES 2
+    Goethite 0.0 0.0
+    Siderite 0.0 0.0
+
+SOLUTION 3 Anoxic Zone
+    temp 10.0
+    pH 6.5 charge
+    pe -2.0
+    redox S(6)/S(-2)
+    units mg/L
+    Ca 50.0
+    Mg 20.0
+    Na 15.0
+    Alk 150.0 as HCO3
+    Fe(2) 5.0
+    S(6) 0.1
+    S(-2) 2.0
+
+EQUILIBRIUM_PHASES 3
+    Siderite 0.0 0.0
+    Pyrite 0.0 0.0
+
+SELECTED_OUTPUT
+    -file redox.csv
+    -reset false
+    -pH true
+    -pe true
+    -totals Fe S
+    -molalities Fe+2 Fe+3 SO4-2 H2S
+    -saturation_indices Goethite Siderite Pyrite
+
+END
+```
+
+---
+
+## Appendix: Quick Reference
+
+### Element Names in PHREEQC
+
+**Cations:**
+- `Ca`, `Mg`, `Na`, `K`, `Li`, `Rb`, `Cs`
+- `Fe(2)`, `Fe(3)`, `Mn(2)`, `Mn(4)`
+- `Al`, `Si`, `B`
+- `Cu(2)`, `Zn(2)`, `Pb(2)`, `Cd(2)`, `Ni(2)`
+
+**Anions:**
+- `Cl`, `F`, `Br`, `I`
+- `S(6)` (SO4²⁻), `S(-2)` (H2S)
+- `N(5)` (NO3⁻), `N(3)` (NO2⁻), `N(-3)` (NH4⁺)
+- `P` (PO4³⁻)
+
+**Redox Species:**
+- Always specify oxidation state: `Fe(2)`, `Fe(3)`, `S(6)`, `S(-2)`
+- Or use total: `Fe`, `S`, `N` (PHREEQC will speciate)
+
+### Common Phase Names
+
+**Carbonates:**
+- `Calcite` (CaCO3)
+- `Aragonite` (CaCO3, metastable)
+- `Dolomite` (CaMg(CO3)2)
+- `Siderite` (FeCO3)
+
+**Sulphates:**
+- `Gypsum` (CaSO4·2H2O)
+- `Anhydrite` (CaSO4)
+- `Jarosite` (KFe3(SO4)2(OH)6)
+- `Alunite` (KAl3(SO4)2(OH)6)
+
+**Oxides/Hydroxides:**
+- `Goethite` (FeOOH)
+- `Hematite` (Fe2O3)
+- `Ferrihydrite` (Fe(OH)3)
+- `Quartz` (SiO2)
+
+**Sulphides:**
+- `Pyrite` (FeS2)
+- `Mackinawite` (FeS)
+
+### Activity Coefficient Models
+
+**Debye-Hückel (phreeqc.dat, wateq4f.dat, minteq.dat):**
+- Valid for I < 0.1 M
+- Fast computation
+- Standard for most applications
+
+**Pitzer (llnl.dat):**
+- Valid for I > 0.1 M
+- Accurate for brines
+- Slower computation
+
+### File Structure Template
+
+```phreeqc
+DATABASE phreeqc.dat
+
+TITLE Your Model Title
+
+# Define solutions
+SOLUTION 1
+    ...
+
+# Define equilibrium phases
+EQUILIBRIUM_PHASES 1
+    ...
+
+# Define reactions (if needed)
+REACTION 1
+    ...
+
+# Define transport (if needed)
+TRANSPORT
+    ...
+
+# Configure output
+SELECTED_OUTPUT
+    -file output.csv
+    ...
+
+# Run simulation
+USE solution 1
+USE equilibrium_phases 1
+USE reaction 1
+# OR
+USE transport
+
+END
+```
+
+---
+
+**Document Version:** 1.0  
+**Last Updated:** 2024  
+**Maintained By:** Principal Hydrogeochemist & PHREEQC Modeling Expert

@@ -1,0 +1,1278 @@
+# AWS Serverless Backend Architecture
+## Source of Truth: Multi-Tenant SaaS Infrastructure
+
+**Last Updated:** 2024  
+**Architecture Pattern:** Event-Driven Serverless  
+**Primary Technologies:** AWS Lambda, DynamoDB, Cognito, CDK, API Gateway v2
+
+---
+
+## Table of Contents
+
+1. [Architecture Overview](#architecture-overview)
+2. [DynamoDB Schema (Single Table Design)](#dynamodb-schema-single-table-design)
+3. [Authentication & Onboarding (Cognito)](#authentication--onboarding-cognito)
+4. [API Gateway & Lambda Middleware](#api-gateway--lambda-middleware)
+5. [Infrastructure as Code (CDK)](#infrastructure-as-code-cdk)
+6. [EventBridge Integration (Stripe)](#eventbridge-integration-stripe)
+7. [Security & Best Practices](#security--best-practices)
+
+---
+
+## Architecture Overview
+
+### Core Principles
+
+- **Compute:** AWS Lambda (Node.js/TypeScript) managed via AWS CDK or SST
+- **Database:** Amazon DynamoDB (Single Table Design for optimal multi-tenancy)
+- **Authentication:** Amazon Cognito User Pools
+- **Tenant Isolation:** Enforced at Partition Key level (`PK = ORG#<org_id>`)
+- **Critical Rule:** No query ever runs without a Partition Key filter
+
+### Architecture Diagram
+
+```
+┌─────────────┐
+│   Frontend  │
+│  (React/Vue)│
+└──────┬──────┘
+       │ HTTPS
+       ▼
+┌─────────────────────────────────────┐
+│      API Gateway v2 (HTTP API)      │
+│      JWT Authorizer (Cognito)       │
+└──────┬──────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────┐
+│   Lambda Functions (Node.js/TS)    │
+│   ┌─────────────────────────────┐  │
+│   │ Tenant Injector Middleware   │  │
+│   │ (Middy.js)                   │  │
+│   └─────────────────────────────┘  │
+└──────┬──────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────┐
+│      DynamoDB (Single Table)        │
+│      PK: ORG#<org_id>               │
+│      SK: <entity_type>#<entity_id>  │
+└─────────────────────────────────────┘
+
+┌─────────────────────────────────────┐
+│      Cognito User Pool              │
+│      Custom: activeOrgId            │
+│      Post-Confirmation Trigger      │
+└─────────────────────────────────────┘
+
+┌─────────────────────────────────────┐
+│      EventBridge                    │
+│      Stripe Webhook Handler         │
+└─────────────────────────────────────┘
+```
+
+---
+
+## DynamoDB Schema (Single Table Design)
+
+### Design Philosophy
+
+In DynamoDB, **you design queries first, then data**. The single table design allows us to:
+- Minimize RCU/WCU consumption
+- Reduce latency by avoiding joins
+- Enforce tenant isolation at the partition key level
+- Support complex access patterns with GSIs
+
+### Primary Key Structure
+
+| Attribute | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `PK` | String | Partition Key (Tenant ID) | `ORG#550e8400-e29b-41d4-a716-446655440000` |
+| `SK` | String | Sort Key (Entity ID) | `USER#123e4567-e89b-12d3-a456-426614174000` |
+| `GSI1PK` | String | GSI1 Partition Key (Inverted) | `USER#123e4567-e89b-12d3-a456-426614174000` |
+| `GSI1SK` | String | GSI1 Sort Key (Inverted) | `ORG#550e8400-e29b-41d4-a716-446655440000` |
+
+### Global Secondary Index (GSI1)
+
+**Purpose:** Find all organizations a user belongs to (inverted index pattern)
+
+- **GSI1PK:** `SK` (inverted from main table)
+- **GSI1SK:** `PK` (inverted from main table)
+- **Projection:** `ALL` (to avoid additional queries)
+
+### Entity Definitions
+
+#### 1. Organization Item
+
+```json
+{
+  "PK": "ORG#550e8400-e29b-41d4-a716-446655440000",
+  "SK": "METADATA",
+  "GSI1PK": "METADATA",
+  "GSI1SK": "ORG#550e8400-e29b-41d4-a716-446655440000",
+  "name": "Acme Corporation",
+  "tier": "pro",
+  "stripeCustomerId": "cus_abc123",
+  "limits": {
+    "maxProjects": 100,
+    "maxUsers": 50,
+    "maxStorageGB": 500
+  },
+  "usage": {
+    "projectCount": 23,
+    "userCount": 12,
+    "storageGB": 45.2
+  },
+  "createdAt": "2024-01-15T10:30:00Z",
+  "updatedAt": "2024-01-20T14:22:00Z"
+}
+```
+
+#### 2. User Membership Item
+
+```json
+{
+  "PK": "ORG#550e8400-e29b-41d4-a716-446655440000",
+  "SK": "USER#123e4567-e89b-12d3-a456-426614174000",
+  "GSI1PK": "USER#123e4567-e89b-12d3-a456-426614174000",
+  "GSI1SK": "ORG#550e8400-e29b-41d4-a716-446655440000",
+  "role": "admin",
+  "email": "john.doe@acme.com",
+  "cognitoSub": "123e4567-e89b-12d3-a456-426614174000",
+  "joinedAt": "2024-01-15T10:30:00Z",
+  "status": "active"
+}
+```
+
+#### 3. Project Item
+
+```json
+{
+  "PK": "ORG#550e8400-e29b-41d4-a716-446655440000",
+  "SK": "PROJ#789e0123-e45b-67c8-d901-234567890abc",
+  "GSI1PK": "PROJ#789e0123-e45b-67c8-d901-234567890abc",
+  "GSI1SK": "ORG#550e8400-e29b-41d4-a716-446655440000",
+  "title": "Q1 Marketing Campaign",
+  "status": "active",
+  "description": "Marketing campaign for Q1 product launch",
+  "createdAt": "2024-01-18T09:15:00Z",
+  "updatedAt": "2024-01-20T11:30:00Z",
+  "createdBy": "USER#123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+#### 4. Additional Entity Patterns
+
+**Document Item:**
+```json
+{
+  "PK": "ORG#550e8400-e29b-41d4-a716-446655440000",
+  "SK": "DOC#def45678-e90b-12c3-d456-789012345def",
+  "title": "Project Brief.pdf",
+  "sizeBytes": 1048576,
+  "mimeType": "application/pdf",
+  "projectId": "PROJ#789e0123-e45b-67c8-d901-234567890abc"
+}
+```
+
+**Audit Log Item:**
+```json
+{
+  "PK": "ORG#550e8400-e29b-41d4-a716-446655440000",
+  "SK": "AUDIT#2024-01-20T14:30:00Z#uuid",
+  "action": "project.created",
+  "userId": "USER#123e4567-e89b-12d3-a456-426614174000",
+  "resourceId": "PROJ#789e0123-e45b-67c8-d901-234567890abc",
+  "metadata": {}
+}
+```
+
+### Access Patterns Table
+
+| Access Pattern | Query Type | Partition Key | Sort Key | GSI Used | Example Code |
+|----------------|------------|---------------|----------|----------|--------------|
+| Get Organization Metadata | `GetItem` | `PK = ORG#<org_id>` | `SK = METADATA` | None | [See below](#access-pattern-examples) |
+| Get All Projects for Org | `Query` | `PK = ORG#<org_id>` | `SK begins_with PROJ#` | None | [See below](#access-pattern-examples) |
+| Get Single Project | `GetItem` | `PK = ORG#<org_id>` | `SK = PROJ#<proj_id>` | None | [See below](#access-pattern-examples) |
+| Get All Users in Org | `Query` | `PK = ORG#<org_id>` | `SK begins_with USER#` | None | [See below](#access-pattern-examples) |
+| Get User's Organizations | `Query` | `GSI1PK = USER#<user_id>` | `GSI1SK begins_with ORG#` | GSI1 | [See below](#access-pattern-examples) |
+| Get User Membership | `GetItem` | `PK = ORG#<org_id>` | `SK = USER#<user_id>` | None | [See below](#access-pattern-examples) |
+| Get All Documents for Project | `Query` | `PK = ORG#<org_id>` | `SK begins_with DOC#` + Filter | None | [See below](#access-pattern-examples) |
+| Get Audit Logs (Time Range) | `Query` | `PK = ORG#<org_id>` | `SK between AUDIT#<start> and AUDIT#<end>` | None | [See below](#access-pattern-examples) |
+
+### Access Pattern Examples
+
+#### Get Organization Metadata
+
+```typescript
+const params = {
+  TableName: 'SaaSTable',
+  Key: {
+    PK: `ORG#${orgId}`,
+    SK: 'METADATA'
+  }
+};
+
+const result = await dynamodb.get(params).promise();
+return result.Item;
+```
+
+#### Get All Projects for Organization
+
+```typescript
+const params = {
+  TableName: 'SaaSTable',
+  KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+  ExpressionAttributeValues: {
+    ':pk': `ORG#${orgId}`,
+    ':sk': 'PROJ#'
+  }
+};
+
+const result = await dynamodb.query(params).promise();
+return result.Items;
+```
+
+#### Get All Organizations for a User (GSI1)
+
+```typescript
+const params = {
+  TableName: 'SaaSTable',
+  IndexName: 'GSI1',
+  KeyConditionExpression: 'GSI1PK = :gsi1pk AND begins_with(GSI1SK, :prefix)',
+  ExpressionAttributeValues: {
+    ':gsi1pk': `USER#${userId}`,
+    ':prefix': 'ORG#'
+  }
+};
+
+const result = await dynamodb.query(params).promise();
+return result.Items;
+```
+
+#### Get Audit Logs (Time Range)
+
+```typescript
+const params = {
+  TableName: 'SaaSTable',
+  KeyConditionExpression: 'PK = :pk AND SK BETWEEN :start AND :end',
+  ExpressionAttributeValues: {
+    ':pk': `ORG#${orgId}`,
+    ':start': `AUDIT#${startDate}`,
+    ':end': `AUDIT#${endDate}`
+  },
+  ScanIndexForward: false // Most recent first
+};
+
+const result = await dynamodb.query(params).promise();
+return result.Items;
+```
+
+### ⚠️ Critical Safety Rule
+
+**`scan()` operations are FORBIDDEN in production code.**
+
+- Scans read every item in the table, consuming excessive RCUs
+- Scans cannot be filtered by partition key, breaking tenant isolation
+- Scans are slow and expensive at scale
+- **Exception:** Only allowed in one-off admin scripts with explicit approval
+
+**Enforcement:**
+- Use ESLint rules to block `scan()` calls
+- Code review must reject any PR containing `scan()`
+- Monitoring alerts on any `scan()` operations
+
+---
+
+## Authentication & Onboarding (Cognito)
+
+### Cognito User Pool Configuration
+
+#### Custom Attributes
+
+```typescript
+// CDK Configuration (see Phase 4)
+customAttributes: {
+  activeOrgId: {
+    name: 'activeOrgId',
+    dataType: 'String',
+    mutable: true,
+    required: false
+  }
+}
+```
+
+**Purpose:** Stores the currently active organization ID for the user. This enables:
+- Quick tenant context resolution in Lambda functions
+- Organization switching without re-authentication
+- Token-based tenant injection
+
+#### Token Swap Logic (Organization Switching)
+
+When a user switches organizations in the UI:
+
+```typescript
+// Lambda: switchOrganization
+export const handler = async (event: APIGatewayProxyEvent) => {
+  const { orgId } = JSON.parse(event.body || '{}');
+  const cognitoSub = event.requestContext.authorizer.claims.sub;
+  
+  // Validate user has access to this org
+  const membership = await dynamodb.get({
+    TableName: 'SaaSTable',
+    Key: {
+      PK: `ORG#${orgId}`,
+      SK: `USER#${cognitoSub}`
+    }
+  }).promise();
+  
+  if (!membership.Item) {
+    return {
+      statusCode: 403,
+      body: JSON.stringify({ error: 'Access denied' })
+    };
+  }
+  
+  // Update Cognito custom attribute
+  await cognitoIdentityServiceProvider
+    .adminUpdateUserAttributes({
+      UserPoolId: process.env.USER_POOL_ID!,
+      Username: cognitoSub,
+      UserAttributes: [
+        {
+          Name: 'custom:activeOrgId',
+          Value: orgId
+        }
+      ]
+    })
+    .promise();
+  
+  // Return new token (client must refresh)
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ 
+      message: 'Organization switched. Please refresh your token.',
+      orgId 
+    })
+  };
+};
+```
+
+**Frontend Flow:**
+1. User selects new organization
+2. Frontend calls `/switch-org` endpoint
+3. Lambda updates `custom:activeOrgId`
+4. Frontend forces token refresh via `Auth.currentSession()`
+5. Subsequent API calls use new `orgId` from token
+
+### Post-Confirmation Trigger
+
+**Purpose:** Automatically create an organization when a new user confirms their email.
+
+#### Lambda Function: `postConfirmation`
+
+```typescript
+import { PostConfirmationTriggerHandler } from 'aws-lambda';
+import { DynamoDB } from 'aws-sdk';
+import { v4 as uuidv4 } from 'uuid';
+
+const dynamodb = new DynamoDB.DocumentClient();
+
+export const handler: PostConfirmationTriggerHandler = async (event) => {
+  const { userAttributes } = event.request;
+  const cognitoSub = userAttributes.sub;
+  const email = userAttributes.email;
+  
+  // Generate new organization ID
+  const orgId = uuidv4();
+  
+  // Default limits based on free tier
+  const defaultLimits = {
+    maxProjects: 5,
+    maxUsers: 3,
+    maxStorageGB: 10
+  };
+  
+  // Transaction: Create org and user membership atomically
+  const transactionParams = {
+    TransactItems: [
+      // Create organization
+      {
+        Put: {
+          TableName: process.env.TABLE_NAME!,
+          Item: {
+            PK: `ORG#${orgId}`,
+            SK: 'METADATA',
+            GSI1PK: 'METADATA',
+            GSI1SK: `ORG#${orgId}`,
+            name: `${email.split('@')[0]}'s Organization`,
+            tier: 'free',
+            limits: defaultLimits,
+            usage: {
+              projectCount: 0,
+              userCount: 1,
+              storageGB: 0
+            },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }
+        }
+      },
+      // Create user membership (admin role for creator)
+      {
+        Put: {
+          TableName: process.env.TABLE_NAME!,
+          Item: {
+            PK: `ORG#${orgId}`,
+            SK: `USER#${cognitoSub}`,
+            GSI1PK: `USER#${cognitoSub}`,
+            GSI1SK: `ORG#${orgId}`,
+            role: 'admin',
+            email: email,
+            cognitoSub: cognitoSub,
+            joinedAt: new Date().toISOString(),
+            status: 'active'
+          }
+        }
+      }
+    ]
+  };
+  
+  try {
+    await dynamodb.transactWrite(transactionParams).promise();
+    
+    // Update Cognito custom attribute
+    const cognito = new AWS.CognitoIdentityServiceProvider();
+    await cognito.adminUpdateUserAttributes({
+      UserPoolId: event.userPoolId,
+      Username: cognitoSub,
+      UserAttributes: [
+        {
+          Name: 'custom:activeOrgId',
+          Value: orgId
+        }
+      ]
+    }).promise();
+    
+    return event;
+  } catch (error) {
+    console.error('Post-confirmation error:', error);
+    throw error;
+  }
+};
+```
+
+**CDK Configuration:**
+```typescript
+// See Phase 4 for full CDK stack
+userPool.addTrigger(
+  UserPoolOperation.POST_CONFIRMATION,
+  postConfirmationLambda
+);
+```
+
+---
+
+## API Gateway & Lambda Middleware
+
+### Tenant Injector Middleware (Middy.js)
+
+**Purpose:** Automatically extract and inject tenant context into Lambda handler.
+
+#### Middleware Implementation
+
+```typescript
+import middy from '@middy/core';
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { CognitoJwtVerifier } from 'aws-jwt-verify';
+
+interface TenantContext {
+  orgId: string;
+  userId: string;
+  userRole: string;
+}
+
+// Extend Lambda context
+declare module '@middy/core' {
+  interface Context {
+    tenant?: TenantContext;
+  }
+}
+
+const tenantInjector = (): middy.MiddlewareObj => {
+  const before = async (request: middy.Request): Promise<void> => {
+    const event = request.event as APIGatewayProxyEvent;
+    
+    // Extract JWT token
+    const authHeader = event.headers.Authorization || event.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw {
+        statusCode: 401,
+        body: JSON.stringify({ error: 'Missing or invalid authorization header' })
+      };
+    }
+    
+    const token = authHeader.substring(7);
+    
+    // Verify JWT (API Gateway does this, but we verify for safety)
+    const verifier = CognitoJwtVerifier.create({
+      userPoolId: process.env.USER_POOL_ID!,
+      tokenUse: 'id',
+      clientId: process.env.USER_POOL_CLIENT_ID!
+    });
+    
+    let claims;
+    try {
+      claims = await verifier.verify(token);
+    } catch (error) {
+      throw {
+        statusCode: 401,
+        body: JSON.stringify({ error: 'Invalid token' })
+      };
+    }
+    
+    // Extract orgId from custom attribute
+    const orgId = claims['custom:activeOrgId'] as string;
+    const userId = claims.sub as string;
+    
+    // Security Gate: orgId is required
+    if (!orgId) {
+      throw {
+        statusCode: 401,
+        body: JSON.stringify({ 
+          error: 'No active organization. Please select an organization.' 
+        })
+      };
+    }
+    
+    // Fetch user role from DynamoDB
+    const { Item: membership } = await dynamodb.get({
+      TableName: process.env.TABLE_NAME!,
+      Key: {
+        PK: `ORG#${orgId}`,
+        SK: `USER#${userId}`
+      }
+    }).promise();
+    
+    if (!membership) {
+      throw {
+        statusCode: 403,
+        body: JSON.stringify({ error: 'Access denied to this organization' })
+      };
+    }
+    
+    // Inject tenant context
+    request.context.tenant = {
+      orgId,
+      userId,
+      userRole: membership.role
+    };
+  };
+  
+  return { before };
+};
+
+export default tenantInjector;
+```
+
+#### Usage in Lambda Handler
+
+```typescript
+import middy from '@middy/core';
+import tenantInjector from './middleware/tenantInjector';
+import { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
+
+const handler = async (
+  event: APIGatewayProxyEvent,
+  context: Context & { tenant?: TenantContext }
+): Promise<APIGatewayProxyResult> => {
+  // Tenant context is automatically available
+  const { orgId, userId, userRole } = context.tenant!;
+  
+  // All queries automatically use orgId
+  const projects = await dynamodb.query({
+    TableName: process.env.TABLE_NAME!,
+    KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+    ExpressionAttributeValues: {
+      ':pk': `ORG#${orgId}`,
+      ':sk': 'PROJ#'
+    }
+  }).promise();
+  
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ projects: projects.Items })
+  };
+};
+
+export const listProjects = middy(handler).use(tenantInjector());
+```
+
+### Tiered Limit Enforcement (Transactional)
+
+**Strategy:** Use DynamoDB `TransactWriteItems` for atomic limit checking and resource creation.
+
+#### Example: Create Project with Limit Check
+
+```typescript
+import { DynamoDB } from 'aws-sdk';
+import { v4 as uuidv4 } from 'uuid';
+
+const dynamodb = new DynamoDB.DocumentClient();
+
+export const createProject = async (
+  event: APIGatewayProxyEvent,
+  context: Context & { tenant?: TenantContext }
+): Promise<APIGatewayProxyResult> => {
+  const { orgId, userId } = context.tenant!;
+  const { title, description } = JSON.parse(event.body || '{}');
+  
+  const projectId = uuidv4();
+  
+  // Atomic transaction: Check limit + Create project + Update usage
+  const transactionParams = {
+    TransactItems: [
+      // Condition Check: Verify limit not exceeded
+      {
+        ConditionCheck: {
+          TableName: process.env.TABLE_NAME!,
+          Key: {
+            PK: `ORG#${orgId}`,
+            SK: 'METADATA'
+          },
+          ConditionExpression: 'usage.projectCount < limits.maxProjects',
+          ExpressionAttributeNames: {
+            '#usage': 'usage',
+            '#limits': 'limits'
+          }
+        }
+      },
+      // Put: Create the project
+      {
+        Put: {
+          TableName: process.env.TABLE_NAME!,
+          Item: {
+            PK: `ORG#${orgId}`,
+            SK: `PROJ#${projectId}`,
+            GSI1PK: `PROJ#${projectId}`,
+            GSI1SK: `ORG#${orgId}`,
+            title,
+            description,
+            status: 'active',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            createdBy: `USER#${userId}`
+          }
+        }
+      },
+      // Update: Increment project count
+      {
+        Update: {
+          TableName: process.env.TABLE_NAME!,
+          Key: {
+            PK: `ORG#${orgId}`,
+            SK: 'METADATA'
+          },
+          UpdateExpression: 'ADD #usage.#projectCount :inc',
+          ExpressionAttributeNames: {
+            '#usage': 'usage',
+            '#projectCount': 'projectCount'
+          },
+          ExpressionAttributeValues: {
+            ':inc': 1
+          }
+        }
+      }
+    ]
+  };
+  
+  try {
+    await dynamodb.transactWrite(transactionParams).promise();
+    
+    return {
+      statusCode: 201,
+      body: JSON.stringify({ 
+        message: 'Project created successfully',
+        projectId 
+      })
+    };
+  } catch (error: any) {
+    if (error.code === 'TransactionCanceledException') {
+      // Limit exceeded or other condition failed
+      return {
+        statusCode: 403,
+        body: JSON.stringify({ 
+          error: 'Project limit exceeded. Please upgrade your plan.' 
+        })
+      };
+    }
+    
+    throw error;
+  }
+};
+```
+
+**Benefits:**
+- **Atomic:** All operations succeed or fail together
+- **No Race Conditions:** DynamoDB enforces serializability
+- **Consistent:** Limits are always accurate
+- **Fast:** Single round-trip to DynamoDB
+
+---
+
+## Infrastructure as Code (CDK)
+
+### Stack Definition: `SaaSStack`
+
+```typescript
+import * as cdk from 'aws-cdk-lib';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as apigatewayv2 from 'aws-cdk-lib/aws-apigatewayv2';
+import * as apigatewayv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import { Construct } from 'constructs';
+
+export class SaaSStack extends cdk.Stack {
+  public readonly table: dynamodb.Table;
+  public readonly userPool: cognito.UserPool;
+  public readonly httpApi: apigatewayv2.HttpApi;
+  public readonly eventBus: events.EventBus;
+
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    super(scope, id, props);
+
+    // ============================================
+    // 1. DynamoDB Table (Single Table Design)
+    // ============================================
+    this.table = new dynamodb.Table(this, 'SaaSTable', {
+      tableName: 'SaaSTable',
+      partitionKey: {
+        name: 'PK',
+        type: dynamodb.AttributeType.STRING
+      },
+      sortKey: {
+        name: 'SK',
+        type: dynamodb.AttributeType.STRING
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand pricing
+      pointInTimeRecovery: true, // Enable PITR for backups
+      removalPolicy: cdk.RemovalPolicy.RETAIN, // Prevent accidental deletion
+      
+      // Global Secondary Index (GSI1) - Inverted Index
+      globalSecondaryIndexes: [
+        {
+          indexName: 'GSI1',
+          partitionKey: {
+            name: 'GSI1PK',
+            type: dynamodb.AttributeType.STRING
+          },
+          sortKey: {
+            name: 'GSI1SK',
+            type: dynamodb.AttributeType.STRING
+          },
+          projectionType: dynamodb.ProjectionType.ALL // Project all attributes
+        }
+      ],
+      
+      // Encryption at rest
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      
+      // Stream for real-time processing (optional)
+      stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES
+    });
+
+    // ============================================
+    // 2. Cognito User Pool
+    // ============================================
+    this.userPool = new cognito.UserPool(this, 'SaaSUserPool', {
+      userPoolName: 'saas-user-pool',
+      signInAliases: {
+        email: true
+      },
+      autoVerify: {
+        email: true
+      },
+      passwordPolicy: {
+        minLength: 8,
+        requireLowercase: true,
+        requireUppercase: true,
+        requireDigits: true,
+        requireSymbols: true
+      },
+      customAttributes: {
+        activeOrgId: new cognito.StringAttribute({
+          minLen: 1,
+          maxLen: 128,
+          mutable: true
+        })
+      },
+      removalPolicy: cdk.RemovalPolicy.RETAIN
+    });
+
+    // User Pool Client
+    const userPoolClient = this.userPool.addClient('SaaSClient', {
+      userPoolClientName: 'saas-client',
+      generateSecret: false, // For public clients (SPA)
+      authFlows: {
+        userPassword: true,
+        userSrp: true
+      },
+      oAuth: {
+        flows: {
+          authorizationCodeGrant: true,
+          implicitCodeGrant: true
+        },
+        scopes: [
+          cognito.OAuthScope.EMAIL,
+          cognito.OAuthScope.OPENID,
+          cognito.OAuthScope.PROFILE
+        ],
+        callbackUrls: [
+          'http://localhost:3000/callback',
+          'https://yourdomain.com/callback'
+        ],
+        logoutUrls: [
+          'http://localhost:3000',
+          'https://yourdomain.com'
+        ]
+      }
+    });
+
+    // ============================================
+    // 3. Post-Confirmation Lambda
+    // ============================================
+    const postConfirmationLambda = new lambda.Function(this, 'PostConfirmationLambda', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'postConfirmation.handler',
+      code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        TABLE_NAME: this.table.tableName,
+        USER_POOL_ID: this.userPool.userPoolId
+      },
+      timeout: cdk.Duration.seconds(30)
+    });
+
+    // Grant DynamoDB write permissions
+    this.table.grantWriteData(postConfirmationLambda);
+    
+    // Grant Cognito permissions
+    postConfirmationLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'cognito-idp:AdminUpdateUserAttributes'
+        ],
+        resources: [this.userPool.userPoolArn]
+      })
+    );
+
+    // Attach Post-Confirmation trigger
+    this.userPool.addTrigger(
+      cognito.UserPoolOperation.POST_CONFIRMATION,
+      postConfirmationLambda
+    );
+
+    // ============================================
+    // 4. API Gateway v2 (HTTP API)
+    // ============================================
+    const authorizer = new apigatewayv2.HttpUserPoolAuthorizer(
+      'CognitoAuthorizer',
+      this.userPool,
+      {
+        userPoolClients: [userPoolClient],
+        identitySource: ['$request.header.Authorization']
+      }
+    );
+
+    this.httpApi = new apigatewayv2.HttpApi(this, 'SaaSHttpApi', {
+      apiName: 'saas-api',
+      corsPreflight: {
+        allowOrigins: [
+          'http://localhost:3000',
+          'https://yourdomain.com'
+        ],
+        allowMethods: [apigatewayv2.CorsHttpMethod.GET, apigatewayv2.CorsHttpMethod.POST, apigatewayv2.CorsHttpMethod.PUT, apigatewayv2.CorsHttpMethod.DELETE],
+        allowHeaders: ['Content-Type', 'Authorization'],
+        maxAge: cdk.Duration.days(1)
+      },
+      defaultAuthorizer: authorizer
+    });
+
+    // ============================================
+    // 5. Example Lambda Functions
+    // ============================================
+    
+    // List Projects Lambda
+    const listProjectsLambda = new lambda.Function(this, 'ListProjectsLambda', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'listProjects.handler',
+      code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        TABLE_NAME: this.table.tableName,
+        USER_POOL_ID: this.userPool.userPoolId,
+        USER_POOL_CLIENT_ID: userPoolClient.userPoolClientId
+      },
+      timeout: cdk.Duration.seconds(10)
+    });
+    this.table.grantReadData(listProjectsLambda);
+
+    // Create Project Lambda
+    const createProjectLambda = new lambda.Function(this, 'CreateProjectLambda', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'createProject.handler',
+      code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        TABLE_NAME: this.table.tableName,
+        USER_POOL_ID: this.userPool.userPoolId,
+        USER_POOL_CLIENT_ID: userPoolClient.userPoolClientId
+      },
+      timeout: cdk.Duration.seconds(10)
+    });
+    this.table.grantReadWriteData(createProjectLambda);
+
+    // Switch Organization Lambda
+    const switchOrgLambda = new lambda.Function(this, 'SwitchOrgLambda', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'switchOrganization.handler',
+      code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        TABLE_NAME: this.table.tableName,
+        USER_POOL_ID: this.userPool.userPoolId
+      },
+      timeout: cdk.Duration.seconds(10)
+    });
+    this.table.grantReadData(switchOrgLambda);
+    switchOrgLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['cognito-idp:AdminUpdateUserAttributes'],
+        resources: [this.userPool.userPoolArn]
+      })
+    );
+
+    // API Routes
+    this.httpApi.addRoutes({
+      path: '/projects',
+      methods: [apigatewayv2.HttpMethod.GET],
+      integration: new apigatewayv2Integrations.HttpLambdaIntegration(
+        'ListProjectsIntegration',
+        listProjectsLambda
+      )
+    });
+
+    this.httpApi.addRoutes({
+      path: '/projects',
+      methods: [apigatewayv2.HttpMethod.POST],
+      integration: new apigatewayv2Integrations.HttpLambdaIntegration(
+        'CreateProjectIntegration',
+        createProjectLambda
+      )
+    });
+
+    this.httpApi.addRoutes({
+      path: '/switch-org',
+      methods: [apigatewayv2.HttpMethod.POST],
+      integration: new apigatewayv2Integrations.HttpLambdaIntegration(
+        'SwitchOrgIntegration',
+        switchOrgLambda
+      )
+    });
+
+    // ============================================
+    // 6. EventBridge Bus (for Stripe Webhooks)
+    // ============================================
+    this.eventBus = new events.EventBus(this, 'SaaSEventBus', {
+      eventBusName: 'saas-event-bus'
+    });
+
+    // Stripe Webhook Handler Lambda
+    const stripeWebhookLambda = new lambda.Function(this, 'StripeWebhookLambda', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'stripeWebhook.handler',
+      code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        TABLE_NAME: this.table.tableName,
+        EVENT_BUS_NAME: this.eventBus.eventBusName
+      },
+      timeout: cdk.Duration.seconds(30)
+    });
+    this.table.grantWriteData(stripeWebhookLambda);
+    this.eventBus.grantPutEventsTo(stripeWebhookLambda);
+
+    // EventBridge Rule: Stripe Checkout Completed
+    const stripeRule = new events.Rule(this, 'StripeCheckoutCompletedRule', {
+      eventBus: this.eventBus,
+      eventPattern: {
+        source: ['stripe'],
+        detailType: ['checkout.session.completed']
+      }
+    });
+
+    // Lambda to handle tier upgrades
+    const upgradeTierLambda = new lambda.Function(this, 'UpgradeTierLambda', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'upgradeTier.handler',
+      code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        TABLE_NAME: this.table.tableName
+      },
+      timeout: cdk.Duration.seconds(10)
+    });
+    this.table.grantWriteData(upgradeTierLambda);
+
+    stripeRule.addTarget(new targets.LambdaFunction(upgradeTierLambda));
+
+    // Public endpoint for Stripe webhooks (no auth required)
+    const stripeWebhookIntegration = new apigatewayv2Integrations.HttpLambdaIntegration(
+      'StripeWebhookIntegration',
+      stripeWebhookLambda
+    );
+
+    this.httpApi.addRoutes({
+      path: '/webhooks/stripe',
+      methods: [apigatewayv2.HttpMethod.POST],
+      integration: stripeWebhookIntegration,
+      authorizationType: apigatewayv2.HttpAuthorizationType.NONE // Public endpoint
+    });
+
+    // ============================================
+    // 7. Outputs
+    // ============================================
+    new cdk.CfnOutput(this, 'UserPoolId', {
+      value: this.userPool.userPoolId
+    });
+
+    new cdk.CfnOutput(this, 'UserPoolClientId', {
+      value: userPoolClient.userPoolClientId
+    });
+
+    new cdk.CfnOutput(this, 'ApiEndpoint', {
+      value: this.httpApi.apiEndpoint
+    });
+
+    new cdk.CfnOutput(this, 'TableName', {
+      value: this.table.tableName
+    });
+  }
+}
+```
+
+### CDK App Entry Point
+
+```typescript
+// bin/app.ts
+import * as cdk from 'aws-cdk-lib';
+import { SaaSStack } from '../lib/saas-stack';
+
+const app = new cdk.App();
+
+new SaaSStack(app, 'SaaSStack', {
+  env: {
+    account: process.env.CDK_DEFAULT_ACCOUNT,
+    region: process.env.CDK_DEFAULT_REGION || 'us-east-1'
+  }
+});
+
+app.synth();
+```
+
+---
+
+## EventBridge Integration (Stripe)
+
+### Webhook Handler Lambda
+
+```typescript
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { EventBridge } from 'aws-sdk';
+import Stripe from 'stripe';
+
+const eventBridge = new EventBridge();
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2023-10-16'
+});
+
+export const handler = async (
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> => {
+  const sig = event.headers['stripe-signature']!;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+  
+  let stripeEvent: Stripe.Event;
+  
+  try {
+    stripeEvent = stripe.webhooks.constructEvent(
+      event.body!,
+      sig,
+      webhookSecret
+    );
+  } catch (err: any) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: `Webhook Error: ${err.message}` })
+    };
+  }
+  
+  // Put event on EventBridge for processing
+  await eventBridge.putEvents({
+    Entries: [
+      {
+        Source: 'stripe',
+        DetailType: stripeEvent.type,
+        Detail: JSON.stringify(stripeEvent.data.object),
+        EventBusName: process.env.EVENT_BUS_NAME!
+      }
+    ]
+  }).promise();
+  
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ received: true })
+  };
+};
+```
+
+### Tier Upgrade Lambda (EventBridge Target)
+
+```typescript
+import { EventBridgeEvent } from 'aws-lambda';
+import { DynamoDB } from 'aws-sdk';
+
+const dynamodb = new DynamoDB.DocumentClient();
+
+interface StripeCheckoutSession {
+  id: string;
+  customer: string;
+  metadata: {
+    orgId: string;
+  };
+  subscription?: string;
+}
+
+export const handler = async (
+  event: EventBridgeEvent<'checkout.session.completed', StripeCheckoutSession>
+): Promise<void> => {
+  const { customer, metadata, subscription } = event.detail;
+  const orgId = metadata.orgId;
+  
+  if (!orgId) {
+    console.error('No orgId in Stripe metadata');
+    return;
+  }
+  
+  // Update organization tier and limits
+  const updateParams = {
+    TableName: process.env.TABLE_NAME!,
+    Key: {
+      PK: `ORG#${orgId}`,
+      SK: 'METADATA'
+    },
+    UpdateExpression: 'SET #tier = :tier, stripeCustomerId = :customerId, stripeSubscriptionId = :subscriptionId, #limits = :limits, updatedAt = :updatedAt',
+    ExpressionAttributeNames: {
+      '#tier': 'tier',
+      '#limits': 'limits'
+    },
+    ExpressionAttributeValues: {
+      ':tier': 'pro',
+      ':customerId': customer,
+      ':subscriptionId': subscription || null,
+      ':limits': {
+        maxProjects: 100,
+        maxUsers: 50,
+        maxStorageGB: 500
+      },
+      ':updatedAt': new Date().toISOString()
+    }
+  };
+  
+  await dynamodb.update(updateParams).promise();
+  
+  console.log(`Organization ${orgId} upgraded to pro tier`);
+};
+```
+
+---
+
+## Security & Best Practices
+
+### Tenant Isolation Enforcement
+
+1. **Partition Key Requirement:** All queries MUST include `PK = ORG#<org_id>`
+2. **Middleware Validation:** Tenant injector middleware validates `orgId` before handler execution
+3. **IAM Policies:** Lambda functions only have access to their required DynamoDB partitions
+4. **API Gateway:** JWT authorizer validates tokens before Lambda invocation
+
+### Data Access Patterns
+
+| Pattern | Security Level | Implementation |
+|---------|---------------|----------------|
+| User reads own org data | ✅ Allowed | Query with `PK = ORG#<org_id>` |
+| User reads other org data | ❌ Blocked | Middleware validates membership |
+| Admin reads org metadata | ✅ Allowed | Role check in middleware |
+| Cross-tenant queries | ❌ Forbidden | No queries without partition key |
+
+### Monitoring & Observability
+
+**CloudWatch Metrics:**
+- DynamoDB: `ConsumedReadCapacityUnits`, `ConsumedWriteCapacityUnits`
+- Lambda: `Duration`, `Errors`, `Throttles`
+- API Gateway: `Count`, `4XXError`, `5XXError`
+
+**CloudWatch Logs:**
+- Lambda execution logs with tenant context
+- DynamoDB access logs (if enabled)
+- API Gateway access logs
+
+**Alarms:**
+- DynamoDB throttling events
+- Lambda error rate > 1%
+- API Gateway 5XX errors
+- **Critical:** Any `scan()` operation detected
+
+### Cost Optimization
+
+1. **DynamoDB:** Use on-demand billing for unpredictable workloads
+2. **Lambda:** Right-size memory allocation (128MB-512MB for most handlers)
+3. **API Gateway:** Use HTTP API (cheaper than REST API)
+4. **Caching:** Consider DynamoDB DAX for hot paths (read-heavy workloads)
+
+### Backup & Disaster Recovery
+
+1. **Point-in-Time Recovery:** Enabled on DynamoDB table
+2. **Cross-Region Replication:** Consider for critical data
+3. **Export to S3:** Regular exports for compliance/analytics
+
+---
+
+## Deployment Checklist
+
+- [ ] CDK stack deployed to AWS
+- [ ] Cognito User Pool configured with custom attributes
+- [ ] DynamoDB table created with GSI1
+- [ ] API Gateway routes configured
+- [ ] Lambda functions deployed with correct IAM roles
+- [ ] Post-confirmation trigger attached
+- [ ] EventBridge rules configured
+- [ ] Stripe webhook secret configured
+- [ ] Frontend configured with Cognito credentials
+- [ ] Monitoring and alarms set up
+- [ ] Backup strategy implemented
+
+---
+
+## References
+
+- [AWS DynamoDB Best Practices](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/best-practices.html)
+- [AWS Cognito User Pools](https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-identity-pools.html)
+- [AWS CDK Documentation](https://docs.aws.amazon.com/cdk/)
+- [Single Table Design Guide](https://www.dynamodbguide.com/single-table-design/)
+
+---
+
+**Document Version:** 1.0  
+**Maintained By:** Principal Cloud Architect  
+**Review Cycle:** Quarterly

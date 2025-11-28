@@ -1,0 +1,1958 @@
+# Comprehensive Chatbot Creation Guide for Cursor AI
+
+## Overview
+This guide provides incredibly detailed instructions for creating chatbots of any design pattern. When a user requests "make a chatbot" or "create a chatbot", follow this guide meticulously to build a complete, production-ready chatbot system.
+
+## Table of Contents
+1. [Initial Assessment & Design Selection](#initial-assessment--design-selection)
+2. [Architecture Patterns](#architecture-patterns)
+3. [Technology Stack Selection](#technology-stack-selection)
+4. [Project Structure](#project-structure)
+5. [Core Components](#core-components)
+6. [UI/UX Implementation](#uiux-implementation)
+7. [Backend Implementation](#backend-implementation)
+8. [Integration & Deployment](#integration--deployment)
+9. [Testing & Quality Assurance](#testing--quality-assurance)
+10. [Documentation Requirements](#documentation-requirements)
+
+---
+
+## Initial Assessment & Design Selection
+
+### Step 1: Identify User Requirements
+When a user requests a chatbot, you MUST:
+
+1. **Determine the chatbot type:**
+   - Customer Support Bot
+   - E-commerce Assistant
+   - FAQ Bot
+   - Lead Generation Bot
+   - Educational/Tutorial Bot
+   - Healthcare Assistant
+   - Financial Advisor Bot
+   - General Purpose Conversational AI
+   - Custom Domain-Specific Bot
+
+2. **Identify design pattern preference:**
+   - **Rule-Based**: Simple if-then logic, keyword matching
+   - **Retrieval-Based**: Pre-defined responses with ML ranking
+   - **Generative**: LLM-based (GPT, Claude, etc.) with context
+   - **Hybrid**: Combination of rule-based + generative
+   - **Voice-Enabled**: Speech-to-text + text-to-speech
+   - **Multi-Modal**: Text + images + files + voice
+
+3. **Determine deployment target:**
+   - Web Application (React, Vue, Angular)
+   - Mobile App (React Native, Flutter, Native)
+   - Desktop Application (Electron, Tauri)
+   - API Service (REST, GraphQL, WebSocket)
+   - Embedded Widget (iframe, script tag)
+   - Slack/Discord/Teams Integration
+   - WhatsApp/Telegram Bot
+
+4. **Identify required features:**
+   - [ ] Message history persistence
+   - [ ] User authentication
+   - [ ] Multi-language support
+   - [ ] File upload/processing
+   - [ ] Voice input/output
+   - [ ] Rich media (images, videos, cards)
+   - [ ] Quick replies/buttons
+   - [ ] Typing indicators
+   - [ ] Read receipts
+   - [ ] Conversation export
+   - [ ] Admin dashboard
+   - [ ] Analytics tracking
+   - [ ] A/B testing
+   - [ ] Custom branding
+
+### Step 2: Design Pattern Selection
+Based on user's choice or infer from context:
+
+#### Pattern A: Modern Web Chatbot (React + Node.js)
+- **Frontend**: React 18+ with TypeScript
+- **Styling**: Tailwind CSS or styled-components
+- **State Management**: Zustand or Redux Toolkit
+- **Backend**: Node.js/Express or Next.js API routes
+- **AI Integration**: OpenAI API, Anthropic Claude, or local LLM
+- **Database**: PostgreSQL/MongoDB for history, Redis for sessions
+
+#### Pattern B: Full-Stack Next.js Chatbot
+- **Framework**: Next.js 14+ (App Router)
+- **Frontend**: React Server Components + Client Components
+- **Backend**: Next.js API routes or Server Actions
+- **Database**: Prisma + PostgreSQL
+- **AI**: OpenAI SDK or Vercel AI SDK
+- **Real-time**: Server-Sent Events or WebSockets
+
+#### Pattern C: Python Flask/FastAPI Chatbot
+- **Backend**: Flask or FastAPI
+- **Frontend**: React or Vue.js (separate)
+- **AI**: LangChain, OpenAI, or Hugging Face
+- **Database**: SQLAlchemy + PostgreSQL or MongoDB
+- **WebSocket**: Socket.io or native WebSockets
+
+#### Pattern D: Serverless Chatbot (Vercel/Netlify)
+- **Frontend**: Next.js or Remix
+- **Backend**: Serverless Functions
+- **AI**: Vercel AI SDK
+- **Database**: Vercel Postgres, Supabase, or PlanetScale
+- **Storage**: Vercel Blob or AWS S3
+
+#### Pattern E: Mobile-First Chatbot
+- **Framework**: React Native or Flutter
+- **Backend**: Node.js/Express or Python FastAPI
+- **AI**: OpenAI API or Anthropic API
+- **Database**: Firebase or Supabase
+- **Push Notifications**: Firebase Cloud Messaging
+
+---
+
+## Architecture Patterns
+
+### Standard Architecture Components
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    User Interface                        │
+│  (Web/Mobile/Desktop Widget with Chat UI Components)    │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│              Frontend Application Layer                  │
+│  - Message State Management                              │
+│  - UI Components (MessageList, Input, TypingIndicator)  │
+│  - Event Handlers (send, receive, typing)                │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│              API Gateway / Backend Server                │
+│  - REST/GraphQL/WebSocket Endpoints                      │
+│  - Authentication & Authorization                        │
+│  - Rate Limiting & Security                              │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│              Chatbot Engine / AI Service                 │
+│  - Intent Recognition                                    │
+│  - Context Management                                    │
+│  - Response Generation (LLM/Retrieval/Rule-Based)       │
+│  - Conversation Flow Management                          │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│              Data Layer                                  │
+│  - Conversation History (Database)                      │
+│  - Knowledge Base / Vector Store                        │
+│  - User Sessions (Cache)                                │
+│  - Analytics & Logging                                   │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Technology Stack Selection
+
+### Frontend Technologies
+
+#### React-Based Stack (Recommended)
+```json
+{
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.3.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "tailwindcss": "^3.4.0",
+    "zustand": "^4.4.0",
+    "axios": "^1.6.0",
+    "date-fns": "^3.0.0",
+    "react-markdown": "^9.0.0",
+    "react-syntax-highlighter": "^15.5.0"
+  }
+}
+```
+
+#### Vue-Based Stack
+```json
+{
+  "dependencies": {
+    "vue": "^3.4.0",
+    "vue-router": "^4.2.0",
+    "pinia": "^2.1.0",
+    "axios": "^1.6.0",
+    "tailwindcss": "^3.4.0"
+  }
+}
+```
+
+### Backend Technologies
+
+#### Node.js Stack
+```json
+{
+  "dependencies": {
+    "express": "^4.18.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.0",
+    "openai": "^4.20.0",
+    "@anthropic-ai/sdk": "^0.9.0",
+    "prisma": "^5.7.0",
+    "socket.io": "^4.6.0",
+    "jsonwebtoken": "^9.0.0",
+    "bcryptjs": "^2.4.3",
+    "zod": "^3.22.0"
+  }
+}
+```
+
+#### Python Stack
+```python
+# requirements.txt
+fastapi==0.109.0
+uvicorn==0.27.0
+openai==1.10.0
+anthropic==0.18.0
+langchain==0.1.0
+langchain-openai==0.0.5
+sqlalchemy==2.0.25
+pydantic==2.5.0
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.6
+websockets==12.0
+```
+
+### Database Schemas
+
+#### PostgreSQL Schema (Prisma)
+```prisma
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  createdAt     DateTime  @default(now())
+  conversations Conversation[]
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  messages  Message[]
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  role           String       // "user" | "assistant" | "system"
+  content        String
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+}
+```
+
+#### MongoDB Schema (Mongoose)
+```javascript
+const userSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true },
+  name: String,
+  createdAt: { type: Date, default: Date.now }
+});
+
+const conversationSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  title: String,
+  messages: [{
+    role: { type: String, enum: ['user', 'assistant', 'system'], required: true },
+    content: { type: String, required: true },
+    metadata: mongoose.Schema.Types.Mixed,
+    createdAt: { type: Date, default: Date.now }
+  }],
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+```
+
+---
+
+## Project Structure
+
+### Standard React + Node.js Structure
+```
+chatbot-project/
+├── frontend/
+│   ├── public/
+│   │   ├── index.html
+│   │   └── favicon.ico
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Chat/
+│   │   │   │   ├── ChatContainer.tsx
+│   │   │   │   ├── MessageList.tsx
+│   │   │   │   ├── MessageBubble.tsx
+│   │   │   │   ├── MessageInput.tsx
+│   │   │   │   ├── TypingIndicator.tsx
+│   │   │   │   ├── QuickReplies.tsx
+│   │   │   │   └── ChatHeader.tsx
+│   │   │   ├── UI/
+│   │   │   │   ├── Button.tsx
+│   │   │   │   ├── Input.tsx
+│   │   │   │   ├── LoadingSpinner.tsx
+│   │   │   │   └── ErrorBoundary.tsx
+│   │   │   └── Layout/
+│   │   │       ├── Sidebar.tsx
+│   │   │       └── MainLayout.tsx
+│   │   ├── hooks/
+│   │   │   ├── useChat.ts
+│   │   │   ├── useWebSocket.ts
+│   │   │   ├── useConversation.ts
+│   │   │   └── useAuth.ts
+│   │   ├── store/
+│   │   │   ├── chatStore.ts
+│   │   │   ├── authStore.ts
+│   │   │   └── conversationStore.ts
+│   │   ├── services/
+│   │   │   ├── api.ts
+│   │   │   ├── websocket.ts
+│   │   │   └── storage.ts
+│   │   ├── utils/
+│   │   │   ├── formatMessage.ts
+│   │   │   ├── formatDate.ts
+│   │   │   └── constants.ts
+│   │   ├── types/
+│   │   │   ├── message.ts
+│   │   │   ├── conversation.ts
+│   │   │   └── user.ts
+│   │   ├── styles/
+│   │   │   ├── globals.css
+│   │   │   └── tailwind.config.js
+│   │   ├── App.tsx
+│   │   └── main.tsx
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── vite.config.ts (or webpack.config.js)
+│   └── .env.example
+├── backend/
+│   ├── src/
+│   │   ├── routes/
+│   │   │   ├── chat.routes.ts
+│   │   │   ├── conversation.routes.ts
+│   │   │   ├── auth.routes.ts
+│   │   │   └── health.routes.ts
+│   │   ├── controllers/
+│   │   │   ├── chat.controller.ts
+│   │   │   ├── conversation.controller.ts
+│   │   │   └── auth.controller.ts
+│   │   ├── services/
+│   │   │   ├── ai.service.ts
+│   │   │   ├── conversation.service.ts
+│   │   │   ├── context.service.ts
+│   │   │   └── vector.service.ts
+│   │   ├── middleware/
+│   │   │   ├── auth.middleware.ts
+│   │   │   ├── error.middleware.ts
+│   │   │   ├── rateLimit.middleware.ts
+│   │   │   └── validation.middleware.ts
+│   │   ├── models/
+│   │   │   ├── User.ts
+│   │   │   ├── Conversation.ts
+│   │   │   └── Message.ts
+│   │   ├── utils/
+│   │   │   ├── logger.ts
+│   │   │   ├── errors.ts
+│   │   │   └── validators.ts
+│   │   ├── config/
+│   │   │   ├── database.ts
+│   │   │   ├── openai.ts
+│   │   │   └── env.ts
+│   │   └── server.ts
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── .env.example
+├── shared/
+│   └── types/
+│       ├── message.types.ts
+│       └── api.types.ts
+├── .gitignore
+├── README.md
+└── docker-compose.yml
+```
+
+### Next.js Full-Stack Structure
+```
+chatbot-nextjs/
+├── app/
+│   ├── (auth)/
+│   │   ├── login/
+│   │   │   └── page.tsx
+│   │   └── register/
+│   │       └── page.tsx
+│   ├── (chat)/
+│   │   ├── chat/
+│   │   │   ├── [conversationId]/
+│   │   │   │   └── page.tsx
+│   │   │   └── page.tsx
+│   │   └── layout.tsx
+│   ├── api/
+│   │   ├── chat/
+│   │   │   └── route.ts
+│   │   ├── conversations/
+│   │   │   └── route.ts
+│   │   └── auth/
+│   │       └── route.ts
+│   ├── components/
+│   │   ├── chat/
+│   │   │   ├── ChatContainer.tsx
+│   │   │   ├── MessageList.tsx
+│   │   │   └── MessageInput.tsx
+│   │   └── ui/
+│   │       ├── button.tsx
+│   │       └── input.tsx
+│   ├── lib/
+│   │   ├── ai/
+│   │   │   └── openai.ts
+│   │   ├── db/
+│   │   │   └── prisma.ts
+│   │   └── utils.ts
+│   ├── hooks/
+│   │   └── use-chat.ts
+│   ├── types/
+│   │   └── chat.ts
+│   ├── layout.tsx
+│   └── page.tsx
+├── prisma/
+│   └── schema.prisma
+├── public/
+├── package.json
+├── next.config.js
+├── tailwind.config.js
+└── .env.example
+```
+
+---
+
+## Core Components
+
+### 1. Frontend Chat Container Component
+
+#### React Implementation (TypeScript)
+```typescript
+// frontend/src/components/Chat/ChatContainer.tsx
+import React, { useEffect, useRef, useState } from 'react';
+import { useChatStore } from '@/store/chatStore';
+import { MessageList } from './MessageList';
+import { MessageInput } from './MessageInput';
+import { TypingIndicator } from './TypingIndicator';
+import { ChatHeader } from './ChatHeader';
+import { useWebSocket } from '@/hooks/useWebSocket';
+import { sendMessage } from '@/services/api';
+
+interface ChatContainerProps {
+  conversationId?: string;
+  userId: string;
+  className?: string;
+}
+
+export const ChatContainer: React.FC<ChatContainerProps> = ({
+  conversationId,
+  userId,
+  className = ''
+}) => {
+  const {
+    messages,
+    isLoading,
+    error,
+    addMessage,
+    setLoading,
+    setError,
+    clearError
+  } = useChatStore();
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isTyping, setIsTyping] = useState(false);
+
+  // WebSocket connection for real-time updates
+  const { send, lastMessage, readyState } = useWebSocket(
+    `ws://localhost:3001/chat/${conversationId || 'new'}`
+  );
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Handle incoming WebSocket messages
+  useEffect(() => {
+    if (lastMessage) {
+      const data = JSON.parse(lastMessage.data);
+      if (data.type === 'message') {
+        addMessage(data.message);
+        setIsTyping(false);
+      } else if (data.type === 'typing') {
+        setIsTyping(data.isTyping);
+      }
+    }
+  }, [lastMessage, addMessage]);
+
+  const handleSendMessage = async (content: string) => {
+    if (!content.trim() || isLoading) return;
+
+    const userMessage = {
+      id: `msg-${Date.now()}`,
+      role: 'user' as const,
+      content: content.trim(),
+      timestamp: new Date().toISOString()
+    };
+
+    addMessage(userMessage);
+    setLoading(true);
+    clearError();
+
+    try {
+      // Send via WebSocket for real-time
+      if (readyState === WebSocket.OPEN) {
+        send(JSON.stringify({
+          type: 'message',
+          content: userMessage.content,
+          conversationId
+        }));
+      } else {
+        // Fallback to REST API
+        const response = await sendMessage({
+          content: userMessage.content,
+          conversationId,
+          userId
+        });
+        addMessage(response.message);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send message');
+      console.error('Error sending message:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className={`flex flex-col h-full bg-gray-50 ${className}`}>
+      <ChatHeader conversationId={conversationId} />
+      
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <MessageList messages={messages} />
+        {isTyping && <TypingIndicator />}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {error && (
+        <div className="px-4 py-2 bg-red-100 text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+
+      <MessageInput
+        onSend={handleSendMessage}
+        disabled={isLoading}
+        placeholder="Type your message..."
+      />
+    </div>
+  );
+};
+```
+
+### 2. Message List Component
+
+```typescript
+// frontend/src/components/Chat/MessageList.tsx
+import React from 'react';
+import { MessageBubble } from './MessageBubble';
+import { Message } from '@/types/message';
+import { formatMessageTime } from '@/utils/formatDate';
+
+interface MessageListProps {
+  messages: Message[];
+}
+
+export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
+  if (messages.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center text-gray-500">
+          <p className="text-lg font-medium mb-2">Start a conversation</p>
+          <p className="text-sm">Ask me anything!</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {messages.map((message, index) => {
+        const showAvatar = message.role === 'assistant';
+        const showTimestamp = 
+          index === 0 || 
+          new Date(message.timestamp).getTime() - 
+          new Date(messages[index - 1].timestamp).getTime() > 300000; // 5 minutes
+
+        return (
+          <div key={message.id}>
+            {showTimestamp && (
+              <div className="text-center text-xs text-gray-500 my-4">
+                {formatMessageTime(message.timestamp)}
+              </div>
+            )}
+            <MessageBubble
+              message={message}
+              showAvatar={showAvatar}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+```
+
+### 3. Message Bubble Component
+
+```typescript
+// frontend/src/components/Chat/MessageBubble.tsx
+import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import { Message } from '@/types/message';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+
+interface MessageBubbleProps {
+  message: Message;
+  showAvatar?: boolean;
+}
+
+export const MessageBubble: React.FC<MessageBubbleProps> = ({
+  message,
+  showAvatar = false
+}) => {
+  const isUser = message.role === 'user';
+  const isAssistant = message.role === 'assistant';
+
+  return (
+    <div
+      className={`flex items-start gap-3 ${
+        isUser ? 'flex-row-reverse' : 'flex-row'
+      }`}
+    >
+      {showAvatar && isAssistant && (
+        <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-semibold flex-shrink-0">
+          AI
+        </div>
+      )}
+
+      <div
+        className={`max-w-[80%] rounded-2xl px-4 py-2 ${
+          isUser
+            ? 'bg-blue-500 text-white'
+            : 'bg-white text-gray-800 shadow-sm border border-gray-200'
+        }`}
+      >
+        {isAssistant ? (
+          <div className="prose prose-sm max-w-none">
+            <ReactMarkdown
+              components={{
+                code({ node, inline, className, children, ...props }) {
+                  const match = /language-(\w+)/.exec(className || '');
+                  return !inline && match ? (
+                    <SyntaxHighlighter
+                      style={vscDarkPlus}
+                      language={match[1]}
+                      PreTag="div"
+                      {...props}
+                    >
+                      {String(children).replace(/\n$/, '')}
+                    </SyntaxHighlighter>
+                  ) : (
+                    <code className={className} {...props}>
+                      {children}
+                    </code>
+                  );
+                }
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          </div>
+        ) : (
+          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        )}
+
+        {message.metadata?.sources && (
+          <div className="mt-2 pt-2 border-t border-gray-300">
+            <p className="text-xs text-gray-500">Sources:</p>
+            <ul className="text-xs text-gray-400 list-disc list-inside">
+              {message.metadata.sources.map((source, idx) => (
+                <li key={idx}>{source}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+```
+
+### 4. Message Input Component
+
+```typescript
+// frontend/src/components/Chat/MessageInput.tsx
+import React, { useState, useRef, useEffect } from 'react';
+import { Button } from '../UI/Button';
+
+interface MessageInputProps {
+  onSend: (message: string) => void;
+  disabled?: boolean;
+  placeholder?: string;
+}
+
+export const MessageInput: React.FC<MessageInputProps> = ({
+  onSend,
+  disabled = false,
+  placeholder = 'Type your message...'
+}) => {
+  const [input, setInput] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [input]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (input.trim() && !disabled) {
+      onSend(input);
+      setInput('');
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="border-t border-gray-200 bg-white p-4"
+    >
+      <div className="flex items-end gap-2">
+        <textarea
+          ref={textareaRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          disabled={disabled}
+          rows={1}
+          className="flex-1 resize-none rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-100 disabled:cursor-not-allowed"
+          style={{ minHeight: '44px', maxHeight: '200px' }}
+        />
+        <Button
+          type="submit"
+          disabled={!input.trim() || disabled}
+          className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+        >
+          Send
+        </Button>
+      </div>
+    </form>
+  );
+};
+```
+
+### 5. Chat Store (State Management)
+
+```typescript
+// frontend/src/store/chatStore.ts
+import { create } from 'zustand';
+import { Message } from '@/types/message';
+
+interface ChatState {
+  messages: Message[];
+  isLoading: boolean;
+  error: string | null;
+  conversationId: string | null;
+  
+  // Actions
+  addMessage: (message: Message) => void;
+  setMessages: (messages: Message[]) => void;
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+  clearError: () => void;
+  setConversationId: (id: string | null) => void;
+  clearChat: () => void;
+}
+
+export const useChatStore = create<ChatState>((set) => ({
+  messages: [],
+  isLoading: false,
+  error: null,
+  conversationId: null,
+
+  addMessage: (message) =>
+    set((state) => ({
+      messages: [...state.messages, message]
+    })),
+
+  setMessages: (messages) => set({ messages }),
+
+  setLoading: (isLoading) => set({ isLoading }),
+
+  setError: (error) => set({ error }),
+
+  clearError: () => set({ error: null }),
+
+  setConversationId: (conversationId) => set({ conversationId }),
+
+  clearChat: () =>
+    set({
+      messages: [],
+      conversationId: null,
+      error: null
+    })
+}));
+```
+
+### 6. Backend Chat Controller
+
+```typescript
+// backend/src/controllers/chat.controller.ts
+import { Request, Response } from 'express';
+import { ChatService } from '../services/chat.service';
+import { ContextService } from '../services/context.service';
+import { validateMessage } from '../utils/validators';
+
+export class ChatController {
+  private chatService: ChatService;
+  private contextService: ContextService;
+
+  constructor() {
+    this.chatService = new ChatService();
+    this.contextService = new ContextService();
+  }
+
+  async sendMessage(req: Request, res: Response) {
+    try {
+      const { content, conversationId, userId } = req.body;
+
+      // Validate input
+      const validation = validateMessage({ content });
+      if (!validation.valid) {
+        return res.status(400).json({
+          error: 'Validation failed',
+          details: validation.errors
+        });
+      }
+
+      // Get or create conversation
+      let conversation = conversationId
+        ? await this.chatService.getConversation(conversationId)
+        : await this.chatService.createConversation(userId);
+
+      // Get conversation context
+      const context = await this.contextService.getContext(
+        conversation.id,
+        10 // last 10 messages
+      );
+
+      // Generate AI response
+      const aiResponse = await this.chatService.generateResponse({
+        userMessage: content,
+        context,
+        conversationId: conversation.id,
+        userId
+      });
+
+      // Save messages to database
+      await this.chatService.saveMessage({
+        conversationId: conversation.id,
+        role: 'user',
+        content
+      });
+
+      await this.chatService.saveMessage({
+        conversationId: conversation.id,
+        role: 'assistant',
+        content: aiResponse.content,
+        metadata: aiResponse.metadata
+      });
+
+      res.json({
+        message: {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: aiResponse.content,
+          timestamp: new Date().toISOString(),
+          metadata: aiResponse.metadata
+        },
+        conversationId: conversation.id
+      });
+    } catch (error) {
+      console.error('Error in sendMessage:', error);
+      res.status(500).json({
+        error: 'Failed to process message',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  async getConversation(req: Request, res: Response) {
+    try {
+      const { conversationId } = req.params;
+      const { userId } = req.query;
+
+      const conversation = await this.chatService.getConversation(
+        conversationId,
+        userId as string
+      );
+
+      if (!conversation) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+
+      res.json(conversation);
+    } catch (error) {
+      console.error('Error in getConversation:', error);
+      res.status(500).json({
+        error: 'Failed to fetch conversation'
+      });
+    }
+  }
+
+  async getConversations(req: Request, res: Response) {
+    try {
+      const { userId } = req.query;
+
+      if (!userId) {
+        return res.status(400).json({ error: 'userId is required' });
+      }
+
+      const conversations = await this.chatService.getUserConversations(
+        userId as string
+      );
+
+      res.json(conversations);
+    } catch (error) {
+      console.error('Error in getConversations:', error);
+      res.status(500).json({
+        error: 'Failed to fetch conversations'
+      });
+    }
+  }
+}
+```
+
+### 7. AI Service Implementation
+
+```typescript
+// backend/src/services/ai.service.ts
+import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
+import { ChatService } from './chat.service';
+
+interface AIResponse {
+  content: string;
+  metadata?: {
+    model?: string;
+    tokens?: number;
+    sources?: string[];
+    reasoning?: string;
+  };
+}
+
+export class AIService {
+  private openai: OpenAI | null = null;
+  private anthropic: Anthropic | null = null;
+  private provider: 'openai' | 'anthropic' | 'local';
+
+  constructor() {
+    this.provider = (process.env.AI_PROVIDER || 'openai') as 'openai' | 'anthropic' | 'local';
+    
+    if (process.env.OPENAI_API_KEY) {
+      this.openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+      });
+    }
+
+    if (process.env.ANTHROPIC_API_KEY) {
+      this.anthropic = new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY
+      });
+    }
+  }
+
+  async generateResponse(params: {
+    userMessage: string;
+    context: Array<{ role: string; content: string }>;
+    systemPrompt?: string;
+    temperature?: number;
+    maxTokens?: number;
+  }): Promise<AIResponse> {
+    const {
+      userMessage,
+      context,
+      systemPrompt = 'You are a helpful, harmless, and honest assistant.',
+      temperature = 0.7,
+      maxTokens = 1000
+    } = params;
+
+    switch (this.provider) {
+      case 'openai':
+        return this.generateOpenAIResponse({
+          userMessage,
+          context,
+          systemPrompt,
+          temperature,
+          maxTokens
+        });
+
+      case 'anthropic':
+        return this.generateAnthropicResponse({
+          userMessage,
+          context,
+          systemPrompt,
+          temperature,
+          maxTokens
+        });
+
+      default:
+        throw new Error(`Unsupported AI provider: ${this.provider}`);
+    }
+  }
+
+  private async generateOpenAIResponse(params: {
+    userMessage: string;
+    context: Array<{ role: string; content: string }>;
+    systemPrompt: string;
+    temperature: number;
+    maxTokens: number;
+  }): Promise<AIResponse> {
+    if (!this.openai) {
+      throw new Error('OpenAI client not initialized');
+    }
+
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      { role: 'system', content: params.systemPrompt },
+      ...params.context.map((msg) => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content
+      })),
+      { role: 'user', content: params.userMessage }
+    ];
+
+    const completion = await this.openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
+      messages,
+      temperature: params.temperature,
+      max_tokens: params.maxTokens,
+      stream: false
+    });
+
+    const response = completion.choices[0]?.message?.content || '';
+
+    return {
+      content: response,
+      metadata: {
+        model: completion.model,
+        tokens: completion.usage?.total_tokens
+      }
+    };
+  }
+
+  private async generateAnthropicResponse(params: {
+    userMessage: string;
+    context: Array<{ role: string; content: string }>;
+    systemPrompt: string;
+    temperature: number;
+    maxTokens: number;
+  }): Promise<AIResponse> {
+    if (!this.anthropic) {
+      throw new Error('Anthropic client not initialized');
+    }
+
+    const messages = params.context
+      .filter((msg) => msg.role !== 'system')
+      .map((msg) => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content
+      }));
+
+    const response = await this.anthropic.messages.create({
+      model: process.env.ANTHROPIC_MODEL || 'claude-3-opus-20240229',
+      max_tokens: params.maxTokens,
+      temperature: params.temperature,
+      system: params.systemPrompt,
+      messages: [
+        ...messages,
+        { role: 'user', content: params.userMessage }
+      ]
+    });
+
+    const content = response.content[0];
+    if (content.type !== 'text') {
+      throw new Error('Unexpected response type from Anthropic');
+    }
+
+    return {
+      content: content.text,
+      metadata: {
+        model: response.model,
+        tokens: response.usage?.input_tokens && response.usage?.output_tokens
+          ? response.usage.input_tokens + response.usage.output_tokens
+          : undefined
+      }
+    };
+  }
+
+  async streamResponse(params: {
+    userMessage: string;
+    context: Array<{ role: string; content: string }>;
+    systemPrompt?: string;
+    onChunk: (chunk: string) => void;
+  }): Promise<void> {
+    // Implementation for streaming responses
+    // This would use the streaming API of the chosen provider
+  }
+}
+```
+
+### 8. Context Service
+
+```typescript
+// backend/src/services/context.service.ts
+import { ChatService } from './chat.service';
+
+export class ContextService {
+  private chatService: ChatService;
+
+  constructor() {
+    this.chatService = new ChatService();
+  }
+
+  async getContext(
+    conversationId: string,
+    messageLimit: number = 10
+  ): Promise<Array<{ role: string; content: string }>> {
+    const messages = await this.chatService.getConversationMessages(
+      conversationId,
+      messageLimit
+    );
+
+    return messages.map((msg) => ({
+      role: msg.role,
+      content: msg.content
+    }));
+  }
+
+  async buildSystemPrompt(
+    conversationId: string,
+    customInstructions?: string
+  ): Promise<string> {
+    const basePrompt = `You are a helpful, harmless, and honest assistant. 
+You provide accurate, helpful responses and admit when you don't know something.`;
+
+    if (customInstructions) {
+      return `${basePrompt}\n\nAdditional instructions: ${customInstructions}`;
+    }
+
+    return basePrompt;
+  }
+
+  async getRelevantContext(
+    userMessage: string,
+    conversationId: string,
+    topK: number = 5
+  ): Promise<Array<{ role: string; content: string; relevance: number }>> {
+    // This could use vector similarity search if you have a knowledge base
+    // For now, return recent messages
+    const messages = await this.getContext(conversationId, topK);
+    return messages.map((msg) => ({
+      ...msg,
+      relevance: 1.0
+    }));
+  }
+}
+```
+
+---
+
+## UI/UX Implementation
+
+### Design System Requirements
+
+1. **Color Palette**
+   - Primary: Blue (#3B82F6)
+   - Secondary: Gray (#6B7280)
+   - Success: Green (#10B981)
+   - Error: Red (#EF4444)
+   - Background: Light Gray (#F9FAFB)
+   - Text: Dark Gray (#111827)
+
+2. **Typography**
+   - Font Family: Inter, system-ui, sans-serif
+   - Message Text: 14px, line-height: 1.5
+   - Headers: 18px, font-weight: 600
+   - Timestamps: 12px, color: #6B7280
+
+3. **Spacing**
+   - Container Padding: 16px
+   - Message Gap: 12px
+   - Input Padding: 12px 16px
+
+4. **Animations**
+   - Message appear: Fade in + slide up (300ms)
+   - Typing indicator: Pulse animation
+   - Button hover: Scale 1.02 (150ms)
+
+### Responsive Design
+
+```css
+/* Mobile-first approach */
+.chat-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 768px) {
+  .chat-container {
+    max-width: 800px;
+    margin: 0 auto;
+    height: calc(100vh - 2rem);
+    margin-top: 1rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+}
+
+@media (min-width: 1024px) {
+  .chat-container {
+    max-width: 1000px;
+  }
+}
+```
+
+### Accessibility Features
+
+1. **Keyboard Navigation**
+   - Tab through messages
+   - Enter to send, Shift+Enter for new line
+   - Escape to close modals
+
+2. **Screen Reader Support**
+   - ARIA labels on all interactive elements
+   - Live regions for new messages
+   - Proper heading hierarchy
+
+3. **Visual Accessibility**
+   - High contrast mode support
+   - Focus indicators
+   - Color-blind friendly palette
+
+---
+
+## Backend Implementation
+
+### API Routes Structure
+
+```typescript
+// backend/src/routes/chat.routes.ts
+import { Router } from 'express';
+import { ChatController } from '../controllers/chat.controller';
+import { authMiddleware } from '../middleware/auth.middleware';
+import { rateLimitMiddleware } from '../middleware/rateLimit.middleware';
+import { validateRequest } from '../middleware/validation.middleware';
+import { z } from 'zod';
+
+const router = Router();
+const chatController = new ChatController();
+
+const sendMessageSchema = z.object({
+  body: z.object({
+    content: z.string().min(1).max(5000),
+    conversationId: z.string().optional(),
+    userId: z.string()
+  })
+});
+
+router.post(
+  '/message',
+  authMiddleware,
+  rateLimitMiddleware(10, 60), // 10 requests per minute
+  validateRequest(sendMessageSchema),
+  chatController.sendMessage.bind(chatController)
+);
+
+router.get(
+  '/conversation/:conversationId',
+  authMiddleware,
+  chatController.getConversation.bind(chatController)
+);
+
+router.get(
+  '/conversations',
+  authMiddleware,
+  chatController.getConversations.bind(chatController)
+);
+
+export default router;
+```
+
+### WebSocket Implementation
+
+```typescript
+// backend/src/services/websocket.service.ts
+import { Server as HTTPServer } from 'http';
+import { Server as SocketServer, Socket } from 'socket.io';
+import { ChatService } from './chat.service';
+import { AIService } from './ai.service';
+
+export class WebSocketService {
+  private io: SocketServer;
+  private chatService: ChatService;
+  private aiService: AIService;
+
+  constructor(httpServer: HTTPServer) {
+    this.io = new SocketServer(httpServer, {
+      cors: {
+        origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+        methods: ['GET', 'POST']
+      }
+    });
+
+    this.chatService = new ChatService();
+    this.aiService = new AIService();
+
+    this.setupConnectionHandlers();
+  }
+
+  private setupConnectionHandlers() {
+    this.io.on('connection', (socket: Socket) => {
+      console.log(`Client connected: ${socket.id}`);
+
+      socket.on('join-conversation', async (conversationId: string) => {
+        socket.join(`conversation-${conversationId}`);
+        console.log(`Socket ${socket.id} joined conversation ${conversationId}`);
+      });
+
+      socket.on('send-message', async (data: {
+        content: string;
+        conversationId?: string;
+        userId: string;
+      }) => {
+        try {
+          // Emit typing indicator
+          socket.emit('typing', { isTyping: true });
+
+          // Get or create conversation
+          let conversation = data.conversationId
+            ? await this.chatService.getConversation(data.conversationId)
+            : await this.chatService.createConversation(data.userId);
+
+          // Get context
+          const context = await this.chatService.getConversationMessages(
+            conversation.id,
+            10
+          );
+
+          // Generate response
+          const aiResponse = await this.aiService.generateResponse({
+            userMessage: data.content,
+            context: context.map((msg) => ({
+              role: msg.role,
+              content: msg.content
+            }))
+          });
+
+          // Save messages
+          await this.chatService.saveMessage({
+            conversationId: conversation.id,
+            role: 'user',
+            content: data.content
+          });
+
+          await this.chatService.saveMessage({
+            conversationId: conversation.id,
+            role: 'assistant',
+            content: aiResponse.content,
+            metadata: aiResponse.metadata
+          });
+
+          // Emit response
+          socket.emit('message', {
+            type: 'message',
+            message: {
+              id: `msg-${Date.now()}`,
+              role: 'assistant',
+              content: aiResponse.content,
+              timestamp: new Date().toISOString(),
+              metadata: aiResponse.metadata
+            },
+            conversationId: conversation.id
+          });
+
+          socket.emit('typing', { isTyping: false });
+        } catch (error) {
+          console.error('Error handling message:', error);
+          socket.emit('error', {
+            message: 'Failed to process message'
+          });
+          socket.emit('typing', { isTyping: false });
+        }
+      });
+
+      socket.on('disconnect', () => {
+        console.log(`Client disconnected: ${socket.id}`);
+      });
+    });
+  }
+
+  getIO(): SocketServer {
+    return this.io;
+  }
+}
+```
+
+### Database Service Layer
+
+```typescript
+// backend/src/services/chat.service.ts
+import { PrismaClient } from '@prisma/client';
+import { Message, Conversation } from '../types';
+
+export class ChatService {
+  private prisma: PrismaClient;
+
+  constructor() {
+    this.prisma = new PrismaClient();
+  }
+
+  async createConversation(userId: string, title?: string): Promise<Conversation> {
+    return await this.prisma.conversation.create({
+      data: {
+        userId,
+        title: title || `Conversation ${new Date().toLocaleDateString()}`
+      }
+    });
+  }
+
+  async getConversation(
+    conversationId: string,
+    userId?: string
+  ): Promise<Conversation | null> {
+    return await this.prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        ...(userId && { userId })
+      },
+      include: {
+        messages: {
+          orderBy: {
+            createdAt: 'asc'
+          }
+        }
+      }
+    });
+  }
+
+  async getUserConversations(userId: string): Promise<Conversation[]> {
+    return await this.prisma.conversation.findMany({
+      where: { userId },
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        _count: {
+          select: { messages: true }
+        }
+      }
+    });
+  }
+
+  async saveMessage(data: {
+    conversationId: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    metadata?: any;
+  }): Promise<Message> {
+    return await this.prisma.message.create({
+      data: {
+        conversationId: data.conversationId,
+        role: data.role,
+        content: data.content,
+        metadata: data.metadata || {}
+      }
+    });
+  }
+
+  async getConversationMessages(
+    conversationId: string,
+    limit: number = 50
+  ): Promise<Message[]> {
+    return await this.prisma.message.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'desc' },
+      take: limit
+    });
+  }
+}
+```
+
+---
+
+## Integration & Deployment
+
+### Environment Variables
+
+```bash
+# .env.example
+# Frontend
+VITE_API_URL=http://localhost:3001
+VITE_WS_URL=ws://localhost:3001
+
+# Backend
+PORT=3001
+NODE_ENV=development
+
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/chatbot_db
+
+# AI Provider
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4-turbo-preview
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-3-opus-20240229
+
+# Authentication
+JWT_SECRET=your-secret-key
+JWT_EXPIRES_IN=7d
+
+# CORS
+FRONTEND_URL=http://localhost:5173
+
+# Redis (optional, for sessions)
+REDIS_URL=redis://localhost:6379
+```
+
+### Docker Configuration
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: chatbot
+      POSTGRES_PASSWORD: chatbot_password
+      POSTGRES_DB: chatbot_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://chatbot:chatbot_password@postgres:5432/chatbot_db
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:3001
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  postgres_data:
+  redis_data:
+```
+
+### Deployment Checklist
+
+1. **Pre-deployment**
+   - [ ] All environment variables set
+   - [ ] Database migrations run
+   - [ ] API keys configured
+   - [ ] CORS settings updated
+   - [ ] Error logging configured
+   - [ ] Rate limiting configured
+
+2. **Security**
+   - [ ] HTTPS enabled
+   - [ ] Authentication implemented
+   - [ ] Input validation on all endpoints
+   - [ ] SQL injection prevention
+   - [ ] XSS protection
+   - [ ] CSRF tokens (if needed)
+
+3. **Performance**
+   - [ ] Database indexes created
+   - [ ] Caching implemented (Redis)
+   - [ ] CDN configured (if needed)
+   - [ ] Image optimization
+   - [ ] Code splitting (frontend)
+
+4. **Monitoring**
+   - [ ] Error tracking (Sentry, etc.)
+   - [ ] Analytics (Google Analytics, etc.)
+   - [ ] Uptime monitoring
+   - [ ] Performance monitoring
+
+---
+
+## Testing & Quality Assurance
+
+### Unit Tests Example
+
+```typescript
+// backend/src/services/__tests__/ai.service.test.ts
+import { AIService } from '../ai.service';
+
+describe('AIService', () => {
+  let aiService: AIService;
+
+  beforeEach(() => {
+    aiService = new AIService();
+  });
+
+  it('should generate a response', async () => {
+    const response = await aiService.generateResponse({
+      userMessage: 'Hello, how are you?',
+      context: [],
+      systemPrompt: 'You are a helpful assistant.'
+    });
+
+    expect(response).toHaveProperty('content');
+    expect(response.content).toBeTruthy();
+    expect(response.metadata).toBeDefined();
+  });
+});
+```
+
+### Integration Tests
+
+```typescript
+// backend/src/__tests__/chat.integration.test.ts
+import request from 'supertest';
+import { app } from '../server';
+
+describe('Chat API', () => {
+  it('POST /api/chat/message - should send a message', async () => {
+    const response = await request(app)
+      .post('/api/chat/message')
+      .set('Authorization', `Bearer ${testToken}`)
+      .send({
+        content: 'Hello',
+        userId: 'test-user-id'
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('message');
+    expect(response.body.message.role).toBe('assistant');
+  });
+});
+```
+
+### E2E Tests (Playwright)
+
+```typescript
+// e2e/chat.spec.ts
+import { test, expect } from '@playwright/test';
+
+test('user can send and receive messages', async ({ page }) => {
+  await page.goto('http://localhost:5173');
+  
+  const input = page.locator('textarea[placeholder*="message"]');
+  await input.fill('Hello, chatbot!');
+  await page.click('button:has-text("Send")');
+
+  await expect(page.locator('.message-bubble').last()).toContainText('Hello');
+  
+  // Wait for AI response
+  await page.waitForSelector('.message-bubble:has-text("Hello")', {
+    state: 'visible',
+    timeout: 10000
+  });
+});
+```
+
+---
+
+## Documentation Requirements
+
+### README.md Template
+
+```markdown
+# Chatbot Application
+
+## Features
+- Real-time messaging with WebSocket support
+- Conversation history
+- Multiple AI provider support (OpenAI, Anthropic)
+- Responsive design
+- Type-safe with TypeScript
+
+## Getting Started
+
+### Prerequisites
+- Node.js 18+
+- PostgreSQL 15+
+- npm or yarn
+
+### Installation
+
+1. Clone the repository
+2. Install dependencies:
+   \`\`\`bash
+   npm install
+   \`\`\`
+
+3. Set up environment variables:
+   \`\`\`bash
+   cp .env.example .env
+   \`\`\`
+
+4. Run database migrations:
+   \`\`\`bash
+   npx prisma migrate dev
+   \`\`\`
+
+5. Start development servers:
+   \`\`\`bash
+   # Backend
+   cd backend && npm run dev
+
+   # Frontend
+   cd frontend && npm run dev
+   \`\`\`
+
+## API Documentation
+
+### POST /api/chat/message
+Send a message to the chatbot.
+
+**Request:**
+\`\`\`json
+{
+  "content": "Hello, how are you?",
+  "conversationId": "optional-conversation-id",
+  "userId": "user-id"
+}
+\`\`\`
+
+**Response:**
+\`\`\`json
+{
+  "message": {
+    "id": "msg-123",
+    "role": "assistant",
+    "content": "I'm doing well, thank you!",
+    "timestamp": "2024-01-01T00:00:00.000Z"
+  },
+  "conversationId": "conv-123"
+}
+\`\`\`
+```
+
+---
+
+## Quick Start Commands
+
+When user says "make a chatbot", execute these steps in order:
+
+1. **Create project structure**
+   ```bash
+   mkdir chatbot-project && cd chatbot-project
+   mkdir -p frontend/src/{components,hooks,store,services,utils,types} backend/src/{routes,controllers,services,middleware,models,utils,config}
+   ```
+
+2. **Initialize frontend (React + Vite)**
+   ```bash
+   cd frontend
+   npm create vite@latest . -- --template react-ts
+   npm install zustand axios date-fns react-markdown react-syntax-highlighter
+   npm install -D tailwindcss postcss autoprefixer
+   npx tailwindcss init -p
+   ```
+
+3. **Initialize backend (Node.js + Express)**
+   ```bash
+   cd ../backend
+   npm init -y
+   npm install express cors dotenv openai @anthropic-ai/sdk prisma @prisma/client socket.io jsonwebtoken bcryptjs zod
+   npm install -D @types/express @types/cors @types/node @types/jsonwebtoken @types/bcryptjs typescript ts-node nodemon
+   ```
+
+4. **Set up Prisma**
+   ```bash
+   npx prisma init
+   # Add schema from above
+   npx prisma migrate dev --name init
+   ```
+
+5. **Create all component files** (use templates above)
+
+6. **Set up environment variables** (use .env.example above)
+
+7. **Create package.json scripts**
+   ```json
+   {
+     "scripts": {
+       "dev": "nodemon src/server.ts",
+       "build": "tsc",
+       "start": "node dist/server.js"
+     }
+   }
+   ```
+
+8. **Test the application**
+   - Start backend: `cd backend && npm run dev`
+   - Start frontend: `cd frontend && npm run dev`
+   - Open browser to `http://localhost:5173`
+
+---
+
+## Design Pattern Variations
+
+### Pattern 1: Simple FAQ Bot
+- Rule-based responses
+- Keyword matching
+- Pre-defined Q&A pairs
+- No AI/LLM required
+
+### Pattern 2: RAG (Retrieval-Augmented Generation) Bot
+- Vector database (Pinecone, Weaviate, Chroma)
+- Document embedding
+- Semantic search
+- LLM for final response generation
+
+### Pattern 3: Multi-Agent Bot
+- Multiple specialized agents
+- Agent orchestration
+- Tool calling
+- Function calling
+
+### Pattern 4: Voice-Enabled Bot
+- Speech-to-text (Whisper, Google Speech)
+- Text-to-speech (ElevenLabs, Azure TTS)
+- Voice activity detection
+- Audio streaming
+
+---
+
+## Advanced Features
+
+### 1. Streaming Responses
+```typescript
+// Implement Server-Sent Events or WebSocket streaming
+async function* streamResponse(prompt: string) {
+  const stream = await openai.chat.completions.create({
+    model: 'gpt-4',
+    messages: [{ role: 'user', content: prompt }],
+    stream: true
+  });
+
+  for await (const chunk of stream) {
+    yield chunk.choices[0]?.delta?.content || '';
+  }
+}
+```
+
+### 2. File Upload Support
+- PDF parsing
+- Image analysis (GPT-4 Vision)
+- Document Q&A
+- Code file analysis
+
+### 3. Function Calling
+- Tool/function definitions
+- LLM decides when to call functions
+- Execute functions and return results
+- Continue conversation with function results
+
+### 4. Memory Management
+- Conversation summarization
+- Long-term memory storage
+- User preference tracking
+- Context window optimization
+
+---
+
+## Final Checklist
+
+When creating a chatbot, ensure:
+
+- [ ] All core components implemented
+- [ ] Database schema created and migrated
+- [ ] API endpoints tested
+- [ ] WebSocket connections working
+- [ ] Error handling in place
+- [ ] Loading states implemented
+- [ ] Responsive design verified
+- [ ] Accessibility features added
+- [ ] Environment variables documented
+- [ ] README with setup instructions
+- [ ] Basic tests written
+- [ ] Security measures implemented
+- [ ] Rate limiting configured
+- [ ] Logging configured
+- [ ] Deployment ready
+
+---
+
+## Conclusion
+
+This guide provides comprehensive instructions for creating chatbots of any design pattern. Follow the steps methodically, adapt the code to your specific requirements, and ensure all security and performance best practices are followed.
+
+When a user requests a chatbot, reference this guide to build a complete, production-ready system that follows their chosen design pattern and includes all necessary features for a modern chatbot application.

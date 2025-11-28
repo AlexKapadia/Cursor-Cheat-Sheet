@@ -1,0 +1,1185 @@
+# Sculptural Luxury Minimal: Source of Truth
+
+> **Design Philosophy:** The website is a gallery. The product is the sculpture.
+
+This document serves as the definitive guide for creating ultra-high-end fashion e-commerce sites inspired by the **Maison Alaïa** aesthetic, with references to **Balenciaga** and **Celine**. Every design decision, component specification, and interaction pattern is documented here to ensure consistency across implementations.
+
+---
+
+## PHASE 1: VISUAL FORENSICS (THE "ALAÏA" DNA)
+
+### 1. The "Anti-Grid" Layout
+
+**Principle:** Reject uniform, predictable grids. Embrace asymmetry and visual rhythm.
+
+**Implementation:**
+- **Masonry/Lookbook Layout:** Mix aspect ratios within a single grid system
+  - **Row 1:** Single column hero image (full-width, variable height)
+  - **Row 2:** Two columns (portrait-oriented images, 1:1.5 or 1:2 aspect ratio)
+  - **Row 3:** Three columns (detail shots, square or 4:3 aspect ratio)
+  - **Row 4:** Return to single column or mix of 2+1 columns
+
+**Technical Specifications:**
+```css
+/* Example Grid Configuration */
+.lookbook-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 2.5rem 2.5rem; /* gap-x-10, gap-y-24 equivalent */
+}
+
+.hero-item {
+  grid-column: 1 / -1; /* Full width */
+}
+
+.portrait-item {
+  grid-column: span 6; /* Two columns */
+}
+
+.detail-item {
+  grid-column: span 4; /* Three columns */
+}
+```
+
+**Visual Rules:**
+- Never use a perfect 4x4 grid
+- Vary image sizes to create visual interest
+- Allow images to "breathe" with generous gaps
+- Maintain consistent vertical rhythm despite varied widths
+
+---
+
+### 2. The Typographic Tension
+
+**Principle:** Create extreme contrast between hierarchy levels. Headings command attention; metadata whispers.
+
+#### Primary Typography (Headings)
+
+**Font Selection:**
+- **Preferred:** Custom sans-serif (e.g., `Proxima Nova`, `Helvetica Now`, `Neue Montreal`, or bespoke "Couture" font)
+- **Fallback:** System sans-serif stack: `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
+
+**Settings:**
+- **Transform:** `text-transform: uppercase`
+- **Tracking:** `letter-spacing: 0.1em` (or `tracking-widest` in Tailwind)
+- **Weight:** `font-weight: 400` (regular) or `500` (medium) — avoid bold
+- **Size:** Variable, typically `2rem` to `4rem` (32px to 64px) for main headings
+
+**Example:**
+```css
+.heading-primary {
+  font-family: 'Proxima Nova', sans-serif;
+  font-size: 3rem; /* 48px */
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+}
+```
+
+#### Secondary Typography (Metadata)
+
+**Font Selection:**
+- **Preferred:** Utilitarian sans-serif (e.g., `Inter`, `System UI`, or monospace for prices)
+- **Monospace Option:** `'SF Mono', 'Monaco', 'Courier New', monospace` for prices/IDs
+
+**Settings:**
+- **Size:** `0.6875rem` (11px) or `0.625rem` (10px) — micro-typography
+- **Weight:** `font-weight: 400` (regular)
+- **Transform:** `text-transform: none` (lowercase or mixed case)
+- **Tracking:** `letter-spacing: 0.02em` (tight)
+
+**Example:**
+```css
+.metadata-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.6875rem; /* 11px */
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+}
+
+.price-text {
+  font-family: 'SF Mono', monospace;
+  font-size: 0.6875rem; /* 11px */
+  font-weight: 400;
+}
+```
+
+**Visual Hierarchy:**
+- Headings: **LARGE, UPPERCASE, WIDE TRACKING**
+- Metadata: **tiny, lowercase, tight tracking**
+- The contrast should feel intentional and dramatic
+
+---
+
+### 3. The "Fog" Interaction
+
+**Principle:** Menus and overlays should feel like they emerge from a mist, not abruptly appear.
+
+**Implementation:**
+- **Backdrop Blur:** Use `backdrop-filter: blur(12px)` or `backdrop-blur-md` (Tailwind)
+- **Background:** Semi-transparent overlay (`rgba(255, 255, 255, 0.8)` on white, `rgba(0, 0, 0, 0.8)` on black)
+- **Animation:** Fade in with blur effect over `0.4s ease-out`
+
+**Technical Specifications:**
+```css
+.curtain-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease-out;
+}
+
+.curtain-menu.active {
+  opacity: 1;
+  pointer-events: all;
+}
+```
+
+**Use Cases:**
+- Full-screen navigation menu
+- Product "Quick View" modals
+- Search overlay
+- Cart drawer (optional)
+
+---
+
+## PHASE 2: THE BASELINE PHYSICS
+
+### 1. Design DNA: "Museum-Quality Commerce"
+
+#### Core Philosophy
+
+**The website is a gallery. The product is the sculpture.**
+
+Every design decision should reinforce this concept:
+- Products are displayed as art objects
+- Navigation is minimal and unobtrusive
+- Commerce elements (prices, buttons) are present but understated
+- The focus is always on the product imagery
+
+#### Color Palette
+
+**Backgrounds:**
+- **Primary:** Stark White `#FFFFFF` (RGB: 255, 255, 255)
+- **Secondary:** Deepest Black `#000000` (RGB: 0, 0, 0)
+- **Rule:** No greys, no off-whites, no gradients
+- **Exception:** Only use greys for subtle borders or dividers (`#E5E5E5` or `#1A1A1A`)
+
+**Text Colors:**
+- **On White:** `#000000` (black)
+- **On Black:** `#FFFFFF` (white)
+- **Accent:** None — maintain monochrome purity
+
+**Implementation:**
+```css
+:root {
+  --color-bg-primary: #FFFFFF;
+  --color-bg-secondary: #000000;
+  --color-text-on-light: #000000;
+  --color-text-on-dark: #FFFFFF;
+  --color-border: #E5E5E5; /* Only for subtle dividers */
+}
+```
+
+#### Whitespace Strategy
+
+**Principle:** "Expensive" padding signals luxury.
+
+**Specifications:**
+- **Product Detail Page:** Minimum `200px` padding around product images
+- **Grid Gaps:** `2.5rem` (40px) horizontal, `6rem` (96px) vertical
+- **Section Spacing:** `12rem` (192px) between major sections
+- **Container Padding:** `5rem` (80px) on desktop, `2rem` (32px) on mobile
+
+**Example:**
+```css
+.product-hero {
+  padding: 12.5rem 12.5rem; /* 200px */
+}
+
+.section-spacing {
+  margin-bottom: 12rem; /* 192px */
+}
+```
+
+---
+
+### 2. Component Requirements (Production Code)
+
+#### The "Lookbook" Grid
+
+**Purpose:** Display products in an editorial, magazine-style layout.
+
+**Grid System:**
+- **Base:** 12-column grid
+- **Breakpoints:**
+  - Mobile: 1 column
+  - Tablet: 2-3 columns
+  - Desktop: 12 columns (flexible spans)
+
+**Item Types:**
+1. **Hero Item:** `grid-column: 1 / -1` (full width)
+2. **Portrait Item:** `grid-column: span 6` (half width, two columns)
+3. **Detail Item:** `grid-column: span 4` (one-third width, three columns)
+4. **Wide Item:** `grid-column: span 8` (two-thirds width)
+
+**Gap Configuration:**
+- **Horizontal:** `2.5rem` (40px) — `gap-x-10` in Tailwind
+- **Vertical:** `6rem` (96px) — `gap-y-24` in Tailwind
+
+**Responsive Behavior:**
+- On mobile, all items become full-width
+- Maintain aspect ratios across breakpoints
+- Use `object-fit: cover` for images to prevent distortion
+
+**Code Example:**
+```jsx
+// React/Next.js Example
+<div className="lookbook-grid grid grid-cols-12 gap-x-10 gap-y-24">
+  <div className="col-span-12">
+    <ProductCard type="hero" />
+  </div>
+  <div className="col-span-6">
+    <ProductCard type="portrait" />
+  </div>
+  <div className="col-span-6">
+    <ProductCard type="portrait" />
+  </div>
+  <div className="col-span-4">
+    <ProductCard type="detail" />
+  </div>
+  <div className="col-span-4">
+    <ProductCard type="detail" />
+  </div>
+  <div className="col-span-4">
+    <ProductCard type="detail" />
+  </div>
+</div>
+```
+
+---
+
+#### The "Invisible" UI
+
+**Principle:** Buttons should not look like buttons. They should feel like text that becomes interactive on hover.
+
+**Base Style:**
+```css
+.invisible-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  position: relative;
+  transition: all 0.3s ease-in-out;
+}
+```
+
+**Hover States:**
+
+**Option 1: Expanding Underline**
+```css
+.invisible-button::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  width: 0;
+  height: 1px;
+  background: currentColor;
+  transform: translateX(-50%);
+  transition: width 0.3s ease-in-out;
+}
+
+.invisible-button:hover::after {
+  width: 100%;
+}
+```
+
+**Option 2: Text Blur**
+```css
+.invisible-button:hover {
+  filter: blur(0.5px);
+  opacity: 0.7;
+}
+```
+
+**Option 3: Underline from Center (Recommended)**
+```css
+.invisible-button {
+  position: relative;
+  display: inline-block;
+}
+
+.invisible-button::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  width: 0;
+  height: 1px;
+  background: currentColor;
+  transform: translateX(-50%);
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.invisible-button:hover::after {
+  width: 100%;
+  left: 0;
+  transform: translateX(0);
+}
+```
+
+**Use Cases:**
+- "Add to Bag" buttons
+- Navigation links
+- "View Details" links
+- Filter toggles
+- "Load More" buttons
+
+---
+
+#### The "Curtain" Menu
+
+**Purpose:** Full-screen navigation that feels like a curtain descending over the content.
+
+**Structure:**
+1. **Trigger:** Hamburger menu icon (minimal, 24px × 24px)
+2. **Overlay:** Full-screen backdrop with blur
+3. **Content:** Centered navigation links (large, uppercase, wide tracking)
+4. **Close:** "X" icon or "Close" text link in top-right corner
+
+**Animation:**
+- **Entry:** Fade in + slide down from top (`translateY(-20px)` to `translateY(0)`)
+- **Exit:** Fade out + slide up
+- **Duration:** `0.4s ease-out`
+
+**Technical Implementation:**
+```jsx
+// React Example with Framer Motion
+import { motion, AnimatePresence } from 'framer-motion';
+
+const CurtainMenu = ({ isOpen, onClose }) => {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="curtain-menu"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+        >
+          <div className="curtain-content">
+            <nav>
+              <a href="/collections">COLLECTIONS</a>
+              <a href="/ready-to-wear">READY TO WEAR</a>
+              <a href="/accessories">ACCESSORIES</a>
+              <a href="/about">ABOUT</a>
+            </nav>
+            <button onClick={onClose} className="close-button">CLOSE</button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+```
+
+**Styling:**
+```css
+.curtain-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.curtain-content nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  text-align: center;
+}
+
+.curtain-content a {
+  font-size: 2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+  color: inherit;
+}
+```
+
+---
+
+### 3. Motion & Interaction Rules
+
+#### Page Transitions (SPA Feel)
+
+**Requirement:** The site must feel like a Single Page Application, even if it's multi-page.
+
+**Implementation:**
+- **Library:** `framer-motion` (React) or `GSAP` (vanilla JS)
+- **Effect:** "Dissolve" (fade) or "Swipe" (horizontal slide)
+- **Duration:** `0.6s ease-in-out`
+- **Easing:** `cubic-bezier(0.4, 0, 0.2, 1)`
+
+**Framer Motion Example:**
+```jsx
+import { motion } from 'framer-motion';
+
+const pageVariants = {
+  initial: { opacity: 0, x: 20 },
+  animate: { opacity: 1, x: 0 },
+  exit: { opacity: 0, x: -20 }
+};
+
+const PageTransition = ({ children }) => {
+  return (
+    <motion.div
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+      transition={{ duration: 0.6, ease: 'easeInOut' }}
+    >
+      {children}
+    </motion.div>
+  );
+};
+```
+
+**Next.js App Router Example:**
+```jsx
+// app/layout.tsx or app/[slug]/page.tsx
+'use client';
+
+import { motion } from 'framer-motion';
+
+export default function Page({ children }) {
+  return (
+    <motion.main
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.6, ease: 'easeInOut' }}
+    >
+      {children}
+    </motion.main>
+  );
+}
+```
+
+---
+
+#### Smooth Scrolling
+
+**Library:** `@studio-freight/lenis`
+
+**Installation:**
+```bash
+npm install @studio-freight/lenis
+```
+
+**Implementation:**
+```jsx
+import Lenis from '@studio-freight/lenis';
+import { useEffect } from 'react';
+
+export default function SmoothScroll({ children }) {
+  useEffect(() => {
+    const lenis = new Lenis({
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      orientation: 'vertical',
+      gestureOrientation: 'vertical',
+      smoothWheel: true,
+      wheelMultiplier: 1,
+      smoothTouch: false,
+      touchMultiplier: 2,
+    });
+
+    function raf(time) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+
+    requestAnimationFrame(raf);
+
+    return () => {
+      lenis.destroy();
+    };
+  }, []);
+
+  return <>{children}</>;
+}
+```
+
+**Configuration:**
+- **Duration:** `1.2s` (slightly slower than default for elegance)
+- **Easing:** Custom easing function for weighted feel
+- **Smooth Wheel:** `true` (enables smooth mouse wheel scrolling)
+- **Touch:** `false` on mobile (prevents lag)
+
+---
+
+#### Parallax Effects
+
+**Principle:** Images move slower than text, creating depth.
+
+**Implementation:**
+```jsx
+import { useScroll, useTransform, motion } from 'framer-motion';
+import { useRef } from 'react';
+
+const ParallaxImage = ({ src, alt }) => {
+  const ref = useRef(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ['start end', 'end start']
+  });
+
+  const y = useTransform(scrollYProgress, [0, 1], ['0%', '50%']);
+
+  return (
+    <motion.div ref={ref} style={{ y }}>
+      <img src={src} alt={alt} />
+    </motion.div>
+  );
+};
+```
+
+**Rules:**
+- **Parallax Amount:** `-20%` to `-50%` (images move up slower than scroll)
+- **Apply Only to Images:** Text should scroll normally
+- **Performance:** Use `will-change: transform` and `transform: translateZ(0)` for GPU acceleration
+- **Mobile:** Disable parallax on mobile devices (performance)
+
+**CSS Optimization:**
+```css
+.parallax-image {
+  will-change: transform;
+  transform: translateZ(0);
+}
+```
+
+---
+
+## PHASE 3: ACCESSIBLE LUXURY
+
+### 1. Typography Accessibility
+
+#### Contrast Ratios
+
+**WCAG 2.1 Requirements:**
+- **Normal Text (under 18px):** Minimum contrast ratio of **4.5:1**
+- **Large Text (18px+ or 14px+ bold):** Minimum contrast ratio of **3:1**
+
+**Challenge:** Micro-typography (10px–11px) is a core aesthetic element but must remain accessible.
+
+**Solutions:**
+
+1. **Increase Contrast for Small Text:**
+   - On white: Use `#000000` (black) — ratio: 21:1 ✅
+   - On black: Use `#FFFFFF` (white) — ratio: 21:1 ✅
+   - **Never use grey text at 10px–11px**
+
+2. **Minimum Size Enforcement:**
+   - **Absolute Minimum:** `0.6875rem` (11px) — never go below this
+   - **Preferred:** `0.75rem` (12px) for better readability
+   - **Body Text:** Always use `1rem` (16px) or larger
+
+3. **Font Weight Adjustment:**
+   - For 11px text, consider `font-weight: 500` (medium) instead of `400` (regular) to improve legibility
+
+**Implementation:**
+```css
+/* Accessible Micro-Typography */
+.metadata-text {
+  font-size: 0.6875rem; /* 11px - absolute minimum */
+  font-weight: 500; /* Medium weight for better contrast */
+  color: #000000; /* Pure black on white */
+  line-height: 1.6; /* Increased line-height for readability */
+}
+
+/* Ensure sufficient contrast */
+@media (prefers-contrast: high) {
+  .metadata-text {
+    font-size: 0.75rem; /* 12px for high contrast mode */
+    font-weight: 600; /* Semi-bold */
+  }
+}
+```
+
+---
+
+#### Relative Units (rem vs px)
+
+**Principle:** Use `rem` units to respect user font size preferences.
+
+**Conversion Guide:**
+- `1rem` = 16px (default browser font size)
+- `0.6875rem` = 11px
+- `0.75rem` = 12px
+- `1rem` = 16px
+- `1.5rem` = 24px
+- `2rem` = 32px
+- `3rem` = 48px
+
+**Implementation:**
+```css
+/* Base font size */
+html {
+  font-size: 16px; /* Base for rem calculations */
+}
+
+/* Use rem for typography */
+.heading-primary {
+  font-size: 3rem; /* 48px */
+}
+
+.metadata-text {
+  font-size: 0.6875rem; /* 11px */
+}
+
+/* Use px only for: */
+/* - Borders (1px, 2px) */
+/* - Shadows */
+/* - Fixed-size icons */
+```
+
+**User Preference Support:**
+```css
+/* Respect user's font size preference */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    font-size: 16px;
+  }
+}
+
+/* Support for users who increase browser font size */
+/* rem units will automatically scale */
+```
+
+---
+
+### 2. Hover Physics for Product Cards
+
+**Principle:** Hover interactions should feel intentional and elegant, not gimmicky.
+
+#### Image Swap (Back View)
+
+**Behavior:** On hover, the primary product image transitions to a secondary view (back, detail, or alternative angle).
+
+**Implementation:**
+```jsx
+// React Example
+import { useState } from 'react';
+
+const ProductCard = ({ primaryImage, secondaryImage, title, price }) => {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <div
+      className="product-card"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div className="product-image-container">
+        <img
+          src={isHovered ? secondaryImage : primaryImage}
+          alt={title}
+          className="product-image"
+        />
+      </div>
+      <div className="product-info">
+        <h3>{title}</h3>
+        <p className="price">{price}</p>
+      </div>
+    </div>
+  );
+};
+```
+
+**CSS Transition:**
+```css
+.product-image-container {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 3 / 4; /* Portrait ratio */
+}
+
+.product-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 0.4s ease-in-out;
+}
+
+/* Alternative: Cross-fade effect */
+.product-image-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url('secondary-image.jpg');
+  opacity: 0;
+  transition: opacity 0.4s ease-in-out;
+}
+
+.product-card:hover .product-image-container::before {
+  opacity: 1;
+}
+```
+
+**Animation Details:**
+- **Duration:** `0.4s ease-in-out`
+- **Effect:** Cross-fade (opacity transition) or slide (transform)
+- **Easing:** `cubic-bezier(0.4, 0, 0.2, 1)`
+
+---
+
+#### Slow Zoom Effect
+
+**Behavior:** On hover, the product image zooms in slowly, revealing texture and detail.
+
+**Implementation:**
+```css
+.product-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1);
+  transition: transform 0.6s ease-out;
+}
+
+.product-card:hover .product-image {
+  transform: scale(1.1); /* 10% zoom */
+}
+```
+
+**Variations:**
+- **Subtle Zoom:** `scale(1.05)` (5% zoom)
+- **Medium Zoom:** `scale(1.1)` (10% zoom)
+- **Strong Zoom:** `scale(1.15)` (15% zoom) — use sparingly
+
+**Combined with Image Swap:**
+```css
+/* Zoom + Image Swap */
+.product-image-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.product-image {
+  transform: scale(1);
+  transition: transform 0.6s ease-out, opacity 0.4s ease-in-out;
+}
+
+.product-card:hover .product-image {
+  transform: scale(1.1);
+  opacity: 0;
+}
+
+.product-card:hover .product-image-secondary {
+  opacity: 1;
+  transform: scale(1.1);
+}
+```
+
+---
+
+#### Accessibility for Hover States
+
+**Keyboard Navigation:**
+- Ensure hover effects are also triggered on `:focus`
+- Use `:focus-visible` to show focus indicators only for keyboard users
+
+**Implementation:**
+```css
+.product-card:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+
+.product-card:focus .product-image,
+.product-card:hover .product-image {
+  transform: scale(1.1);
+}
+```
+
+**Reduced Motion:**
+- Respect `prefers-reduced-motion` media query
+- Disable animations for users who prefer reduced motion
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  .product-image {
+    transition: none;
+  }
+  
+  .product-card:hover .product-image {
+    transform: none;
+  }
+}
+```
+
+**ARIA Labels:**
+```jsx
+<div
+  className="product-card"
+  role="article"
+  aria-label={`Product: ${title}, Price: ${price}`}
+  tabIndex={0}
+>
+  {/* Product content */}
+</div>
+```
+
+---
+
+### 3. Additional Accessibility Considerations
+
+#### Keyboard Navigation
+
+**Requirements:**
+- All interactive elements must be keyboard accessible
+- Logical tab order
+- Visible focus indicators
+- Skip links for main content
+
+**Focus Indicators:**
+```css
+/* Default focus (visible for all users) */
+*:focus {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* Keyboard-only focus (hidden for mouse users) */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+```
+
+**Skip Link:**
+```html
+<a href="#main-content" class="skip-link">Skip to main content</a>
+```
+
+```css
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: #000;
+  color: #fff;
+  padding: 8px;
+  text-decoration: none;
+  z-index: 100;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+```
+
+---
+
+#### Screen Reader Support
+
+**ARIA Attributes:**
+```jsx
+<nav aria-label="Main navigation">
+  <ul>
+    <li><a href="/collections" aria-current="page">Collections</a></li>
+  </ul>
+</nav>
+
+<button aria-label="Add to bag: Black Leather Jacket, €2,500">
+  Add to Bag
+</button>
+
+<img
+  src="product.jpg"
+  alt="Black leather jacket with asymmetrical zipper, front view"
+/>
+```
+
+**Live Regions:**
+```jsx
+<div aria-live="polite" aria-atomic="true" className="sr-only">
+  {cartMessage}
+</div>
+```
+
+---
+
+#### Color and Contrast
+
+**Rules:**
+- Never rely solely on color to convey information
+- Use icons, text, or patterns in addition to color
+- Ensure all interactive elements have sufficient contrast
+
+**Example:**
+```jsx
+// ❌ Bad: Color only
+<span style={{ color: 'red' }}>Out of Stock</span>
+
+// ✅ Good: Color + Text + Icon
+<span aria-label="Out of stock">
+  <Icon name="x" />
+  <span>Out of Stock</span>
+</span>
+```
+
+---
+
+#### Forms and Inputs
+
+**Labels:**
+- Always provide visible labels
+- Use `htmlFor` to associate labels with inputs
+- Provide error messages and instructions
+
+```jsx
+<label htmlFor="email">
+  Email Address
+  <input
+    type="email"
+    id="email"
+    name="email"
+    aria-describedby="email-error"
+    aria-required="true"
+  />
+  <span id="email-error" role="alert" className="error-message">
+    {error}
+  </span>
+</label>
+```
+
+---
+
+#### Responsive Design
+
+**Viewport Meta Tag:**
+```html
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+```
+
+**Flexible Layouts:**
+- Use `rem` and `%` units instead of fixed `px` where possible
+- Test on multiple screen sizes (320px to 2560px+)
+- Ensure touch targets are at least 44px × 44px on mobile
+
+---
+
+#### Testing and Compliance
+
+**WCAG 2.1 Level AA Compliance:**
+- ✅ Contrast ratios: 4.5:1 for normal text, 3:1 for large text
+- ✅ Keyboard navigation for all interactive elements
+- ✅ Screen reader compatibility (test with NVDA, JAWS, VoiceOver)
+- ✅ Focus indicators visible
+- ✅ Alt text for all images
+- ✅ Form labels and error messages
+- ✅ No autoplay for videos/audio
+- ✅ Responsive design
+
+**Testing Tools:**
+- **Automated:** WAVE, axe DevTools, Lighthouse
+- **Manual:** Keyboard navigation, screen reader testing
+- **User Testing:** Test with users who have disabilities
+
+---
+
+## PHASE 4: TECHNICAL IMPLEMENTATION
+
+### 1. Technology Stack Recommendations
+
+**Framework:**
+- **React/Next.js** (recommended for SPA feel)
+- **Vue/Nuxt** (alternative)
+- **Svelte/SvelteKit** (lightweight option)
+
+**Styling:**
+- **Tailwind CSS** (utility-first, fast development)
+- **CSS Modules** (scoped styles)
+- **Styled Components** (component-level styling)
+
+**Animation:**
+- **Framer Motion** (React) — page transitions, hover effects
+- **GSAP** (vanilla JS) — complex animations
+- **@studio-freight/lenis** — smooth scrolling
+
+**Image Optimization:**
+- **Next.js Image** component (automatic optimization)
+- **Cloudinary** or **ImageKit** (CDN with transformations)
+
+---
+
+### 2. Performance Optimization
+
+**Image Loading:**
+- Use `loading="lazy"` for below-the-fold images
+- Implement progressive image loading (blur placeholder)
+- Serve WebP format with fallbacks
+
+**Code Splitting:**
+- Lazy load components and routes
+- Split vendor bundles
+- Use dynamic imports for heavy libraries
+
+**Font Loading:**
+```html
+<link rel="preload" href="/fonts/proxima-nova.woff2" as="font" type="font/woff2" crossorigin />
+```
+
+```css
+@font-face {
+  font-family: 'Proxima Nova';
+  src: url('/fonts/proxima-nova.woff2') format('woff2');
+  font-display: swap; /* Prevents FOIT */
+}
+```
+
+---
+
+### 3. Browser Support
+
+**Target Browsers:**
+- Chrome/Edge (latest 2 versions)
+- Firefox (latest 2 versions)
+- Safari (latest 2 versions)
+- Mobile Safari (iOS 14+)
+- Chrome Mobile (Android 10+)
+
+**Polyfills:**
+- `backdrop-filter` — use `-webkit-backdrop-filter` for Safari
+- `CSS Grid` — fully supported in target browsers
+- `rem` units — fully supported
+
+---
+
+## PHASE 5: DESIGN TOKENS
+
+### Color Tokens
+```css
+:root {
+  --color-bg-primary: #FFFFFF;
+  --color-bg-secondary: #000000;
+  --color-text-on-light: #000000;
+  --color-text-on-dark: #FFFFFF;
+  --color-border: #E5E5E5;
+}
+```
+
+### Typography Tokens
+```css
+:root {
+  --font-primary: 'Proxima Nova', -apple-system, sans-serif;
+  --font-secondary: 'Inter', -apple-system, sans-serif;
+  --font-mono: 'SF Mono', 'Monaco', monospace;
+  
+  --font-size-xs: 0.6875rem; /* 11px */
+  --font-size-sm: 0.75rem; /* 12px */
+  --font-size-base: 1rem; /* 16px */
+  --font-size-lg: 1.5rem; /* 24px */
+  --font-size-xl: 2rem; /* 32px */
+  --font-size-2xl: 3rem; /* 48px */
+  --font-size-3xl: 4rem; /* 64px */
+  
+  --letter-spacing-tight: 0.02em;
+  --letter-spacing-wide: 0.1em;
+  
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.6;
+}
+```
+
+### Spacing Tokens
+```css
+:root {
+  --spacing-xs: 0.5rem; /* 8px */
+  --spacing-sm: 1rem; /* 16px */
+  --spacing-md: 2rem; /* 32px */
+  --spacing-lg: 3rem; /* 48px */
+  --spacing-xl: 5rem; /* 80px */
+  --spacing-2xl: 12.5rem; /* 200px */
+  --spacing-3xl: 12rem; /* 192px */
+  
+  --gap-grid-x: 2.5rem; /* 40px */
+  --gap-grid-y: 6rem; /* 96px */
+}
+```
+
+### Animation Tokens
+```css
+:root {
+  --duration-fast: 0.2s;
+  --duration-normal: 0.4s;
+  --duration-slow: 0.6s;
+  
+  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-in-out: ease-in-out;
+  --easing-out: ease-out;
+}
+```
+
+---
+
+## CONCLUSION
+
+This document serves as the **Source of Truth** for creating luxury fashion e-commerce sites that embody the **Maison Alaïa** aesthetic. Every design decision, from typography to hover effects, should reference this document to ensure consistency and quality.
+
+**Key Principles to Remember:**
+1. **The website is a gallery. The product is the sculpture.**
+2. **Extreme typographic contrast** (large uppercase headings, tiny metadata)
+3. **Anti-grid layouts** (masonry, varied aspect ratios)
+4. **Invisible UI** (text links, not buttons)
+5. **Fog interactions** (blur effects for menus/overlays)
+6. **Accessible luxury** (WCAG compliance without sacrificing aesthetics)
+7. **Elegant motion** (slow, intentional animations)
+
+**When in doubt, choose:**
+- **Less over more**
+- **Silence over noise**
+- **Whitespace over clutter**
+- **Subtlety over spectacle**
+
+---
+
+*Last Updated: 2024*
+*Version: 1.0*

@@ -1,0 +1,1154 @@
+# Decision Logic Engine Architecture
+
+**Source of Truth Documentation**
+
+> **The Graph Rule:** This system is NOT an array of questions. It is a **Graph** of Nodes (Questions) and Edges (Transitions) with reactive pathing based on accumulated context.
+
+---
+
+## Table of Contents
+
+1. [Core Architecture](#core-architecture)
+2. [Data Structure (JSON Logic)](#data-structure-json-logic)
+3. [Inference Engine](#inference-engine)
+4. [Frontend UX (Wizard Interface)](#frontend-ux-wizard-interface)
+5. [React Hooks & State Management](#react-hooks--state-management)
+6. [Input Types Schema](#input-types-schema)
+7. [Safety & Validation](#safety--validation)
+8. [Implementation Examples](#implementation-examples)
+
+---
+
+## Core Architecture
+
+### The "Context" Accumulator
+
+**Critical Principle:** Maintain a global `context` object that stores every answer. This context is the source of truth for all conditional logic.
+
+```typescript
+interface Context {
+  [key: string]: any; // Dynamic key-value pairs
+  // Examples:
+  // "has_fever": true
+  // "pain_level": 8
+  // "selected_symptoms": ["cough", "headache"]
+  // "flu_score": 15
+  // "hardware_failure_score": 0
+}
+```
+
+### Reactive Pathing
+
+The "Next Question" is **not hardcoded**. It is calculated dynamically:
+
+```
+next_node = f(current_node, context)
+```
+
+Where `f` is the inference engine that evaluates all outgoing edges from the current node against the accumulated context.
+
+---
+
+## Data Structure (JSON Logic)
+
+### Schema: NoSQL/JSONB Preferred
+
+#### 1. Workflows Collection
+
+```typescript
+interface Workflow {
+  id: string;                    // UUID
+  title: string;                 // "Hardware Diagnostic"
+  description?: string;
+  initial_node_id: string;       // Entry point
+  version: number;               // For versioning
+  created_at: timestamp;
+  updated_at: timestamp;
+  metadata?: {
+    category?: string;
+    tags?: string[];
+  };
+}
+```
+
+#### 2. Nodes Collection
+
+```typescript
+interface Node {
+  id: string;                    // UUID
+  workflow_id: string;           // Foreign key
+  type: 'question' | 'logic' | 'result';
+  content: string;               // Markdown supported
+  metadata: NodeMetadata;
+  position?: { x: number; y: number }; // For visual editor
+}
+
+interface NodeMetadata {
+  input_type?: InputType;        // See Input Types Schema
+  required?: boolean;
+  validation_rules?: ValidationRule[];
+  scoring?: ScoringRule[];       // For weighted scoring
+  display_options?: {
+    show_progress?: boolean;
+    allow_skip?: boolean;
+  };
+}
+```
+
+#### 3. Edges Collection (The Logic)
+
+```typescript
+interface Edge {
+  id: string;                    // UUID
+  source_node_id: string;
+  target_node_id: string;
+  condition: string;             // JSON Logic expression (serialized)
+  priority?: number;             // For multiple matching edges
+  metadata?: {
+    label?: string;              // For visual editor
+    description?: string;
+  };
+}
+
+// Example conditions (JSON Logic format):
+// "answer >= 5"
+// "has_symptom('fever')"
+// "flu_score > 20 && pain_level > 7"
+// "selected_symptoms.length > 2"
+```
+
+#### 4. Session State
+
+```typescript
+interface Session {
+  id: string;                    // UUID
+  user_id?: string;              // Optional authentication
+  workflow_id: string;
+  current_node_id: string;
+  history: HistoryEntry[];       // For "Back" functionality
+  variables: Context;            // Accumulated answers/context
+  started_at: timestamp;
+  updated_at: timestamp;
+  completed_at?: timestamp;
+  result_node_id?: string;      // Final result
+}
+
+interface HistoryEntry {
+  node_id: string;
+  answer: any;                   // The value provided
+  timestamp: timestamp;
+  edge_taken?: string;          // Which edge was followed
+}
+```
+
+---
+
+## Inference Engine
+
+### The Evaluator Function
+
+**Pure Function:** `getNextNode(currentNode, context)`
+
+```typescript
+import jsonLogic from 'json-logic-js';
+
+/**
+ * Evaluates all outgoing edges from the current node
+ * Returns the target node ID of the first matching edge
+ * 
+ * @param currentNode - The current node object
+ * @param context - Accumulated context/answers
+ * @param edges - All edges in the workflow
+ * @returns target_node_id or null if no match
+ */
+function getNextNode(
+  currentNode: Node,
+  context: Context,
+  edges: Edge[]
+): string | null {
+  // 1. Fetch all outgoing edges from currentNode
+  const outgoingEdges = edges.filter(
+    edge => edge.source_node_id === currentNode.id
+  );
+
+  // 2. Sort by priority (if specified)
+  outgoingEdges.sort((a, b) => (a.priority || 0) - (b.priority || 0));
+
+  // 3. Iterate through edges
+  for (const edge of outgoingEdges) {
+    try {
+      // 4. Run JSON Logic evaluation
+      const condition = JSON.parse(edge.condition);
+      const result = jsonLogic.apply(condition, context);
+
+      // 5. Return first matching edge's target
+      if (result === true) {
+        return edge.target_node_id;
+      }
+    } catch (error) {
+      console.error(`Error evaluating edge ${edge.id}:`, error);
+      continue;
+    }
+  }
+
+  // 6. No match found - return default/fallback
+  return null; // Or a designated "fallback_node_id"
+}
+```
+
+### JSON Logic Examples
+
+```javascript
+// Simple comparison
+{ ">=": [{ "var": "pain_level" }, 5] }
+
+// Boolean check
+{ "==": [{ "var": "has_fever" }, true] }
+
+// Array contains
+{ "in": ["cough", { "var": "selected_symptoms" }] }
+
+// Complex AND condition
+{
+  "and": [
+    { ">": [{ "var": "flu_score" }, 20] },
+    { ">": [{ "var": "pain_level" }, 7] }
+  ]
+}
+
+// String matching
+{ "==": [{ "var": "device_type" }, "laptop"] }
+```
+
+### Scoring & Results
+
+#### Weighted Scoring System
+
+```typescript
+interface ScoringRule {
+  variable_name: string;         // e.g., "flu_score"
+  value: number;                  // Points to add/subtract
+  condition?: string;            // Optional: only apply if condition is true
+}
+
+// Example node metadata:
+{
+  "scoring": [
+    {
+      "variable_name": "flu_score",
+      "value": 10,
+      "condition": "answer === true"
+    },
+    {
+      "variable_name": "hardware_failure_score",
+      "value": -5
+    }
+  ]
+}
+```
+
+#### Result Node Rendering
+
+```typescript
+interface ResultNode extends Node {
+  type: 'result';
+  content: string;               // Template string with variables
+  result_categories?: ResultCategory[];
+}
+
+interface ResultCategory {
+  name: string;
+  threshold: number;
+  message: string;
+  recommendations?: string[];
+}
+
+// Example result node content:
+// "Based on your responses, there is a {{flu_score}}% likelihood of flu.
+//  Your pain level is {{pain_level}}/10.
+//  Recommended action: {{recommended_action}}"
+```
+
+**Result Calculation Function:**
+
+```typescript
+function calculateResult(
+  resultNode: ResultNode,
+  context: Context
+): string {
+  let result = resultNode.content;
+
+  // Replace template variables
+  Object.keys(context).forEach(key => {
+    const regex = new RegExp(`{{${key}}}`, 'g');
+    result = result.replace(regex, String(context[key]));
+  });
+
+  // Determine category based on thresholds
+  if (resultNode.result_categories) {
+    for (const category of resultNode.result_categories) {
+      const score = context[category.name] || 0;
+      if (score >= category.threshold) {
+        result += `\n\n${category.message}`;
+        if (category.recommendations) {
+          result += `\n\nRecommendations:\n${category.recommendations.map(r => `- ${r}`).join('\n')}`;
+        }
+        break;
+      }
+    }
+  }
+
+  return result;
+}
+```
+
+---
+
+## Frontend UX (Wizard Interface)
+
+### The "Focused Card" Layout
+
+**Principle:** Never show more than one question at a time. This reduces cognitive load and maintains focus.
+
+#### Component: `WizardContainer`
+
+```typescript
+import { AnimatePresence, motion } from 'framer-motion';
+
+interface WizardContainerProps {
+  currentNode: Node;
+  onAnswer: (answer: any) => void;
+  onBack: () => void;
+  canGoBack: boolean;
+}
+
+const WizardContainer: React.FC<WizardContainerProps> = ({
+  currentNode,
+  onAnswer,
+  onBack,
+  canGoBack
+}) => {
+  return (
+    <div className="wizard-container">
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={currentNode.id}
+          initial={{ opacity: 0, x: 300 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -300 }}
+          transition={{ duration: 0.3, ease: "easeInOut" }}
+          className="wizard-card"
+        >
+          <NodeRenderer
+            node={currentNode}
+            onAnswer={onAnswer}
+            onBack={onBack}
+            canGoBack={canGoBack}
+          />
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+};
+```
+
+**Animation Rules:**
+- **Forward:** New card slides in from Right (`x: 300` → `x: 0`)
+- **Backward:** Old card slides in from Left (`x: -300` → `x: 0`)
+- **Duration:** 300ms with easeInOut
+
+### The "Breadcrumb" Map
+
+**Problem:** A progress bar is insufficient because the path length is unknown.
+
+**Solution:** A "Visual History" sidebar showing the previous 3 steps and their answers, allowing the user to click to jump back and edit.
+
+```typescript
+interface BreadcrumbProps {
+  history: HistoryEntry[];
+  nodes: Map<string, Node>;
+  onJumpToNode: (nodeId: string) => void;
+}
+
+const BreadcrumbMap: React.FC<BreadcrumbProps> = ({
+  history,
+  nodes,
+  onJumpToNode
+}) => {
+  // Show last 3 entries (or all if less than 3)
+  const visibleHistory = history.slice(-3);
+
+  return (
+    <aside className="breadcrumb-sidebar">
+      <h3>Your Path</h3>
+      <ul className="breadcrumb-list">
+        {visibleHistory.map((entry, index) => {
+          const node = nodes.get(entry.node_id);
+          return (
+            <li
+              key={entry.node_id}
+              className="breadcrumb-item clickable"
+              onClick={() => onJumpToNode(entry.node_id)}
+            >
+              <div className="breadcrumb-node">
+                <span className="breadcrumb-number">{index + 1}</span>
+                <div className="breadcrumb-content">
+                  <p className="breadcrumb-question">
+                    {node?.content.substring(0, 50)}...
+                  </p>
+                  <p className="breadcrumb-answer">
+                    {formatAnswer(entry.answer)}
+                  </p>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </aside>
+  );
+};
+```
+
+---
+
+## React Hooks & State Management
+
+### The "History Stack" Hook: `useGraphTraversal`
+
+**Critical Feature:** Handles the "Invalidation" problem. If the user goes back to Q2 and changes Yes to No, all answers for Q3, Q4, Q5 must be deleted.
+
+```typescript
+import { useState, useCallback, useMemo } from 'react';
+
+interface UseGraphTraversalOptions {
+  workflow: Workflow;
+  nodes: Node[];
+  edges: Edge[];
+  initialContext?: Context;
+}
+
+interface UseGraphTraversalReturn {
+  currentNode: Node | null;
+  context: Context;
+  history: HistoryEntry[];
+  canGoBack: boolean;
+  answerQuestion: (answer: any) => void;
+  goBack: () => void;
+  jumpToNode: (nodeId: string) => void;
+  reset: () => void;
+  isComplete: boolean;
+}
+
+export function useGraphTraversal({
+  workflow,
+  nodes,
+  edges,
+  initialContext = {}
+}: UseGraphTraversalOptions): UseGraphTraversalReturn {
+  // State
+  const [currentNodeId, setCurrentNodeId] = useState<string>(
+    workflow.initial_node_id
+  );
+  const [context, setContext] = useState<Context>(initialContext);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+
+  // Memoized node map for O(1) lookup
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, Node>();
+    nodes.forEach(node => map.set(node.id, node));
+    return map;
+  }, [nodes]);
+
+  // Get current node
+  const currentNode = nodeMap.get(currentNodeId) || null;
+
+  // Check if we've reached a result node
+  const isComplete = currentNode?.type === 'result';
+
+  // Can go back if history has entries
+  const canGoBack = history.length > 0;
+
+  /**
+   * Answer a question and move forward
+   */
+  const answerQuestion = useCallback((answer: any) => {
+    if (!currentNode) return;
+
+    // 1. Update context with the answer
+    const answerKey = currentNode.metadata?.answer_key || `answer_${currentNode.id}`;
+    const newContext = {
+      ...context,
+      [answerKey]: answer
+    };
+
+    // 2. Apply scoring rules if present
+    if (currentNode.metadata?.scoring) {
+      currentNode.metadata.scoring.forEach(rule => {
+        const shouldApply = !rule.condition || 
+          jsonLogic.apply(JSON.parse(rule.condition), { answer, ...newContext });
+        
+        if (shouldApply) {
+          const currentScore = newContext[rule.variable_name] || 0;
+          newContext[rule.variable_name] = currentScore + rule.value;
+        }
+      });
+    }
+
+    // 3. Add to history
+    const historyEntry: HistoryEntry = {
+      node_id: currentNode.id,
+      answer,
+      timestamp: new Date().toISOString()
+    };
+    const newHistory = [...history, historyEntry];
+
+    // 4. Calculate next node
+    const nextNodeId = getNextNode(currentNode, newContext, edges);
+
+    // 5. Update state
+    setContext(newContext);
+    setHistory(newHistory);
+    
+    if (nextNodeId) {
+      setCurrentNodeId(nextNodeId);
+    } else {
+      // No next node - workflow complete or error
+      console.warn('No next node found for current context');
+    }
+  }, [currentNode, context, edges]);
+
+  /**
+   * Go back one step
+   * CRITICAL: This invalidates all subsequent answers
+   */
+  const goBack = useCallback(() => {
+    if (history.length === 0) return;
+
+    // 1. Remove last history entry
+    const newHistory = history.slice(0, -1);
+    const lastEntry = history[history.length - 1];
+
+    // 2. Rebuild context from remaining history
+    // This is the "invalidation" - we remove all answers after the point we're going back to
+    const rebuiltContext = { ...initialContext };
+    newHistory.forEach(entry => {
+      const node = nodeMap.get(entry.node_id);
+      if (node) {
+        const answerKey = node.metadata?.answer_key || `answer_${node.id}`;
+        rebuiltContext[answerKey] = entry.answer;
+      }
+    });
+
+    // 3. Recalculate scores based on remaining answers
+    // (This would need a more sophisticated scoring recalculation in production)
+
+    // 4. Set current node to the previous one
+    const previousNodeId = newHistory.length > 0 
+      ? newHistory[newHistory.length - 1].node_id
+      : workflow.initial_node_id;
+
+    setContext(rebuiltContext);
+    setHistory(newHistory);
+    setCurrentNodeId(previousNodeId);
+  }, [history, nodeMap, workflow.initial_node_id, initialContext]);
+
+  /**
+   * Jump to a specific node in history
+   * CRITICAL: Invalidates all answers after that point
+   */
+  const jumpToNode = useCallback((nodeId: string) => {
+    // Find the index of this node in history
+    const targetIndex = history.findIndex(entry => entry.node_id === nodeId);
+    if (targetIndex === -1) return;
+
+    // 1. Truncate history to this point
+    const newHistory = history.slice(0, targetIndex + 1);
+
+    // 2. Rebuild context
+    const rebuiltContext = { ...initialContext };
+    newHistory.forEach(entry => {
+      const node = nodeMap.get(entry.node_id);
+      if (node) {
+        const answerKey = node.metadata?.answer_key || `answer_${node.id}`;
+        rebuiltContext[answerKey] = entry.answer;
+      }
+    });
+
+    // 3. Update state
+    setContext(rebuiltContext);
+    setHistory(newHistory);
+    setCurrentNodeId(nodeId);
+  }, [history, nodeMap, initialContext]);
+
+  /**
+   * Reset to initial state
+   */
+  const reset = useCallback(() => {
+    setCurrentNodeId(workflow.initial_node_id);
+    setContext(initialContext);
+    setHistory([]);
+  }, [workflow.initial_node_id, initialContext]);
+
+  return {
+    currentNode,
+    context,
+    history,
+    canGoBack,
+    answerQuestion,
+    goBack,
+    jumpToNode,
+    reset,
+    isComplete
+  };
+}
+```
+
+---
+
+## Input Types Schema
+
+### Supported Input Types
+
+```typescript
+type InputType = 
+  | 'boolean'
+  | 'scale'
+  | 'text'
+  | 'multiselect'
+  | 'slider'
+  | 'image_choice'
+  | 'date'
+  | 'number'
+  | 'textarea';
+
+interface InputMetadata {
+  input_type: InputType;
+  options?: InputOption[];
+  validation?: ValidationRule[];
+  display?: DisplayOptions;
+}
+
+// Boolean
+interface BooleanInput {
+  input_type: 'boolean';
+  labels?: {
+    true: string;  // "Yes"
+    false: string; // "No"
+  };
+  default?: boolean;
+}
+
+// Scale (1-10, 1-5, etc.)
+interface ScaleInput {
+  input_type: 'scale';
+  min: number;
+  max: number;
+  step?: number;
+  labels?: {
+    min: string;
+    max: string;
+    midpoint?: string;
+  };
+  show_numbers?: boolean;
+}
+
+// Text
+interface TextInput {
+  input_type: 'text';
+  placeholder?: string;
+  max_length?: number;
+  pattern?: string; // Regex
+}
+
+// Multi-Select
+interface MultiSelectInput {
+  input_type: 'multiselect';
+  options: Array<{
+    id: string;
+    label: string;
+    value: any;
+    icon?: string;
+  }>;
+  min_selections?: number;
+  max_selections?: number;
+  display_mode?: 'checkbox' | 'chip' | 'card';
+}
+
+// Slider
+interface SliderInput {
+  input_type: 'slider';
+  min: number;
+  max: number;
+  step?: number;
+  unit?: string; // "°F", "kg", etc.
+  show_value?: boolean;
+  marks?: Array<{
+    value: number;
+    label: string;
+  }>;
+}
+
+// Image Choice
+interface ImageChoiceInput {
+  input_type: 'image_choice';
+  options: Array<{
+    id: string;
+    label: string;
+    value: any;
+    image_url: string;
+    description?: string;
+  }>;
+  display_mode?: 'grid' | 'carousel';
+  allow_multiple?: boolean;
+}
+
+// Date
+interface DateInput {
+  input_type: 'date';
+  min_date?: string; // ISO format
+  max_date?: string;
+  format?: string;
+}
+
+// Number
+interface NumberInput {
+  input_type: 'number';
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+}
+
+// Textarea
+interface TextareaInput {
+  input_type: 'textarea';
+  rows?: number;
+  placeholder?: string;
+  max_length?: number;
+}
+```
+
+### Validation Rules
+
+```typescript
+interface ValidationRule {
+  type: 'required' | 'min' | 'max' | 'pattern' | 'custom';
+  value?: any;
+  message: string;
+  validator?: (value: any, context: Context) => boolean;
+}
+```
+
+---
+
+## Safety & Validation
+
+### Cyclic Guard
+
+**Problem:** Prevent infinite loops (A → B → A).
+
+**Solution:** Track visited nodes in the current path and detect cycles.
+
+```typescript
+/**
+ * Detects cycles in the workflow graph
+ * Returns true if a cycle is detected
+ */
+function detectCycles(
+  nodes: Node[],
+  edges: Edge[],
+  startNodeId: string
+): boolean {
+  const visited = new Set<string>();
+  const recursionStack = new Set<string>();
+
+  function dfs(nodeId: string): boolean {
+    if (recursionStack.has(nodeId)) {
+      // Cycle detected
+      return true;
+    }
+
+    if (visited.has(nodeId)) {
+      return false;
+    }
+
+    visited.add(nodeId);
+    recursionStack.add(nodeId);
+
+    // Get all outgoing edges
+    const outgoingEdges = edges.filter(
+      edge => edge.source_node_id === nodeId
+    );
+
+    for (const edge of outgoingEdges) {
+      if (dfs(edge.target_node_id)) {
+        return true;
+      }
+    }
+
+    recursionStack.delete(nodeId);
+    return false;
+  }
+
+  return dfs(startNodeId);
+}
+
+/**
+ * Validates the entire workflow graph
+ */
+function validateWorkflow(workflow: Workflow, nodes: Node[], edges: Edge[]): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // 1. Check for cycles
+  if (detectCycles(nodes, edges, workflow.initial_node_id)) {
+    errors.push('Cycle detected in workflow graph');
+  }
+
+  // 2. Check for orphaned nodes (no incoming or outgoing edges)
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const sourceNodeIds = new Set(edges.map(e => e.source_node_id));
+  const targetNodeIds = new Set(edges.map(e => e.target_node_id));
+
+  nodes.forEach(node => {
+    if (node.id !== workflow.initial_node_id) {
+      if (!targetNodeIds.has(node.id)) {
+        warnings.push(`Node ${node.id} has no incoming edges`);
+      }
+    }
+    if (node.type !== 'result' && !sourceNodeIds.has(node.id)) {
+      warnings.push(`Node ${node.id} has no outgoing edges (dead end)`);
+    }
+  });
+
+  // 3. Check for unreachable nodes
+  const reachable = new Set<string>();
+  function markReachable(nodeId: string) {
+    if (reachable.has(nodeId)) return;
+    reachable.add(nodeId);
+    edges
+      .filter(e => e.source_node_id === nodeId)
+      .forEach(e => markReachable(e.target_node_id));
+  }
+  markReachable(workflow.initial_node_id);
+  
+  nodes.forEach(node => {
+    if (!reachable.has(node.id)) {
+      warnings.push(`Node ${node.id} is unreachable from initial node`);
+    }
+  });
+
+  // 4. Validate JSON Logic conditions
+  edges.forEach(edge => {
+    try {
+      JSON.parse(edge.condition);
+    } catch (e) {
+      errors.push(`Invalid JSON Logic condition in edge ${edge.id}: ${e.message}`);
+    }
+  });
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings
+  };
+}
+
+interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+```
+
+### Runtime Safety Checks
+
+```typescript
+/**
+ * Safe next node calculation with fallback
+ */
+function getNextNodeSafe(
+  currentNode: Node,
+  context: Context,
+  edges: Edge[],
+  fallbackNodeId?: string
+): string | null {
+  const nextNodeId = getNextNode(currentNode, context, edges);
+
+  if (!nextNodeId) {
+    // Log warning
+    console.warn(`No next node found for node ${currentNode.id}`, {
+      context,
+      outgoingEdges: edges.filter(e => e.source_node_id === currentNode.id)
+    });
+
+    // Return fallback or null
+    return fallbackNodeId || null;
+  }
+
+  return nextNodeId;
+}
+```
+
+---
+
+## Implementation Examples
+
+### Complete Example: Hardware Diagnostic Workflow
+
+```typescript
+// Workflow Definition
+const hardwareWorkflow: Workflow = {
+  id: 'hw-diagnostic-001',
+  title: 'Hardware Diagnostic',
+  initial_node_id: 'node-001'
+};
+
+// Nodes
+const nodes: Node[] = [
+  {
+    id: 'node-001',
+    workflow_id: 'hw-diagnostic-001',
+    type: 'question',
+    content: 'Does your device power on?',
+    metadata: {
+      input_type: 'boolean',
+      answer_key: 'powers_on'
+    }
+  },
+  {
+    id: 'node-002',
+    workflow_id: 'hw-diagnostic-001',
+    type: 'question',
+    content: 'On a scale of 1-10, how loud is the fan noise?',
+    metadata: {
+      input_type: 'scale',
+      answer_key: 'fan_noise_level',
+      scoring: [
+        {
+          variable_name: 'hardware_failure_score',
+          value: 5,
+          condition: 'answer >= 7'
+        }
+      ]
+    }
+  },
+  {
+    id: 'node-003',
+    workflow_id: 'hw-diagnostic-001',
+    type: 'question',
+    content: 'Select all symptoms you\'re experiencing:',
+    metadata: {
+      input_type: 'multiselect',
+      answer_key: 'symptoms',
+      options: [
+        { id: 'overheating', label: 'Overheating', value: 'overheating' },
+        { id: 'blue_screen', label: 'Blue Screen', value: 'blue_screen' },
+        { id: 'slow_boot', label: 'Slow Boot', value: 'slow_boot' }
+      ],
+      scoring: [
+        {
+          variable_name: 'hardware_failure_score',
+          value: 10,
+          condition: 'answer.includes("blue_screen")'
+        }
+      ]
+    }
+  },
+  {
+    id: 'node-result',
+    workflow_id: 'hw-diagnostic-001',
+    type: 'result',
+    content: 'Based on your responses, your hardware failure score is {{hardware_failure_score}}.',
+    metadata: {
+      result_categories: [
+        {
+          name: 'hardware_failure_score',
+          threshold: 20,
+          message: 'High likelihood of hardware failure. Recommend professional inspection.',
+          recommendations: [
+            'Back up your data immediately',
+            'Contact technical support',
+            'Avoid heavy usage until inspected'
+          ]
+        },
+        {
+          name: 'hardware_failure_score',
+          threshold: 10,
+          message: 'Moderate risk. Monitor device performance.',
+          recommendations: [
+            'Keep device well-ventilated',
+            'Run diagnostic software'
+          ]
+        }
+      ]
+    }
+  }
+];
+
+// Edges
+const edges: Edge[] = [
+  {
+    id: 'edge-001',
+    source_node_id: 'node-001',
+    target_node_id: 'node-002',
+    condition: JSON.stringify({ "==": [{ "var": "powers_on" }, true] })
+  },
+  {
+    id: 'edge-002',
+    source_node_id: 'node-001',
+    target_node_id: 'node-result',
+    condition: JSON.stringify({ "==": [{ "var": "powers_on" }, false] })
+  },
+  {
+    id: 'edge-003',
+    source_node_id: 'node-002',
+    target_node_id: 'node-003',
+    condition: JSON.stringify({ ">=": [{ "var": "fan_noise_level" }, 5] })
+  },
+  {
+    id: 'edge-004',
+    source_node_id: 'node-002',
+    target_node_id: 'node-result',
+    condition: JSON.stringify({ "<": [{ "var": "fan_noise_level" }, 5] })
+  },
+  {
+    id: 'edge-005',
+    source_node_id: 'node-003',
+    target_node_id: 'node-result',
+    condition: JSON.stringify(true) // Always true - final step
+  }
+];
+```
+
+### Usage in React Component
+
+```typescript
+import { useGraphTraversal } from './hooks/useGraphTraversal';
+
+const DiagnosticWizard: React.FC = () => {
+  const {
+    currentNode,
+    context,
+    history,
+    canGoBack,
+    answerQuestion,
+    goBack,
+    jumpToNode,
+    isComplete
+  } = useGraphTraversal({
+    workflow: hardwareWorkflow,
+    nodes,
+    edges
+  });
+
+  if (isComplete && currentNode?.type === 'result') {
+    return (
+      <ResultDisplay
+        node={currentNode}
+        context={context}
+      />
+    );
+  }
+
+  return (
+    <div className="diagnostic-wizard">
+      <BreadcrumbMap
+        history={history}
+        nodes={nodeMap}
+        onJumpToNode={jumpToNode}
+      />
+      <WizardContainer
+        currentNode={currentNode}
+        onAnswer={answerQuestion}
+        onBack={goBack}
+        canGoBack={canGoBack}
+      />
+    </div>
+  );
+};
+```
+
+---
+
+## Database Schema (PostgreSQL + JSONB)
+
+```sql
+-- Workflows table
+CREATE TABLE workflows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title VARCHAR(255) NOT NULL,
+  description TEXT,
+  initial_node_id UUID NOT NULL,
+  version INTEGER DEFAULT 1,
+  metadata JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Nodes table
+CREATE TABLE nodes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workflow_id UUID REFERENCES workflows(id) ON DELETE CASCADE,
+  type VARCHAR(50) NOT NULL CHECK (type IN ('question', 'logic', 'result')),
+  content TEXT NOT NULL,
+  metadata JSONB NOT NULL,
+  position JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Edges table
+CREATE TABLE edges (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_node_id UUID REFERENCES nodes(id) ON DELETE CASCADE,
+  target_node_id UUID REFERENCES nodes(id) ON DELETE CASCADE,
+  condition TEXT NOT NULL, -- JSON Logic string
+  priority INTEGER DEFAULT 0,
+  metadata JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Sessions table
+CREATE TABLE sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID,
+  workflow_id UUID REFERENCES workflows(id),
+  current_node_id UUID REFERENCES nodes(id),
+  history JSONB NOT NULL DEFAULT '[]',
+  variables JSONB NOT NULL DEFAULT '{}',
+  started_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  completed_at TIMESTAMP
+);
+
+-- Indexes
+CREATE INDEX idx_nodes_workflow ON nodes(workflow_id);
+CREATE INDEX idx_edges_source ON edges(source_node_id);
+CREATE INDEX idx_edges_target ON edges(target_node_id);
+CREATE INDEX idx_sessions_user ON sessions(user_id);
+CREATE INDEX idx_sessions_workflow ON sessions(workflow_id);
+```
+
+---
+
+## Performance Considerations
+
+1. **Edge Evaluation Ordering:** Sort edges by priority to evaluate most specific conditions first.
+2. **Context Caching:** Memoize context calculations to avoid redundant JSON Logic evaluations.
+3. **Lazy Loading:** Load nodes and edges on-demand if workflows are large.
+4. **Session Persistence:** Save session state periodically to allow resume functionality.
+
+---
+
+## Testing Strategy
+
+1. **Unit Tests:** Test `getNextNode` with various context states.
+2. **Integration Tests:** Test full workflow traversal with mock data.
+3. **Cycle Detection Tests:** Verify cyclic guard catches infinite loops.
+4. **History Invalidation Tests:** Verify going back properly removes subsequent answers.
+
+---
+
+**End of Documentation**

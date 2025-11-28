@@ -1,0 +1,866 @@
+# Security & Encryption Engine
+## Source of Truth: Encryption Standards, Data Protection Policies, and Security Headers
+
+> **⚠️ CRITICAL ARCHITECTURE PRINCIPLE: "ZERO TRUST"**
+> 
+> - **Assume Breach:** Design the system assuming the database *will* be leaked. If it is, sensitive columns must be unreadable ciphertext.
+> - **Sanitize Everything:** Never trust input from the client. Validate strict schemas (Zod) before processing.
+> - **Least Privilege:** The API database user should not have `DROP TABLE` permissions.
+
+---
+
+## PHASE 1: CRYPTOGRAPHY STANDARDS (ALGORITHMS)
+
+> **Golden Rule:** Don't roll your own crypto. Use these standards.
+
+### 1.1 Algorithm Selection
+
+#### Symmetric Encryption (Data at Rest/Transit)
+- **Algorithm:** AES-256-GCM (Galois/Counter Mode)
+- **Use Case:** Encrypting sensitive columns like `phone_number`, `address`, `ssn`, `credit_card_number`
+- **Why GCM:** Provides authenticated encryption (confidentiality + integrity) in a single operation
+- **Key Size:** 256 bits (32 bytes)
+- **IV Size:** 12 bytes (96 bits) - recommended for GCM
+
+#### Asymmetric Encryption (Signatures & Key Exchange)
+- **Algorithm:** Ed25519 (Edwards-curve Digital Signature Algorithm)
+- **Use Case:** 
+  - Signing JWTs
+  - Verifying webhook signatures
+  - API authentication tokens
+- **Why Ed25519:** Faster, smaller signatures, and more secure than RSA-2048
+
+#### Password Hashing
+- **Algorithm:** Argon2id
+- **Use Case:** Hashing user passwords before storage
+- **Why Argon2id:** Winner of Password Hashing Competition, resistant to GPU/ASIC attacks
+- **Parameters:**
+  - Memory: 64 MB
+  - Time Cost: 3 iterations
+  - Parallelism: 4 threads
+- **⚠️ NEVER USE:** MD5, SHA1, SHA256 (for passwords), bcrypt (unless Argon2 unavailable)
+
+### 1.2 Key Management
+
+#### The "Master Key" Rule
+
+```typescript
+// ❌ NEVER DO THIS:
+const ENCRYPTION_KEY = "my-secret-key-12345"; // Hardcoded in source
+
+// ✅ CORRECT APPROACH:
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 64) {
+  throw new Error("ENCRYPTION_KEY must be 64 hex characters (32 bytes)");
+}
+```
+
+**Key Storage Strategy:**
+1. **Development:** Store in `.env` file (never commit to git)
+2. **Production:** Use a Key Management Service (KMS)
+   - AWS KMS
+   - Google Cloud Secret Manager
+   - HashiCorp Vault
+   - Azure Key Vault
+
+**Key Generation:**
+```bash
+# Generate a secure 256-bit key (32 bytes = 64 hex characters)
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+#### Key Rotation Strategy
+
+**Rotation Process:**
+1. Generate new encryption key (`ENCRYPTION_KEY_V2`)
+2. Keep old key (`ENCRYPTION_KEY_V1`) in environment
+3. Run migration script to re-encrypt all data:
+   ```sql
+   -- Pseudo-SQL for key rotation
+   UPDATE users 
+   SET phone_number = PGP_SYM_ENCRYPT(
+     PGP_SYM_DECRYPT(phone_number, 'OLD_KEY'),
+     'NEW_KEY'
+   )
+   WHERE phone_number IS NOT NULL;
+   ```
+4. Update application to use `ENCRYPTION_KEY_V2`
+5. After verification period, remove `ENCRYPTION_KEY_V1`
+
+**Key Versioning:**
+- Store key version in encrypted metadata
+- Support multiple key versions during rotation window
+
+---
+
+## PHASE 2: DATABASE HARDENING (POSTGRES / SUPABASE)
+
+> **Goal:** Make the data useless to thieves even if the database is dumped.
+
+### 2.1 Column-Level Encryption (CLE)
+
+**Purpose:** Even if a hacker dumps the SQL database, they cannot read sensitive PII.
+
+**Implementation:** Use PostgreSQL `pgcrypto` extension
+
+#### Setup
+
+```sql
+-- Enable pgcrypto extension
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Example: Encrypted user table
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT NOT NULL UNIQUE,
+  phone_number BYTEA, -- Encrypted column
+  address BYTEA,      -- Encrypted column
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+#### Encryption/Decryption Functions
+
+```sql
+-- Encrypt on INSERT/UPDATE
+INSERT INTO users (email, phone_number, address)
+VALUES (
+  'user@example.com',
+  PGP_SYM_ENCRYPT('+1234567890', current_setting('app.encryption_key')),
+  PGP_SYM_ENCRYPT('123 Main St', current_setting('app.encryption_key'))
+);
+
+-- Decrypt on SELECT
+SELECT 
+  id,
+  email,
+  PGP_SYM_DECRYPT(phone_number, current_setting('app.encryption_key'))::TEXT AS phone_number,
+  PGP_SYM_DECRYPT(address, current_setting('app.encryption_key'))::TEXT AS address
+FROM users
+WHERE id = $1;
+```
+
+**⚠️ Trade-offs:**
+- **Searching/Indexing:** Encrypted columns cannot be indexed or searched efficiently
+- **Solution:** Create a separate searchable hash column (one-way hash for equality checks)
+  ```sql
+  phone_number_hash BYTEA, -- SHA256 hash for searching
+  ```
+
+#### Application-Level Encryption Helper
+
+```typescript
+// lib/encryption.ts
+import crypto from 'crypto';
+
+const ALGORITHM = 'aes-256-gcm';
+const IV_LENGTH = 12; // 96 bits for GCM
+const AUTH_TAG_LENGTH = 16; // 128 bits
+const SALT_LENGTH = 32;
+
+/**
+ * Encrypts text using AES-256-GCM
+ * Returns: iv:authTag:encryptedData (all base64 encoded)
+ */
+export function encrypt(text: string, key: string): string {
+  if (!key || key.length !== 64) {
+    throw new Error('Encryption key must be 64 hex characters (32 bytes)');
+  }
+
+  const keyBuffer = Buffer.from(key, 'hex');
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(ALGORITHM, keyBuffer, iv);
+
+  let encrypted = cipher.update(text, 'utf8', 'base64');
+  encrypted += cipher.final('base64');
+  const authTag = cipher.getAuthTag();
+
+  // Format: iv:authTag:encryptedData
+  return `${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted}`;
+}
+
+/**
+ * Decrypts text using AES-256-GCM
+ * Input format: iv:authTag:encryptedData (all base64 encoded)
+ */
+export function decrypt(encryptedData: string, key: string): string {
+  if (!key || key.length !== 64) {
+    throw new Error('Decryption key must be 64 hex characters (32 bytes)');
+  }
+
+  const parts = encryptedData.split(':');
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted data format');
+  }
+
+  const [ivBase64, authTagBase64, encrypted] = parts;
+  const keyBuffer = Buffer.from(key, 'hex');
+  const iv = Buffer.from(ivBase64, 'base64');
+  const authTag = Buffer.from(authTagBase64, 'base64');
+
+  const decipher = crypto.createDecipheriv(ALGORITHM, keyBuffer, iv);
+  decipher.setAuthTag(authTag);
+
+  let decrypted = decipher.update(encrypted, 'base64', 'utf8');
+  decrypted += decipher.final('utf8');
+
+  return decrypted;
+}
+
+// Usage example:
+// const encrypted = encrypt('+1234567890', process.env.ENCRYPTION_KEY!);
+// const decrypted = decrypt(encrypted, process.env.ENCRYPTION_KEY!);
+```
+
+### 2.2 Row Level Security (RLS) Auditing
+
+**Purpose:** Track all data access and modifications for compliance and security monitoring.
+
+#### Audit Log Table
+
+```sql
+-- Append-only audit log table
+CREATE TABLE audit_logs (
+  id BIGSERIAL PRIMARY KEY,
+  user_id UUID REFERENCES users(id),
+  action TEXT NOT NULL CHECK (action IN ('INSERT', 'UPDATE', 'DELETE', 'SELECT')),
+  table_name TEXT NOT NULL,
+  record_id UUID,
+  old_values JSONB,
+  new_values JSONB,
+  ip_address INET,
+  user_agent TEXT,
+  timestamp TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+-- Prevent deletions (append-only)
+CREATE POLICY audit_logs_no_delete ON audit_logs
+  FOR DELETE
+  USING (false);
+
+-- Index for performance
+CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
+CREATE INDEX idx_audit_logs_table_record ON audit_logs(table_name, record_id);
+CREATE INDEX idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
+```
+
+#### Automatic Audit Trigger
+
+```sql
+-- Generic audit trigger function
+CREATE OR REPLACE FUNCTION audit_trigger_function()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF (TG_OP = 'DELETE') THEN
+    INSERT INTO audit_logs (
+      user_id,
+      action,
+      table_name,
+      record_id,
+      old_values,
+      ip_address
+    ) VALUES (
+      current_setting('app.current_user_id', true)::UUID,
+      'DELETE',
+      TG_TABLE_NAME,
+      OLD.id,
+      to_jsonb(OLD),
+      current_setting('app.client_ip', true)::INET
+    );
+    RETURN OLD;
+  ELSIF (TG_OP = 'UPDATE') THEN
+    INSERT INTO audit_logs (
+      user_id,
+      action,
+      table_name,
+      record_id,
+      old_values,
+      new_values,
+      ip_address
+    ) VALUES (
+      current_setting('app.current_user_id', true)::UUID,
+      'UPDATE',
+      TG_TABLE_NAME,
+      NEW.id,
+      to_jsonb(OLD),
+      to_jsonb(NEW),
+      current_setting('app.client_ip', true)::INET
+    );
+    RETURN NEW;
+  ELSIF (TG_OP = 'INSERT') THEN
+    INSERT INTO audit_logs (
+      user_id,
+      action,
+      table_name,
+      record_id,
+      new_values,
+      ip_address
+    ) VALUES (
+      current_setting('app.current_user_id', true)::UUID,
+      'INSERT',
+      TG_TABLE_NAME,
+      NEW.id,
+      to_jsonb(NEW),
+      current_setting('app.client_ip', true)::INET
+    );
+    RETURN NEW;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Apply trigger to sensitive tables
+CREATE TRIGGER audit_users_trigger
+  AFTER INSERT OR UPDATE OR DELETE ON users
+  FOR EACH ROW
+  EXECUTE FUNCTION audit_trigger_function();
+```
+
+#### Application-Level Audit Context
+
+```typescript
+// lib/db-audit.ts
+import { db } from './db';
+
+export async function setAuditContext(userId: string, ipAddress: string) {
+  await db.query('SET LOCAL app.current_user_id = $1', [userId]);
+  await db.query('SET LOCAL app.client_ip = $1', [ipAddress]);
+}
+
+// Usage in API route:
+// await setAuditContext(req.user.id, req.ip);
+```
+
+---
+
+## PHASE 3: APPLICATION SECURITY (MIDDLEWARE LAYER)
+
+### 3.1 Security Headers (The "Helmet")
+
+**Next.js Middleware Implementation:**
+
+```typescript
+// middleware.ts (Next.js 13+ App Router)
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  const response = NextResponse.next();
+
+  // Generate nonce for CSP
+  const nonce = Buffer.from(crypto.randomBytes(16)).toString('base64');
+  request.headers.set('x-nonce', nonce);
+
+  // Content Security Policy
+  const csp = [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'`, // No 'unsafe-inline'
+    "style-src 'self' 'unsafe-inline'", // CSS-in-JS requires this
+    "img-src 'self' data: https:",
+    "font-src 'self' data:",
+    "connect-src 'self' https://api.example.com",
+    "frame-ancestors 'none'", // Prevents clickjacking
+    "base-uri 'self'",
+    "form-action 'self'",
+    "upgrade-insecure-requests",
+  ].join('; ');
+
+  // Security Headers
+  response.headers.set('Content-Security-Policy', csp);
+  response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  response.headers.set('X-XSS-Protection', '1; mode=block');
+
+  // Remove server information
+  response.headers.delete('X-Powered-By');
+
+  return response;
+}
+
+export const config = {
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+  ],
+};
+```
+
+**For API Routes (Express/Next.js API):**
+
+```typescript
+// lib/security-headers.ts
+import { NextApiResponse } from 'next';
+
+export function setSecurityHeaders(res: NextApiResponse) {
+  const nonce = Buffer.from(crypto.randomBytes(16)).toString('base64');
+  
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: https:",
+    "connect-src 'self'",
+    "frame-ancestors 'none'",
+  ].join('; '));
+  
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  res.removeHeader('X-Powered-By');
+  
+  return nonce;
+}
+```
+
+### 3.2 Input/Output Sanitization
+
+#### Zod Schema Validation
+
+```typescript
+// lib/validation.ts
+import { z } from 'zod';
+
+// Example: User registration schema
+export const RegisterSchema = z.object({
+  email: z.string().email().max(255),
+  password: z.string().min(12).regex(/[A-Z]/, 'Must contain uppercase letter')
+    .regex(/[a-z]/, 'Must contain lowercase letter')
+    .regex(/[0-9]/, 'Must contain number')
+    .regex(/[^A-Za-z0-9]/, 'Must contain special character'),
+  phoneNumber: z.string().regex(/^\+?[1-9]\d{1,14}$/, 'Invalid phone format'),
+  name: z.string().min(1).max(100).regex(/^[a-zA-Z\s'-]+$/, 'Invalid name format'),
+});
+
+// API Route Handler
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  try {
+    // Validate input
+    const validated = RegisterSchema.parse(req.body);
+    
+    // Process validated data...
+    
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      // Generic error - don't leak schema structure
+      return res.status(400).json({ 
+        error: 'Invalid request data',
+        // Only include details in development
+        ...(process.env.NODE_ENV === 'development' && { details: error.errors })
+      });
+    }
+    throw error;
+  }
+}
+```
+
+#### SQL Injection Prevention
+
+**✅ CORRECT: Parameterized Queries**
+
+```typescript
+// Using Prisma (automatic parameterization)
+const user = await prisma.user.findUnique({
+  where: { email: userEmail } // Safe
+});
+
+// Using raw SQL (PostgreSQL)
+const result = await db.query(
+  'SELECT * FROM users WHERE email = $1',
+  [userEmail] // Safe - $1 is parameterized
+);
+```
+
+**❌ NEVER DO THIS:**
+
+```typescript
+// SQL Injection vulnerability
+const query = `SELECT * FROM users WHERE email = '${userEmail}'`; // DANGEROUS!
+```
+
+### 3.3 Session Management
+
+#### Token Strategy
+
+```typescript
+// lib/auth/tokens.ts
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET!;
+const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET!;
+
+// Access Token: Short-lived (15 minutes)
+export function generateAccessToken(userId: string): string {
+  return jwt.sign(
+    { userId, type: 'access' },
+    ACCESS_TOKEN_SECRET,
+    { expiresIn: '15m' }
+  );
+}
+
+// Refresh Token: Long-lived (7 days), stored in HttpOnly cookie
+export function generateRefreshToken(userId: string): string {
+  return jwt.sign(
+    { userId, type: 'refresh', jti: crypto.randomUUID() },
+    REFRESH_TOKEN_SECRET,
+    { expiresIn: '7d' }
+  );
+}
+
+// Set refresh token as HttpOnly cookie
+export function setRefreshTokenCookie(res: NextApiResponse, token: string) {
+  res.setHeader('Set-Cookie', [
+    `refreshToken=${token}; HttpOnly; Secure; SameSite=Strict; Path=/api/auth/refresh; Max-Age=${7 * 24 * 60 * 60}`,
+  ]);
+}
+```
+
+**⚠️ Token Storage Rules:**
+
+- ✅ **Access Token:** Store in memory (React state) or secure cookie
+- ✅ **Refresh Token:** HttpOnly, Secure, SameSite=Strict cookie only
+- ❌ **NEVER:** Store tokens in `localStorage` or `sessionStorage` (XSS vulnerability)
+
+#### Token Refresh Flow
+
+```typescript
+// pages/api/auth/refresh.ts
+import { NextApiRequest, NextApiResponse } from 'next';
+import jwt from 'jsonwebtoken';
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const refreshToken = req.cookies.refreshToken;
+  if (!refreshToken) {
+    return res.status(401).json({ error: 'No refresh token' });
+  }
+
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET!);
+    
+    // Generate new access token
+    const newAccessToken = generateAccessToken(decoded.userId);
+    
+    return res.json({ accessToken: newAccessToken });
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid refresh token' });
+  }
+}
+```
+
+---
+
+## PHASE 4: COMPLIANCE & PRIVACY (GDPR/HIPAA)
+
+### 4.1 The "Right to be Forgotten" (GDPR Article 17)
+
+**Implementation Strategy:**
+
+```typescript
+// lib/gdpr/deletion.ts
+import { db } from '../db';
+import crypto from 'crypto';
+
+export async function deleteUserData(userId: string) {
+  // 1. Soft delete the user record
+  await db.query(
+    `UPDATE users 
+     SET deleted_at = NOW(),
+         email = $1,
+         name = $2,
+         phone_number = NULL,
+         address = NULL
+     WHERE id = $3`,
+    [
+      `deleted_${crypto.randomBytes(16).toString('hex')}@deleted.local`,
+      'Deleted User',
+      userId,
+    ]
+  );
+
+  // 2. Anonymize related records (keep for analytics)
+  await db.query(
+    `UPDATE orders 
+     SET user_id = NULL,
+         shipping_address = NULL,
+         billing_email = NULL
+     WHERE user_id = $1`,
+    [userId]
+  );
+
+  // 3. Log the deletion (for compliance)
+  await db.query(
+    `INSERT INTO gdpr_deletion_logs (user_id, deleted_at, reason)
+     VALUES ($1, NOW(), 'User request')`,
+    [userId]
+  );
+}
+```
+
+**Data Retention Policy:**
+- Keep anonymized analytics data (aggregated metrics)
+- Delete PII after retention period (e.g., 90 days)
+- Maintain audit logs for compliance (with user_id anonymized)
+
+### 4.2 Data Minimization
+
+**Collection Rules:**
+- Only collect data necessary for the service
+- Don't store credit card numbers (use payment processor tokens)
+- Don't log passwords or sensitive data in server logs
+
+**Log Redaction Middleware:**
+
+```typescript
+// lib/logging/redaction.ts
+const SENSITIVE_FIELDS = ['password', 'creditCard', 'ssn', 'cvv', 'token'];
+
+export function redactSensitiveData(obj: any): any {
+  if (typeof obj !== 'object' || obj === null) {
+    return obj;
+  }
+
+  const redacted = { ...obj };
+  
+  for (const key in redacted) {
+    const lowerKey = key.toLowerCase();
+    
+    if (SENSITIVE_FIELDS.some(field => lowerKey.includes(field))) {
+      redacted[key] = '[REDACTED]';
+    } else if (typeof redacted[key] === 'object') {
+      redacted[key] = redactSensitiveData(redacted[key]);
+    }
+  }
+  
+  return redacted;
+}
+
+// Usage in logger
+import { redactSensitiveData } from './lib/logging/redaction';
+
+logger.info('Request received', {
+  body: redactSensitiveData(req.body),
+  headers: redactSensitiveData(req.headers),
+});
+```
+
+---
+
+## PHASE 5: ADVANCED SECURITY PATTERNS
+
+### 5.1 Honeypot Strategy (Bot Detection)
+
+**Purpose:** Detect and block automated bots from submitting forms.
+
+**Implementation:**
+
+```typescript
+// lib/security/honeypot.ts
+import { NextApiRequest, NextApiResponse } from 'next';
+import { rateLimit } from './rate-limit';
+
+// Honeypot field name (should be random/hashed to avoid detection)
+const HONEYPOT_FIELD = 'website_url'; // Looks legitimate but hidden
+
+export function validateHoneypot(req: NextApiRequest): boolean {
+  // If honeypot field is filled, it's a bot
+  if (req.body[HONEYPOT_FIELD] && req.body[HONEYPOT_FIELD].trim() !== '') {
+    // Log the attempt
+    console.warn('Honeypot triggered', {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+      timestamp: new Date().toISOString(),
+    });
+    
+    // Optionally: Ban IP address
+    await banIPAddress(req.ip);
+    
+    return false; // Bot detected
+  }
+  
+  return true; // Human user
+}
+
+// Frontend: Hidden field (CSS hidden, not display:none)
+// <input type="text" name="website_url" tabIndex="-1" autoComplete="off" style="position:absolute;left:-9999px" />
+```
+
+**Enhanced Honeypot with Time-based Detection:**
+
+```typescript
+// Additional bot detection: Form submission speed
+// Humans take at least 3-5 seconds to fill a form
+export function validateFormTiming(formStartTime: number): boolean {
+  const submissionTime = Date.now();
+  const timeSpent = submissionTime - formStartTime;
+  
+  // If form submitted in less than 2 seconds, likely a bot
+  if (timeSpent < 2000) {
+    return false;
+  }
+  
+  return true;
+}
+```
+
+### 5.2 Rate Limiting
+
+```typescript
+// lib/security/rate-limit.ts
+import { LRUCache } from 'lru-cache';
+
+const rateLimitCache = new LRUCache<string, number[]>({
+  max: 500, // Max 500 IPs
+  ttl: 60 * 1000, // 1 minute
+});
+
+export function rateLimit(
+  identifier: string,
+  limit: number = 10,
+  windowMs: number = 60000
+): boolean {
+  const now = Date.now();
+  const timestamps = rateLimitCache.get(identifier) || [];
+  
+  // Remove old timestamps outside the window
+  const validTimestamps = timestamps.filter(ts => now - ts < windowMs);
+  
+  if (validTimestamps.length >= limit) {
+    return false; // Rate limit exceeded
+  }
+  
+  validTimestamps.push(now);
+  rateLimitCache.set(identifier, validTimestamps);
+  
+  return true; // Within rate limit
+}
+
+// Usage in API route
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  
+  if (!rateLimit(ip, 10, 60000)) {
+    return res.status(429).json({ error: 'Too many requests' });
+  }
+  
+  // Process request...
+}
+```
+
+### 5.3 Password Security
+
+```typescript
+// lib/auth/password.ts
+import argon2 from 'argon2';
+
+const ARGON2_OPTIONS = {
+  type: argon2.argon2id,
+  memoryCost: 65536, // 64 MB
+  timeCost: 3,
+  parallelism: 4,
+};
+
+export async function hashPassword(password: string): Promise<string> {
+  return await argon2.hash(password, ARGON2_OPTIONS);
+}
+
+export async function verifyPassword(
+  hashedPassword: string,
+  plainPassword: string
+): Promise<boolean> {
+  try {
+    return await argon2.verify(hashedPassword, plainPassword);
+  } catch (error) {
+    return false;
+  }
+}
+```
+
+---
+
+## PHASE 6: SECURITY CHECKLIST
+
+### Pre-Deployment Checklist
+
+- [ ] All environment variables are set (no hardcoded secrets)
+- [ ] Encryption keys are stored in KMS (production)
+- [ ] Security headers are enabled on all routes
+- [ ] CSP nonces are generated per request
+- [ ] All API routes validate input with Zod
+- [ ] SQL queries use parameterization
+- [ ] Sensitive columns are encrypted at database level
+- [ ] Audit logging is enabled for sensitive tables
+- [ ] Rate limiting is configured
+- [ ] Honeypot fields are added to public forms
+- [ ] Passwords are hashed with Argon2id
+- [ ] Refresh tokens are HttpOnly cookies
+- [ ] Access tokens are short-lived (15 minutes)
+- [ ] GDPR deletion endpoint is implemented
+- [ ] Server logs redact sensitive data
+- [ ] Database user has least privilege (no DROP TABLE)
+- [ ] HTTPS is enforced (HSTS header)
+- [ ] CORS is properly configured
+- [ ] Error messages don't leak internal structure
+
+---
+
+## PHASE 7: MONITORING & ALERTS
+
+### Security Event Monitoring
+
+```typescript
+// lib/security/monitoring.ts
+export enum SecurityEvent {
+  HONEYPOT_TRIGGERED = 'honeypot_triggered',
+  RATE_LIMIT_EXCEEDED = 'rate_limit_exceeded',
+  INVALID_TOKEN = 'invalid_token',
+  SQL_INJECTION_ATTEMPT = 'sql_injection_attempt',
+  UNAUTHORIZED_ACCESS = 'unauthorized_access',
+}
+
+export async function logSecurityEvent(
+  event: SecurityEvent,
+  metadata: Record<string, any>
+) {
+  // Send to security monitoring service (e.g., Sentry, Datadog)
+  console.warn(`[SECURITY] ${event}`, {
+    ...metadata,
+    timestamp: new Date().toISOString(),
+  });
+  
+  // Alert if critical
+  if (event === SecurityEvent.SQL_INJECTION_ATTEMPT) {
+    await sendAlert('Critical security event detected', metadata);
+  }
+}
+```
+
+---
+
+## REFERENCES
+
+- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+- [NIST Cryptographic Standards](https://csrc.nist.gov/publications/detail/sp/800-175b/rev-1/final)
+- [GDPR Compliance Guide](https://gdpr.eu/)
+- [PostgreSQL pgcrypto Documentation](https://www.postgresql.org/docs/current/pgcrypto.html)
+- [Argon2 Specification](https://github.com/P-H-C/phc-winner-argon2)
+
+---
+
+**Last Updated:** 2024
+**Version:** 1.0.0
+**Maintainer:** Security Team

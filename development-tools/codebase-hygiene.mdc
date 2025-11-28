@@ -1,0 +1,697 @@
+# Codebase Hygiene: Source of Truth
+## Strict Governance Layer for Production-Ready Code
+
+> **⚠️ CRITICAL PROTOCOL:** This document is not optional. Every line of code must adhere to these standards. Violations must be refactored immediately, not deferred.
+
+---
+
+## 🚨 THE POST-ACTION PROTOCOL
+
+### The "Janitor" Rule
+After generating any new feature, you **MUST** implicitly run a "Cleanup Cycle" based on these rules. Do not wait for explicit requests.
+
+### The "No-Regret" Policy
+If you encounter old code that violates these rules while editing a file, **REFACTOR IT IMMEDIATELY**. Leave the codebase cleaner than you found it.
+
+---
+
+## PHASE 1: STRUCTURAL INTEGRITY (ANTI-SPAGHETTI RULES)
+
+### 1.1 The "200-Line" Limit
+
+**Rule:** No single file (Component or Logic) should exceed ~200 lines of code.
+
+**Enforcement:**
+- If a file grows beyond 200 lines, you **MUST** automatically split it:
+  - Extract sub-components into generic files (e.g., `CardHeader.tsx`, `ProductCard.tsx`)
+  - Extract logic into custom hooks (e.g., `useProductData.ts`, `useCheckoutFlow.ts`)
+  - Extract constants/types into separate files (e.g., `checkout.constants.ts`, `product.types.ts`)
+  - Extract utility functions into dedicated modules (e.g., `formatPrice.ts`, `validateEmail.ts`)
+
+**Exception:** Type definition files and configuration files may exceed this limit if they are purely declarative.
+
+---
+
+### 1.2 The "Colocation" Strategy
+
+**Rule:** Stop dumping everything into `/components`. Use **Feature Folders** instead.
+
+**Structure:**
+```
+/features
+  /checkout
+    /components      # UI specific to checkout
+      CheckoutForm.tsx
+      PaymentMethod.tsx
+    /hooks           # Logic specific to checkout
+      useCheckoutLogic.ts
+      usePaymentProcessing.ts
+    /lib             # Utilities specific to checkout
+      calculateTotal.ts
+    /types.ts        # Types specific to checkout
+    /schemas.ts      # Zod schemas for checkout
+    /index.ts        # Public API (exports only what's needed)
+  
+  /products
+    /components
+    /hooks
+    /types.ts
+    /index.ts
+```
+
+**Constraints:**
+- Logic that belongs to a feature **MUST** stay in that feature folder
+- Do not pollute the global namespace
+- Only expose what's necessary via `index.ts`
+- Shared/common components go in `/components/ui` or `/components/common`
+
+**Global Components:**
+- `/components/ui` - Reusable UI primitives (Button, Input, Card, etc.)
+- `/components/common` - Shared business components used across features
+- `/components/layout` - Layout components (Header, Footer, Sidebar, etc.)
+
+---
+
+### 1.3 The "Absolute Import" Law
+
+**Rule:** **NEVER** use relative imports like `../../../../components/Button`.
+
+**Enforcement:**
+- **ALWAYS** use path aliases configured in `tsconfig.json` or equivalent:
+  - `@/components/Button`
+  - `@/lib/utils`
+  - `@/features/auth`
+  - `@/hooks/useAuth`
+  - `@/types`
+
+**Bad:**
+```typescript
+import { Button } from '../../../components/ui/Button';
+import { formatDate } from '../../../../lib/utils/date';
+```
+
+**Good:**
+```typescript
+import { Button } from '@/components/ui/Button';
+import { formatDate } from '@/lib/utils/date';
+```
+
+**Configuration Required:**
+Ensure `tsconfig.json` includes:
+```json
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/components/*": ["./src/components/*"],
+      "@/features/*": ["./src/features/*"],
+      "@/lib/*": ["./src/lib/*"],
+      "@/hooks/*": ["./src/hooks/*"],
+      "@/types/*": ["./src/types/*"]
+    }
+  }
+}
+```
+
+---
+
+## PHASE 2: LOGIC & TYPE SAFETY (THE BRAIN)
+
+### 2.1 The "Logic/View" Separation
+
+**Rule:** UI components should contain **ZERO** complex logic.
+
+**Enforcement:**
+- Components should be **presentation-only**
+- All state management, data fetching, and business logic goes into custom hooks
+- Components receive data and callbacks as props
+
+**Bad:**
+```tsx
+// ❌ VIOLATION: Component with complex logic
+const CheckoutPage = () => {
+  const [cart, setCart] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  
+  useEffect(() => {
+    fetchCart().then(setCart).catch(setError);
+  }, []);
+  
+  useEffect(() => {
+    validateCart(cart);
+  }, [cart]);
+  
+  const handleSubmit = async () => {
+    setLoading(true);
+    try {
+      await processPayment(cart);
+      // ... 50 more lines of logic
+    } catch (err) {
+      setError(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  return <form onSubmit={handleSubmit}>...</form>;
+};
+```
+
+**Good:**
+```tsx
+// ✅ CORRECT: Logic extracted to hook
+const CheckoutPage = () => {
+  const { cart, loading, error, submitOrder } = useCheckoutLogic();
+  
+  return <CheckoutForm onSubmit={submitOrder} cart={cart} loading={loading} error={error} />;
+};
+
+// In useCheckoutLogic.ts
+export const useCheckoutLogic = () => {
+  const [cart, setCart] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  
+  // All logic here
+  
+  return { cart, loading, error, submitOrder };
+};
+```
+
+**Action Required:**
+- Before writing JSX, create a `use[Feature].ts` hook for state management
+- Component files should be primarily JSX with minimal inline logic
+- Complex calculations, API calls, and side effects belong in hooks
+
+---
+
+### 2.2 Strict Zod Validation
+
+**Rule:** Never trust data from the API, URL parameters, or user input.
+
+**Enforcement:**
+- Create Zod schemas for **ALL** forms and API responses
+- Infer TypeScript types from Zod schemas
+- Validate at boundaries (API responses, form submissions, URL params)
+- **BAN:** Do not use `any`. Use `unknown` with type guards if necessary
+
+**Implementation Pattern:**
+```typescript
+// schemas.ts
+import { z } from 'zod';
+
+export const ProductSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(255),
+  price: z.number().positive(),
+  category: z.enum(['electronics', 'clothing', 'books']),
+  inStock: z.boolean(),
+});
+
+export const ProductListResponseSchema = z.object({
+  products: z.array(ProductSchema),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+});
+
+// types.ts (inferred from schemas)
+export type Product = z.infer<typeof ProductSchema>;
+export type ProductListResponse = z.infer<typeof ProductListResponseSchema>;
+
+// Usage in API route
+export async function GET(request: Request) {
+  const data = await fetchProducts();
+  const validated = ProductListResponseSchema.parse(data); // Throws if invalid
+  return Response.json(validated);
+}
+
+// Usage in form
+const formSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+});
+
+type FormData = z.infer<typeof formSchema>;
+```
+
+**Validation Points:**
+1. **API Responses:** Validate all incoming data from external APIs
+2. **Form Submissions:** Validate before processing
+3. **URL Parameters:** Validate route params and search params
+4. **Local Storage:** Validate data retrieved from localStorage/sessionStorage
+5. **Environment Variables:** Validate at application startup
+
+**Error Handling:**
+```typescript
+import { ZodError } from 'zod';
+
+try {
+  const validated = ProductSchema.parse(data);
+} catch (error) {
+  if (error instanceof ZodError) {
+    // Handle validation errors gracefully
+    return { success: false, error: error.errors };
+  }
+  throw error;
+}
+```
+
+---
+
+### 2.3 Error Handling Patterns
+
+**Rule:** Do not simply `console.error`. Use standardized error handling.
+
+**Enforcement:**
+
+**Frontend:**
+- Use Error Boundaries for React component errors
+- Use Toast notifications for user-facing errors
+- Log errors to error tracking service (Sentry, LogRocket, etc.)
+- Provide user-friendly error messages
+
+**Backend/Server Actions:**
+- Every Server Action/API route **MUST** return a discriminated union:
+  ```typescript
+  type ActionResult<T> = 
+    | { success: true; data: T }
+    | { success: false; error: string; code?: string };
+  ```
+
+**Implementation:**
+```typescript
+// lib/actions.ts
+export async function createProduct(data: ProductInput): Promise<ActionResult<Product>> {
+  try {
+    const validated = ProductSchema.parse(data);
+    const product = await db.product.create(validated);
+    return { success: true, data: product };
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return { 
+        success: false, 
+        error: 'Invalid product data',
+        code: 'VALIDATION_ERROR'
+      };
+    }
+    return { 
+      success: false, 
+      error: 'Failed to create product',
+      code: 'SERVER_ERROR'
+    };
+  }
+}
+
+// Usage in component
+const { data, error, success } = await createProduct(formData);
+if (!success) {
+  toast.error(error);
+  return;
+}
+// Use data safely
+```
+
+**Error Boundary Example:**
+```tsx
+// components/ErrorBoundary.tsx
+'use client';
+
+export class ErrorBoundary extends React.Component {
+  state = { hasError: false, error: null };
+  
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    logErrorToService(error, errorInfo);
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return <ErrorFallback error={this.state.error} />;
+    }
+    return this.props.children;
+  }
+}
+```
+
+---
+
+## PHASE 3: PERFORMANCE OPTIMIZATION (THE SPEED)
+
+### 3.1 The "Rerender" Audit
+
+**Rule:** Prevent unnecessary re-renders through proper memoization.
+
+**Enforcement:**
+- Wrap event handlers in `useCallback`
+- Wrap expensive computations in `useMemo`
+- Memoize components with `React.memo` when appropriate
+- Ensure parent components memoize objects/arrays passed as props
+
+**Implementation:**
+```tsx
+// ✅ CORRECT: Memoized handlers and computations
+const ProductList = ({ products, onSelect }: Props) => {
+  const sortedProducts = useMemo(
+    () => products.sort((a, b) => a.price - b.price),
+    [products]
+  );
+  
+  const handleSelect = useCallback((id: string) => {
+    onSelect(id);
+  }, [onSelect]);
+  
+  return (
+    <div>
+      {sortedProducts.map(product => (
+        <ProductCard 
+          key={product.id} 
+          product={product} 
+          onSelect={handleSelect}
+        />
+      ))}
+    </div>
+  );
+};
+
+// ✅ CORRECT: Memoized component
+const ProductCard = React.memo(({ product, onSelect }: ProductCardProps) => {
+  return <div onClick={() => onSelect(product.id)}>...</div>;
+});
+
+// ✅ CORRECT: Parent memoizes props
+const Parent = () => {
+  const products = useMemo(() => fetchProducts(), []);
+  const handleSelect = useCallback((id: string) => {
+    // ...
+  }, []);
+  
+  return <ProductList products={products} onSelect={handleSelect} />;
+};
+```
+
+**When to Memoize:**
+- ✅ Lists with 10+ items
+- ✅ Components that receive object/array props
+- ✅ Expensive calculations (filtering, sorting, transformations)
+- ✅ Callbacks passed to child components
+- ❌ Don't memoize primitives (strings, numbers, booleans)
+- ❌ Don't over-memoize (profile first)
+
+---
+
+### 3.2 Bundle Size Management
+
+**Rule:** Minimize bundle size through smart imports and code splitting.
+
+**Enforcement:**
+
+**Import Optimization:**
+```typescript
+// ❌ BAD: Imports entire library
+import { debounce, throttle, memoize } from 'lodash';
+
+// ✅ GOOD: Import specific functions
+import debounce from 'lodash/debounce';
+import throttle from 'lodash/throttle';
+
+// ✅ BETTER: Use lightweight alternatives
+import { debounce } from 'lodash-es/debounce';
+// Or use dedicated libraries: date-fns instead of moment, etc.
+```
+
+**Code Splitting:**
+```tsx
+// ✅ CORRECT: Lazy load heavy components
+import dynamic from 'next/dynamic';
+
+const Chart = dynamic(() => import('@/components/Chart'), {
+  loading: () => <ChartSkeleton />,
+  ssr: false, // If component doesn't need SSR
+});
+
+const Map = dynamic(() => import('@/components/Map'), {
+  loading: () => <MapSkeleton />,
+});
+
+// Usage
+const Dashboard = () => {
+  return (
+    <div>
+      <Chart data={data} />
+      <Map location={location} />
+    </div>
+  );
+};
+```
+
+**Bundle Analysis:**
+- Regularly run bundle analysis (`@next/bundle-analyzer` or `webpack-bundle-analyzer`)
+- Set bundle size budgets
+- Monitor and alert on bundle size increases
+
+---
+
+### 3.3 Server Component Architecture
+
+**Rule:** By default, everything is a Server Component (RSC). Only add `'use client'` at the leaves.
+
+**Enforcement:**
+- Start with Server Components for all pages and layouts
+- Only mark components as `'use client'` when they need:
+  - Event handlers (`onClick`, `onChange`, etc.)
+  - Browser APIs (`window`, `document`, `localStorage`, etc.)
+  - React hooks (`useState`, `useEffect`, etc.)
+  - Context providers/consumers
+
+**Bad:**
+```tsx
+// ❌ VIOLATION: Entire page is client component
+'use client';
+
+export default function ProductsPage() {
+  return (
+    <div>
+      <ProductList />
+      <SearchBar />
+    </div>
+  );
+}
+```
+
+**Good:**
+```tsx
+// ✅ CORRECT: Page is Server Component
+import { ProductList } from '@/features/products/components/ProductList';
+import { SearchBar } from '@/features/products/components/SearchBar';
+
+export default function ProductsPage() {
+  const products = await fetchProducts(); // Server-side data fetching
+  
+  return (
+    <div>
+      <ProductList products={products} />
+      <SearchBar /> {/* This component is 'use client' internally */}
+    </div>
+  );
+}
+
+// SearchBar.tsx (only this needs 'use client')
+'use client';
+
+export function SearchBar() {
+  const [query, setQuery] = useState('');
+  // ...
+}
+```
+
+**Benefits:**
+- Smaller client bundle
+- Faster initial page load
+- Better SEO
+- Reduced client-side JavaScript
+
+---
+
+## PHASE 4: CODE QUALITY CHECKS
+
+### 4.1 TypeScript Strictness
+
+**Rules:**
+- Enable `strict: true` in `tsconfig.json`
+- No `any` types (use `unknown` with type guards)
+- No implicit `any`
+- No unused variables
+- No `@ts-ignore` or `@ts-expect-error` without justification
+
+---
+
+### 4.2 Naming Conventions
+
+**Rules:**
+- Components: PascalCase (`ProductCard.tsx`)
+- Hooks: camelCase starting with `use` (`useProductData.ts`)
+- Utilities: camelCase (`formatPrice.ts`)
+- Constants: UPPER_SNAKE_CASE (`MAX_RETRIES`)
+- Types/Interfaces: PascalCase (`Product`, `UserProfile`)
+- Files: Match the export (Component files = PascalCase, hooks = camelCase)
+
+---
+
+### 4.3 File Organization
+
+**Rules:**
+- One component per file
+- One hook per file (unless closely related)
+- Co-locate related files (component + styles + tests)
+- Use `index.ts` for public APIs only
+
+---
+
+## 🎯 PRE-FLIGHT CHECKLIST
+
+Run this checklist before committing any code. Use the prompt: **"Run the Pre-Flight Check"**
+
+### Structural Checks
+- [ ] No file exceeds 200 lines
+- [ ] Files are organized in feature folders (not dumped in `/components`)
+- [ ] All imports use absolute paths (no `../../`)
+- [ ] Related files are colocated
+
+### Logic & Type Safety
+- [ ] UI components contain no complex logic (extracted to hooks)
+- [ ] All API responses validated with Zod schemas
+- [ ] All forms validated with Zod schemas
+- [ ] No `any` types used
+- [ ] Error handling returns discriminated unions (`{ success: boolean }`)
+
+### Performance
+- [ ] Event handlers wrapped in `useCallback`
+- [ ] Expensive computations wrapped in `useMemo`
+- [ ] Components receiving object/array props are memoized
+- [ ] Heavy components are lazy-loaded
+- [ ] Server Components used by default (`'use client'` only where needed)
+
+### Code Quality
+- [ ] No unused imports
+- [ ] No unused variables
+- [ ] All list items have unique `key` props
+- [ ] No magic numbers (extracted to named constants)
+- [ ] No console.log statements (use proper logging)
+- [ ] No commented-out code (delete it or explain why it's kept)
+
+### Bundle Size
+- [ ] No full library imports (e.g., `import _ from 'lodash'`)
+- [ ] Heavy dependencies are code-split
+- [ ] Bundle size hasn't increased significantly
+
+### Testing
+- [ ] Critical paths have tests
+- [ ] Edge cases are handled
+- [ ] Error states are tested
+
+---
+
+## 🔧 REFACTOR PROMPT
+
+When you need to refactor a file according to these standards, use this prompt:
+
+```
+Refactor this file according to codebase-hygiene.mdc.
+
+Specifically check for:
+1. File length (split if >200 lines)
+2. Logic/View separation (extract logic to hooks)
+3. Absolute imports (no relative paths)
+4. Zod validation (add schemas if missing)
+5. Error handling (use discriminated unions)
+6. Performance (add useCallback/useMemo where needed)
+7. Server Component architecture (remove unnecessary 'use client')
+8. Unused imports/variables
+9. Magic numbers (extract to constants)
+10. Missing keys in lists
+
+Apply the "No-Regret Policy" - fix any violations you find, even if they're in old code.
+```
+
+---
+
+## 📋 QUICK REFERENCE
+
+### File Structure Template
+```
+/features/[feature-name]
+  /components
+    ComponentName.tsx
+  /hooks
+    useFeatureLogic.ts
+  /lib
+    utility.ts
+  /types.ts
+  /schemas.ts
+  /index.ts
+```
+
+### Hook Template
+```typescript
+export const useFeatureLogic = () => {
+  const [state, setState] = useState();
+  
+  const handler = useCallback(() => {
+    // Logic here
+  }, [dependencies]);
+  
+  const computed = useMemo(() => {
+    // Expensive computation
+  }, [dependencies]);
+  
+  return { state, handler, computed };
+};
+```
+
+### Server Action Template
+```typescript
+export async function actionName(input: Input): Promise<ActionResult<Output>> {
+  try {
+    const validated = InputSchema.parse(input);
+    const result = await process(validated);
+    return { success: true, data: result };
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return { success: false, error: 'Validation failed' };
+    }
+    return { success: false, error: 'Operation failed' };
+  }
+}
+```
+
+---
+
+## 🚫 ANTI-PATTERNS (DO NOT DO THIS)
+
+1. ❌ **God Components:** Components that do everything (>200 lines, multiple responsibilities)
+2. ❌ **Prop Drilling:** Passing props through 5+ levels (use Context or state management)
+3. ❌ **Magic Strings:** Hardcoded strings without constants (`'pending'` → `STATUS.PENDING`)
+4. ❌ **Silent Failures:** Catching errors without handling them
+5. ❌ **Duplicate Logic:** Same logic in multiple places (extract to shared utility/hook)
+6. ❌ **Tight Coupling:** Components directly importing from other features (use public APIs via `index.ts`)
+7. ❌ **Premature Optimization:** Adding `useMemo`/`useCallback` everywhere without profiling
+8. ❌ **Any Types:** Using `any` to bypass TypeScript (fix the types instead)
+
+---
+
+## 📝 NOTES
+
+- This document is **living** and should be updated as patterns evolve
+- When in doubt, prioritize **readability** and **maintainability** over cleverness
+- Code reviews should reference this document
+- Violations should be caught in CI/CD pipelines where possible
+
+---
+
+**Last Updated:** [Auto-updated on changes]
+**Version:** 1.0.0

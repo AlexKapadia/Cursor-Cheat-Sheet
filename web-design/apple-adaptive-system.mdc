@@ -1,0 +1,836 @@
+# Apple Adaptive System - Design Physics Engine
+## Source of Truth for Brand-Agnostic Apple Aesthetic
+
+> **Core Philosophy:** "Color is an accent, not a foundation."
+
+This document defines a strict Design Physics Engine that allows input of *any* primary brand color while guaranteeing 100% fidelity to the Apple aesthetic (clean, breathable, premium).
+
+---
+
+## Section 1: The Adaptive Color Engine (The Logic)
+
+### 1.1 CSS Variable System
+
+The system takes a single `--brand-primary` input and derives all other color tokens through mathematical relationships.
+
+#### Base Configuration (Tailwind Config)
+
+```javascript
+// tailwind.config.js
+module.exports = {
+  theme: {
+    extend: {
+      colors: {
+        // Surface Colors (NEVER CHANGE - Immutable)
+        'page-bg': {
+          light: '#F5F5F7',
+          dark: '#000000', // Pure black for high-saturation product pages
+        },
+        'card-bg': {
+          light: '#FFFFFF',
+          dark: '#1D1D1F',
+        },
+        // Adaptive Tokens (Dynamic - Calculated from --brand-primary)
+        'brand': {
+          primary: 'var(--brand-primary)',
+          dark: 'var(--brand-dark)',
+          surface: 'var(--brand-surface)',
+          'gradient-start': 'var(--brand-gradient-start)',
+          'gradient-end': 'var(--brand-gradient-end)',
+        },
+      },
+    },
+  },
+}
+```
+
+#### CSS Variable Definitions (Global Styles)
+
+```css
+:root {
+  /* USER INPUT: Change this value to adapt the entire system */
+  --brand-primary: #0071E3; /* Default: Apple Blue */
+  
+  /* Surface Colors (IMMUTABLE - Never change these) */
+  --bg-page-light: #F5F5F7;
+  --bg-page-dark: #000000;
+  --bg-card-light: #FFFFFF;
+  --bg-card-dark: #1D1D1F;
+  
+  /* Glass Effect (IMMUTABLE) */
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-blur: blur(25px);
+  --glass-saturate: saturate(180%);
+  
+  /* Adaptive Tokens (CALCULATED - Automatically derived from --brand-primary) */
+  --brand-dark: color-mix(in srgb, var(--brand-primary) 90%, black 10%);
+  --brand-surface: color-mix(in srgb, var(--brand-primary) 8%, white 92%);
+  --brand-gradient-start: var(--brand-primary);
+  --brand-gradient-end: color-mix(in srgb, var(--brand-primary) 80%, white 20%);
+  
+  /* Animation Constants */
+  --ease-apple: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring-duration: 0.8s;
+  
+  /* Spacing Constants */
+  --grid-gap: 24px;
+  --section-padding: 120px;
+  --card-padding: 40px;
+  --card-padding-mobile: 32px;
+  
+  /* Border Radius (Super-Ellipse) */
+  --radius-small: 24px;
+  --radius-large: 32px;
+  
+  /* Shadow Constants */
+  --shadow-card: 0 20px 40px -10px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] {
+  --bg-page: var(--bg-page-dark);
+  --bg-card: var(--bg-card-dark);
+}
+
+[data-theme="light"] {
+  --bg-page: var(--bg-page-light);
+  --bg-card: var(--bg-card-light);
+}
+```
+
+#### Color Calculation Examples
+
+```css
+/* Example: If --brand-primary = #FF0000 (Red) */
+/* --brand-dark = color-mix(in srgb, #FF0000 90%, black 10%) */
+/* Result: Darker red (#E60000) for hover states */
+
+/* --brand-surface = color-mix(in srgb, #FF0000 8%, white 92%) */
+/* Result: Very subtle pink tint (#FEF5F5) for card backgrounds */
+
+/* --brand-gradient-end = color-mix(in srgb, #FF0000 80%, white 20%) */
+/* Result: Lighter red (#FF3333) for gradient end */
+```
+
+### 1.2 The "Vibrancy" Rule
+
+**CRITICAL:** The brand color must be used sparingly and strategically.
+
+#### Text Links
+```tsx
+// ✅ CORRECT: Use brand-primary for links
+<a href="#" className="text-[var(--brand-primary)] hover:text-[var(--brand-dark)] transition-colors">
+  Learn more
+</a>
+
+// ❌ WRONG: Never use brand color for body text
+<p className="text-[var(--brand-primary)]">This is wrong</p>
+```
+
+#### Buttons
+```tsx
+// ✅ CORRECT: Solid pills use brand-primary
+<button className="bg-[var(--brand-primary)] text-white px-8 py-3 rounded-full hover:bg-[var(--brand-dark)] transition-all">
+  Get Started
+</button>
+
+// ❌ WRONG: Never use brand color for large backgrounds
+<div className="bg-[var(--brand-primary)]">This is wrong</div>
+```
+
+#### Icons
+```tsx
+// ✅ CORRECT: Icons with slight opacity
+<svg className="w-6 h-6 text-[var(--brand-primary)] opacity-90">
+  {/* icon */}
+</svg>
+```
+
+#### Hero Text (Gradient Keywords)
+```tsx
+// ✅ CORRECT: Only color specific keywords with gradient
+<h1 className="text-[#1D1D1F] text-6xl font-semibold">
+  Build something{' '}
+  <span className="bg-clip-text text-transparent bg-gradient-to-r from-[var(--brand-gradient-start)] to-[var(--brand-gradient-end)]">
+    extraordinary
+  </span>
+</h1>
+
+// ❌ WRONG: Never color entire headline
+<h1 className="text-[var(--brand-primary)]">This is wrong</h1>
+```
+
+---
+
+## Section 2: The Visual Physics (The "Feel")
+
+These rules are **immutable** and apply regardless of the chosen color.
+
+### 2.1 The "Apple Ease" (Animation)
+
+#### Bezier Curve Definition
+```css
+/* The "heavy" feel: fast start, slow end */
+--ease-apple: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+/* Usage in Tailwind */
+.transition-apple {
+  transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+```
+
+#### Scroll Animations (Framer Motion)
+```tsx
+import { motion } from 'framer-motion';
+
+const springConfig = {
+  type: "spring",
+  stiffness: 100,
+  damping: 15,
+  mass: 1,
+};
+
+const fadeInUp = {
+  initial: { y: 30, opacity: 0 },
+  animate: { y: 0, opacity: 1 },
+  transition: {
+    ...springConfig,
+    duration: 0.8,
+  },
+};
+
+// Usage
+<motion.div {...fadeInUp}>
+  Content that springs into place
+</motion.div>
+```
+
+#### Scroll-Triggered Animations (React)
+```tsx
+import { useEffect, useRef } from 'react';
+
+const useScrollAnimation = () => {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('animate-spring-in');
+          }
+        });
+      },
+      { threshold: 0.1 }
+    );
+
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+
+  return ref;
+};
+```
+
+```css
+/* CSS Animation */
+@keyframes spring-in {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-spring-in {
+  animation: spring-in 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+```
+
+### 2.2 The "Super-Ellipse" Border
+
+**CRITICAL:** Never use standard `border-radius`. Always use the super-ellipse values.
+
+```css
+/* Small Cards */
+.card-small {
+  border-radius: var(--radius-small); /* 24px */
+  overflow: hidden; /* REQUIRED: Ensures content snaps to curve */
+}
+
+/* Large Containers */
+.container-large {
+  border-radius: var(--radius-large); /* 32px */
+  overflow: hidden; /* REQUIRED */
+}
+```
+
+```tsx
+// React Component Example
+<div className="rounded-[24px] overflow-hidden bg-[var(--bg-card)] p-[var(--card-padding)]">
+  <img 
+    src="/image.jpg" 
+    alt="Content" 
+    className="w-full h-auto rounded-[24px]" 
+  />
+</div>
+```
+
+### 2.3 The "Breathing Room" (Spacing)
+
+**Philosophy:** Apple design looks expensive because it wastes space.
+
+```css
+/* Grid System */
+.grid-apple {
+  display: grid;
+  gap: var(--grid-gap); /* 24px */
+}
+
+/* Section Spacing */
+.section-apple {
+  padding-top: var(--section-padding); /* 120px */
+  padding-bottom: var(--section-padding); /* 120px */
+}
+
+/* Card Padding */
+.card-apple {
+  padding: var(--card-padding); /* 40px desktop */
+}
+
+@media (max-width: 768px) {
+  .card-apple {
+    padding: var(--card-padding-mobile); /* 32px mobile */
+  }
+}
+```
+
+```tsx
+// Tailwind Classes
+<section className="py-[120px] px-6">
+  <div className="grid grid-cols-1 md:grid-cols-12 gap-6 max-w-7xl mx-auto">
+    {/* Content */}
+  </div>
+</section>
+```
+
+---
+
+## Section 3: Component Requirements
+
+### 3.1 AdaptiveHero.tsx
+
+Production-ready React component with gradient keyword support.
+
+```tsx
+import React from 'react';
+
+interface AdaptiveHeroProps {
+  headline: string;
+  keywords: string[]; // Words to highlight with gradient
+  subheadline?: string;
+  ctaText?: string;
+  ctaHref?: string;
+}
+
+export const AdaptiveHero: React.FC<AdaptiveHeroProps> = ({
+  headline,
+  keywords,
+  subheadline,
+  ctaText = "Get Started",
+  ctaHref = "#",
+}) => {
+  // Split headline and apply gradient to keywords
+  const renderHeadline = () => {
+    let processedHeadline = headline;
+    keywords.forEach((keyword) => {
+      processedHeadline = processedHeadline.replace(
+        new RegExp(`\\b${keyword}\\b`, 'gi'),
+        `{{GRADIENT:${keyword}}}`
+      );
+    });
+
+    const parts = processedHeadline.split(/(\{\{GRADIENT:[^}]+\}\})/);
+    
+    return parts.map((part, index) => {
+      if (part.startsWith('{{GRADIENT:')) {
+        const keyword = part.replace('{{GRADIENT:', '').replace('}}', '');
+        return (
+          <span
+            key={index}
+            className="bg-clip-text text-transparent bg-gradient-to-r from-[var(--brand-gradient-start)] to-[var(--brand-gradient-end)]"
+          >
+            {keyword}
+          </span>
+        );
+      }
+      return <React.Fragment key={index}>{part}</React.Fragment>;
+    });
+  };
+
+  return (
+    <section className="flex flex-col items-center justify-center min-h-[80vh] px-6 text-center">
+      <h1 className="text-5xl md:text-7xl font-semibold text-[#1D1D1F] dark:text-white mb-6 leading-tight max-w-4xl">
+        {renderHeadline()}
+      </h1>
+      
+      {subheadline && (
+        <p className="text-xl md:text-2xl text-gray-600 dark:text-gray-400 mb-12 max-w-2xl">
+          {subheadline}
+        </p>
+      )}
+      
+      {ctaText && (
+        <a
+          href={ctaHref}
+          className="bg-[var(--brand-primary)] text-white px-8 py-4 rounded-full text-lg font-medium hover:bg-[var(--brand-dark)] transition-all duration-300 inline-block"
+          style={{ transitionTimingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }}
+        >
+          {ctaText}
+        </a>
+      )}
+    </section>
+  );
+};
+```
+
+### 3.2 BentoGrid.tsx
+
+Smart grid wrapper with glass effect support.
+
+```tsx
+import React, { ReactNode } from 'react';
+
+interface BentoGridProps {
+  children: ReactNode;
+  overlayMode?: boolean; // Enables glass effect
+  className?: string;
+}
+
+export const BentoGrid: React.FC<BentoGridProps> = ({
+  children,
+  overlayMode = false,
+  className = '',
+}) => {
+  const glassClasses = overlayMode
+    ? 'bg-white/40 dark:bg-black/40 backdrop-blur-xl backdrop-saturate-180'
+    : 'bg-[var(--bg-card)]';
+
+  return (
+    <div
+      className={`grid grid-cols-1 md:grid-cols-12 gap-6 ${className}`}
+      style={{ gap: 'var(--grid-gap)' }}
+    >
+      {React.Children.map(children, (child, index) => {
+        if (React.isValidElement(child)) {
+          return React.cloneElement(child, {
+            ...child.props,
+            className: `${child.props.className || ''} ${glassClasses} rounded-[var(--radius-small)] overflow-hidden`,
+          } as any);
+        }
+        return child;
+      })}
+    </div>
+  );
+};
+
+// Usage Example
+export const BentoGridExample = () => {
+  return (
+    <section className="py-[120px] px-6">
+      <div className="max-w-7xl mx-auto">
+        <BentoGrid overlayMode={false}>
+          <div className="md:col-span-6 p-[var(--card-padding)]">
+            <h3>Card 1</h3>
+          </div>
+          <div className="md:col-span-6 p-[var(--card-padding)]">
+            <h3>Card 2</h3>
+          </div>
+          <div className="md:col-span-4 p-[var(--card-padding)]">
+            <h3>Card 3</h3>
+          </div>
+          <div className="md:col-span-8 p-[var(--card-padding)]">
+            <h3>Card 4</h3>
+          </div>
+        </BentoGrid>
+      </div>
+    </section>
+  );
+};
+```
+
+### 3.3 ShowcaseCard.tsx
+
+Card component with image and kicker label.
+
+```tsx
+import React from 'react';
+import Image from 'next/image'; // Adjust import based on your setup
+
+interface ShowcaseCardProps {
+  image: string;
+  imageAlt?: string;
+  kicker: string; // Small uppercase label
+  title?: string;
+  description?: string;
+  fallbackGradient?: boolean; // Use gradient if image fails
+  className?: string;
+}
+
+export const ShowcaseCard: React.FC<ShowcaseCardProps> = ({
+  image,
+  imageAlt = '',
+  kicker,
+  title,
+  description,
+  fallbackGradient = true,
+  className = '',
+}) => {
+  const [imageError, setImageError] = React.useState(false);
+  const [imageLoaded, setImageLoaded] = React.useState(false);
+
+  const gradientStyle = {
+    background: `linear-gradient(135deg, var(--brand-gradient-start), var(--brand-gradient-end))`,
+  };
+
+  return (
+    <div
+      className={`rounded-[var(--radius-small)] overflow-hidden bg-[var(--bg-card)] shadow-[var(--shadow-card)] ${className}`}
+    >
+      {/* Image Container */}
+      <div className="relative w-full aspect-video overflow-hidden">
+        {!imageError && image ? (
+          <>
+            {!imageLoaded && fallbackGradient && (
+              <div className="absolute inset-0" style={gradientStyle} />
+            )}
+            <img
+              src={image}
+              alt={imageAlt}
+              className={`w-full h-full object-cover transition-opacity duration-500 ${
+                imageLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+              onLoad={() => setImageLoaded(true)}
+              onError={() => {
+                setImageError(true);
+                setImageLoaded(false);
+              }}
+            />
+          </>
+        ) : (
+          fallbackGradient && (
+            <div className="w-full h-full" style={gradientStyle} />
+          )
+        )}
+      </div>
+
+      {/* Content */}
+      {(kicker || title || description) && (
+        <div className="p-[var(--card-padding)]">
+          {kicker && (
+            <div
+              className="text-[12px] font-semibold tracking-wider uppercase mb-2"
+              style={{ color: 'var(--brand-primary)' }}
+            >
+              {kicker}
+            </div>
+          )}
+          {title && (
+            <h3 className="text-2xl font-semibold text-[#1D1D1F] dark:text-white mb-2">
+              {title}
+            </h3>
+          )}
+          {description && (
+            <p className="text-gray-600 dark:text-gray-400">{description}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Usage Example
+export const ShowcaseCardExample = () => {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <ShowcaseCard
+        image="/high-res-image.jpg"
+        imageAlt="Product showcase"
+        kicker="New"
+        title="Amazing Product"
+        description="This is a description of the amazing product."
+      />
+    </div>
+  );
+};
+```
+
+---
+
+## Section 4: Implementation Protocol
+
+### 4.1 Dos & Don'ts
+
+#### ❌ DON'Ts
+
+1. **DON'T use brand color for backgrounds** (except small pills/buttons)
+   ```tsx
+   // ❌ WRONG
+   <div className="bg-[var(--brand-primary)]">Content</div>
+   
+   // ✅ CORRECT
+   <div className="bg-[var(--bg-card)]">
+     <button className="bg-[var(--brand-primary)]">Small CTA</button>
+   </div>
+   ```
+
+2. **DON'T use drop shadows on text**
+   ```css
+   /* ❌ WRONG */
+   .text-shadow {
+     text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+   }
+   ```
+
+3. **DON'T use linear animations**
+   ```css
+   /* ❌ WRONG */
+   transition: all 0.3s linear;
+   
+   /* ✅ CORRECT */
+   transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+   ```
+
+4. **DON'T use standard border-radius**
+   ```css
+   /* ❌ WRONG */
+   border-radius: 8px;
+   
+   /* ✅ CORRECT */
+   border-radius: var(--radius-small); /* 24px */
+   ```
+
+5. **DON'T color entire headlines**
+   ```tsx
+   // ❌ WRONG
+   <h1 className="text-[var(--brand-primary)]">Full headline</h1>
+   
+   // ✅ CORRECT
+   <h1 className="text-[#1D1D1F]">
+     Build something{' '}
+     <span className="bg-clip-text text-transparent bg-gradient-to-r from-[var(--brand-gradient-start)] to-[var(--brand-gradient-end)]">
+       extraordinary
+     </span>
+   </h1>
+   ```
+
+#### ✅ DOs
+
+1. **DO use large, soft shadows on cards**
+   ```css
+   /* ✅ CORRECT */
+   box-shadow: var(--shadow-card); /* 0 20px 40px -10px rgba(0,0,0,0.1) */
+   ```
+
+2. **DO use brand color for links and interactive elements**
+   ```tsx
+   <a href="#" className="text-[var(--brand-primary)] hover:text-[var(--brand-dark)]">
+     Link
+   </a>
+   ```
+
+3. **DO use spring animations for scroll-triggered content**
+   ```tsx
+   <motion.div
+     initial={{ y: 30, opacity: 0 }}
+     animate={{ y: 0, opacity: 1 }}
+     transition={{ type: "spring", stiffness: 100, damping: 15 }}
+   >
+     Content
+   </motion.div>
+   ```
+
+4. **DO use generous spacing**
+   ```tsx
+   <section className="py-[120px]">
+     {/* Content with breathing room */}
+   </section>
+   ```
+
+5. **DO use overflow-hidden on all cards**
+   ```tsx
+   <div className="rounded-[24px] overflow-hidden">
+     {/* Content snaps to curve */}
+   </div>
+   ```
+
+### 4.2 Asset Handling
+
+#### Image Requirements
+
+```tsx
+// Image Component with Fallback
+interface ImageWithFallbackProps {
+  src: string;
+  alt: string;
+  width?: number;
+  height?: number;
+  className?: string;
+}
+
+export const ImageWithFallback: React.FC<ImageWithFallbackProps> = ({
+  src,
+  alt,
+  width,
+  height,
+  className = '',
+}) => {
+  const [error, setError] = React.useState(false);
+  const [isHighRes, setIsHighRes] = React.useState(true);
+
+  React.useEffect(() => {
+    const img = new Image();
+    img.src = src;
+    img.onload = () => {
+      // Check if image is high resolution (at least 1200px width)
+      setIsHighRes(img.width >= 1200);
+    };
+    img.onerror = () => setError(true);
+  }, [src]);
+
+  if (error || !isHighRes) {
+    // Fallback to gradient
+    return (
+      <div
+        className={`w-full h-full ${className}`}
+        style={{
+          background: `linear-gradient(135deg, var(--brand-gradient-start), var(--brand-gradient-end))`,
+        }}
+        aria-label={alt}
+      />
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      width={width}
+      height={height}
+      className={className}
+      loading="lazy"
+    />
+  );
+};
+```
+
+#### Image Optimization Rules
+
+1. **Minimum Resolution:** 1200px width for desktop images
+2. **Format:** WebP preferred, fallback to JPG/PNG
+3. **Lazy Loading:** Always enabled
+4. **Aspect Ratio:** Maintain 16:9 for hero images, flexible for cards
+
+---
+
+## Quick Start Guide
+
+### Step 1: Set Your Brand Color
+
+```css
+:root {
+  --brand-primary: #FF0000; /* Change this to your brand color */
+  /* All other colors calculate automatically */
+}
+```
+
+### Step 2: Apply Theme Classes
+
+```tsx
+// In your root component
+<div data-theme="light" className="bg-[var(--bg-page)]">
+  {/* Your app */}
+</div>
+```
+
+### Step 3: Use Components
+
+```tsx
+import { AdaptiveHero, BentoGrid, ShowcaseCard } from './components';
+
+function App() {
+  return (
+    <>
+      <AdaptiveHero
+        headline="Build something extraordinary with our platform"
+        keywords={['extraordinary', 'platform']}
+        subheadline="The future of design is here"
+      />
+      
+      <BentoGrid overlayMode={false}>
+        <ShowcaseCard
+          image="/product.jpg"
+          kicker="New"
+          title="Product Name"
+          description="Product description"
+        />
+      </BentoGrid>
+    </>
+  );
+}
+```
+
+---
+
+## Color Calculation Reference
+
+### How It Works
+
+When you set `--brand-primary: #FF0000` (Red):
+
+1. **--brand-dark** = `color-mix(in srgb, #FF0000 90%, black 10%)`
+   - Result: `#E60000` (Darker red for hover states)
+
+2. **--brand-surface** = `color-mix(in srgb, #FF0000 8%, white 92%)`
+   - Result: `#FEF5F5` (Very subtle pink tint)
+
+3. **--brand-gradient-end** = `color-mix(in srgb, #FF0000 80%, white 20%)`
+   - Result: `#FF3333` (Lighter red for gradient end)
+
+### Testing Your Color
+
+```html
+<!-- Test page to visualize your color system -->
+<div style="--brand-primary: #YOUR_COLOR">
+  <div style="background: var(--bg-page); padding: 40px;">
+    <h1 style="color: #1D1D1F;">
+      Headline with <span style="background: linear-gradient(to right, var(--brand-gradient-start), var(--brand-gradient-end)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">gradient keyword</span>
+    </h1>
+    <a href="#" style="color: var(--brand-primary);">Link</a>
+    <button style="background: var(--brand-primary); color: white; padding: 12px 24px; border-radius: 24px;">Button</button>
+    <div style="background: var(--brand-surface); padding: 20px; border-radius: 24px;">Subtle surface</div>
+  </div>
+</div>
+```
+
+---
+
+## Browser Support
+
+- **CSS `color-mix()`:** Requires modern browsers (Chrome 111+, Safari 16.2+, Firefox 113+)
+- **Fallback for older browsers:**
+  ```css
+  /* Fallback calculation */
+  --brand-dark: oklch(from var(--brand-primary) calc(l - 0.1) c h);
+  /* Or use pre-calculated values */
+  ```
+
+---
+
+## License & Usage
+
+This system is designed to be brand-agnostic while maintaining Apple's design language. Modify `--brand-primary` to adapt to any brand while preserving the premium aesthetic.
+
+**Remember:** Color is an accent, not a foundation. The system ensures your brand color enhances the design without overwhelming it.

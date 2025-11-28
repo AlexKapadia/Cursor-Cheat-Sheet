@@ -1,0 +1,1638 @@
+# Freelance Bidding Engine - Source of Truth
+
+**Platform Architecture:** Upwork/Fiverr-style Marketplace with Escrow & Bidding System  
+**Database:** Supabase (PostgreSQL)  
+**Payment Processor:** Stripe Connect  
+**Last Updated:** 2024
+
+---
+
+## Table of Contents
+
+1. [Core Architecture Principles](#core-architecture-principles)
+2. [Database Schema](#database-schema)
+3. [Bidding State Machine](#bidding-state-machine)
+4. [Escrow Financial Flow](#escrow-financial-flow)
+5. [User Roles & RBAC](#user-roles--rbac)
+6. [Connects System (Spam Prevention)](#connects-system-spam-prevention)
+7. [Hiring Handshake Process](#hiring-handshake-process)
+8. [Frontend Architecture](#frontend-architecture)
+9. [Validation Schemas (Zod)](#validation-schemas-zod)
+10. [Utility Functions](#utility-functions)
+11. [Invite Logic (Private Jobs)](#invite-logic-private-jobs)
+12. [Review System (Double-Blind)](#review-system-double-blind)
+
+---
+
+## Core Architecture Principles
+
+### The "Trust" Rule
+
+**⚠️ CRITICAL:** Money **NEVER** flows directly from Client → Freelancer.
+
+**The Escrow Model:**
+```
+Client Payment → Platform Hold (Stripe Connect) → Freelancer Release
+```
+
+All funds are held in escrow by the platform until work is approved or auto-released after 14 days.
+
+### The Proposal Object
+
+A bid is not just a price. It is a **legal container** containing:
+- Cover Letter (text)
+- Bid Amount (numeric, in cents)
+- Estimated Duration (days/weeks)
+- Milestones (optional, structured breakdown)
+
+### Double-Blind Reviews
+
+Reviews are only revealed when:
+- **BOTH** parties have submitted their reviews, OR
+- A **14-day timeout** has elapsed since contract completion
+
+---
+
+## Database Schema
+
+### Core Tables
+
+#### `users`
+Base user authentication table (handled by Supabase Auth).
+
+```sql
+-- Managed by Supabase Auth
+-- Contains: id (uuid), email, created_at, etc.
+```
+
+#### `profiles`
+Extended user profile with role flags.
+
+```sql
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  full_name TEXT,
+  avatar_url TEXT,
+  is_client BOOLEAN DEFAULT false,
+  is_freelancer BOOLEAN DEFAULT false,
+  freelancer_skills TEXT[], -- Array of skill tags
+  freelancer_hourly_rate INTEGER, -- In cents
+  client_company_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_profiles_freelancer ON profiles(is_freelancer) WHERE is_freelancer = true;
+CREATE INDEX idx_profiles_client ON profiles(is_client) WHERE is_client = true;
+```
+
+#### `jobs`
+Job postings created by clients.
+
+```sql
+CREATE TABLE jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  budget_type TEXT NOT NULL CHECK (budget_type IN ('fixed', 'hourly')),
+  budget_min INTEGER, -- In cents, nullable for hourly
+  budget_max INTEGER NOT NULL, -- In cents
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'hired', 'closed', 'cancelled')),
+  skills_required TEXT[], -- Array of skill tags
+  visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'invite_only')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ -- Optional: job posting expiration
+);
+
+CREATE INDEX idx_jobs_client ON jobs(client_id);
+CREATE INDEX idx_jobs_status ON jobs(status) WHERE status = 'open';
+CREATE INDEX idx_jobs_skills ON jobs USING GIN(skills_required);
+CREATE INDEX idx_jobs_created ON jobs(created_at DESC);
+```
+
+#### `proposals`
+Bids submitted by freelancers on jobs.
+
+```sql
+CREATE TABLE proposals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  freelancer_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  cover_letter TEXT NOT NULL,
+  price_bid INTEGER NOT NULL, -- In cents
+  estimated_duration INTEGER, -- Days
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'shortlisted', 'rejected', 'hired', 'withdrawn')),
+  connects_spent INTEGER NOT NULL DEFAULT 2, -- Credits used to submit
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  UNIQUE(job_id, freelancer_id) -- Prevent duplicate proposals
+);
+
+CREATE INDEX idx_proposals_job_status ON proposals(job_id, status);
+CREATE INDEX idx_proposals_freelancer ON proposals(freelancer_id);
+CREATE INDEX idx_proposals_created ON proposals(created_at DESC);
+```
+
+#### `contracts`
+Active agreements between client and freelancer.
+
+```sql
+CREATE TABLE contracts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  proposal_id UUID NOT NULL REFERENCES proposals(id) ON DELETE CASCADE,
+  freelancer_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  client_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  total_amount INTEGER NOT NULL, -- In cents
+  platform_fee_percent INTEGER NOT NULL DEFAULT 10, -- Percentage (e.g., 10 = 10%)
+  escrow_status TEXT NOT NULL DEFAULT 'pending_offer' CHECK (escrow_status IN (
+    'pending_offer', -- Freelancer hasn't accepted yet
+    'pending_funding', -- Waiting for client payment
+    'funded', -- Money in escrow
+    'active', -- Work in progress
+    'completed', -- All milestones approved
+    'released', -- Money paid out
+    'disputed', -- Dispute raised
+    'cancelled' -- Contract cancelled
+  )),
+  stripe_payment_intent_id TEXT, -- Stripe PaymentIntent ID
+  stripe_connected_account_id TEXT, -- Freelancer's Stripe Connect account
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_contracts_freelancer ON contracts(freelancer_id);
+CREATE INDEX idx_contracts_client ON contracts(client_id);
+CREATE INDEX idx_contracts_escrow_status ON contracts(escrow_status);
+```
+
+#### `milestones`
+Breakdown of work deliverables within a contract.
+
+```sql
+CREATE TABLE milestones (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_id UUID NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  description TEXT NOT NULL,
+  amount INTEGER NOT NULL, -- In cents
+  order_index INTEGER NOT NULL, -- For sequencing
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+    'pending', -- Not started
+    'in_progress', -- Freelancer working
+    'submitted', -- Awaiting client approval
+    'approved', -- Client approved, ready for payout
+    'paid', -- Money released to freelancer
+    'rejected', -- Client requested changes
+    'disputed' -- Dispute raised
+  )),
+  submitted_at TIMESTAMPTZ,
+  approved_at TIMESTAMPTZ,
+  paid_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_milestones_contract ON milestones(contract_id);
+CREATE INDEX idx_milestones_status ON milestones(status) WHERE status IN ('submitted', 'approved');
+```
+
+#### `user_credits` (Connects System)
+Credits/connects balance for spam prevention.
+
+```sql
+CREATE TABLE user_credits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  balance INTEGER NOT NULL DEFAULT 0, -- Total credits
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  UNIQUE(user_id)
+);
+
+CREATE INDEX idx_user_credits_user ON user_credits(user_id);
+```
+
+#### `credit_transactions`
+Audit trail for credit usage.
+
+```sql
+CREATE TABLE credit_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  amount INTEGER NOT NULL, -- Negative for debits, positive for credits
+  reason TEXT NOT NULL, -- 'proposal_submission', 'purchase', 'refund', etc.
+  proposal_id UUID REFERENCES proposals(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_credit_transactions_user ON credit_transactions(user_id);
+CREATE INDEX idx_credit_transactions_created ON credit_transactions(created_at DESC);
+```
+
+#### `job_invites`
+Private job invitations (bypasses public search).
+
+```sql
+CREATE TABLE job_invites (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  freelancer_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  invited_by UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined', 'expired')),
+  message TEXT, -- Optional invitation message
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  UNIQUE(job_id, freelancer_id)
+);
+
+CREATE INDEX idx_job_invites_freelancer ON job_invites(freelancer_id) WHERE status = 'pending';
+CREATE INDEX idx_job_invites_job ON job_invites(job_id);
+```
+
+#### `reviews` (Double-Blind)
+Reviews submitted by both parties.
+
+```sql
+CREATE TABLE reviews (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_id UUID NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  reviewer_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  reviewee_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  comment TEXT,
+  is_visible BOOLEAN DEFAULT false, -- Only visible when both reviews submitted
+  submitted_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  UNIQUE(contract_id, reviewer_id)
+);
+
+CREATE INDEX idx_reviews_contract ON reviews(contract_id);
+CREATE INDEX idx_reviews_reviewee ON reviews(reviewee_id) WHERE is_visible = true;
+```
+
+#### `disputes`
+Dispute resolution tracking.
+
+```sql
+CREATE TABLE disputes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_id UUID NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  milestone_id UUID REFERENCES milestones(id) ON DELETE SET NULL,
+  raised_by UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'under_review', 'resolved', 'closed')),
+  admin_notes TEXT,
+  resolution TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_disputes_contract ON disputes(contract_id);
+CREATE INDEX idx_disputes_status ON disputes(status) WHERE status = 'open';
+```
+
+---
+
+## Bidding State Machine
+
+### Proposal Status Flow
+
+```
+[pending] → [shortlisted] → [hired]
+    ↓            ↓
+[rejected]   [rejected]
+    ↓
+[withdrawn]
+```
+
+**State Transitions:**
+
+1. **pending** → **shortlisted**: Client marks proposal as interesting
+2. **pending** → **rejected**: Client rejects proposal
+3. **pending** → **withdrawn**: Freelancer withdraws proposal
+4. **shortlisted** → **hired**: Client accepts proposal (creates contract)
+5. **shortlisted** → **rejected**: Client removes from shortlist
+6. **hired**: Terminal state (contract created)
+
+### Contract Escrow Status Flow
+
+```
+[pending_offer] → [pending_funding] → [funded] → [active]
+                                                      ↓
+[completed] ← [released] ← [approved] ← [submitted] ← [in_progress]
+     ↑
+[disputed] → [resolved] → [released]
+     ↓
+[cancelled]
+```
+
+**State Transitions:**
+
+1. **pending_offer**: Contract created, waiting for freelancer acceptance
+2. **pending_funding**: Freelancer accepted, waiting for client payment
+3. **funded**: Payment received, money in escrow
+4. **active**: Work in progress
+5. **submitted**: Milestone submitted for approval
+6. **approved**: Client approved milestone
+7. **released**: Money transferred to freelancer
+8. **completed**: All milestones completed and paid
+9. **disputed**: Dispute raised, funds locked
+10. **cancelled**: Contract cancelled before completion
+
+---
+
+## Escrow Financial Flow
+
+### Funding Phase
+
+**Step 1: Client Initiates Payment**
+```typescript
+// Create Stripe PaymentIntent
+const paymentIntent = await stripe.paymentIntents.create({
+  amount: contract.total_amount, // In cents
+  currency: 'usd',
+  application_fee_amount: calculatePlatformFee(contract.total_amount, contract.platform_fee_percent),
+  transfer_data: {
+    destination: contract.stripe_connected_account_id, // Freelancer's connected account
+  },
+  metadata: {
+    contract_id: contract.id,
+    job_id: contract.job_id,
+  },
+  capture_method: 'manual', // Hold funds until approval
+});
+```
+
+**Step 2: Update Contract**
+```sql
+UPDATE contracts 
+SET 
+  stripe_payment_intent_id = $1,
+  escrow_status = 'pending_funding'
+WHERE id = $2;
+```
+
+**Step 3: Client Completes Payment**
+```typescript
+// After client payment succeeds
+await stripe.paymentIntents.capture(paymentIntent.id);
+```
+
+**Step 4: Contract Active**
+```sql
+UPDATE contracts 
+SET 
+  escrow_status = 'funded',
+  started_at = NOW()
+WHERE id = $1;
+```
+
+### Release Phase
+
+**Step 1: Freelancer Submits Milestone**
+```sql
+UPDATE milestones 
+SET 
+  status = 'submitted',
+  submitted_at = NOW()
+WHERE id = $1;
+```
+
+**Step 2: Client Approves Milestone**
+```typescript
+// Calculate payout
+const { platformFee, payoutAmount } = calculatePayout(
+  milestone.amount,
+  contract.platform_fee_percent
+);
+
+// Release funds to freelancer
+await stripe.transfers.create({
+  amount: payoutAmount, // In cents
+  currency: 'usd',
+  destination: contract.stripe_connected_account_id,
+  metadata: {
+    contract_id: contract.id,
+    milestone_id: milestone.id,
+  },
+});
+
+// Update milestone
+await db.update('milestones')
+  .set({
+    status: 'approved',
+    approved_at: new Date(),
+  })
+  .where('id', milestone.id);
+
+// Update milestone to paid after transfer succeeds
+await db.update('milestones')
+  .set({
+    status: 'paid',
+    paid_at: new Date(),
+  })
+  .where('id', milestone.id);
+```
+
+**Step 3: Auto-Release (Cron Job)**
+```typescript
+// Run every hour
+async function autoReleaseMilestones() {
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  
+  const pendingMilestones = await db
+    .select('*')
+    .from('milestones')
+    .where('status', 'submitted')
+    .where('submitted_at', '<', fourteenDaysAgo);
+  
+  for (const milestone of pendingMilestones) {
+    // Auto-approve and release
+    await approveAndReleaseMilestone(milestone.id);
+  }
+}
+```
+
+### Dispute Flow
+
+**Step 1: Raise Dispute**
+```sql
+INSERT INTO disputes (contract_id, milestone_id, raised_by, reason, status)
+VALUES ($1, $2, $3, $4, 'open');
+
+UPDATE contracts SET escrow_status = 'disputed' WHERE id = $1;
+UPDATE milestones SET status = 'disputed' WHERE id = $2;
+```
+
+**Step 2: Admin Resolution**
+```typescript
+// Admin manually resolves dispute
+// Option 1: Release to freelancer
+await releaseMilestone(milestone.id);
+
+// Option 2: Refund to client
+await stripe.refunds.create({
+  payment_intent: contract.stripe_payment_intent_id,
+  amount: milestone.amount,
+});
+```
+
+---
+
+## User Roles & RBAC
+
+### The "Switch" Logic
+
+A single user can act as both `client` and `freelancer`. The UI toggles the view based on the active mode.
+
+**Implementation:**
+
+```typescript
+// Check user capabilities
+function getUserCapabilities(userId: string) {
+  const profile = await db.select('*')
+    .from('profiles')
+    .where('id', userId)
+    .single();
+  
+  return {
+    canPostJobs: profile.is_client,
+    canSubmitProposals: profile.is_freelancer,
+    activeMode: profile.is_client && profile.is_freelancer 
+      ? 'both' 
+      : profile.is_client 
+        ? 'client' 
+        : 'freelancer',
+  };
+}
+```
+
+**Row Level Security (RLS) Policies:**
+
+```sql
+-- Profiles: Users can read their own profile, update their own
+CREATE POLICY "Users can view own profile"
+  ON profiles FOR SELECT
+  USING (auth.uid() = id);
+
+CREATE POLICY "Users can update own profile"
+  ON profiles FOR UPDATE
+  USING (auth.uid() = id);
+
+-- Jobs: Clients can manage their own jobs, freelancers can view open jobs
+CREATE POLICY "Clients can manage own jobs"
+  ON jobs FOR ALL
+  USING (auth.uid() = client_id);
+
+CREATE POLICY "Freelancers can view open jobs"
+  ON jobs FOR SELECT
+  USING (status = 'open' AND visibility = 'public');
+
+-- Proposals: Freelancers can create/view own, clients can view for their jobs
+CREATE POLICY "Freelancers can create own proposals"
+  ON proposals FOR INSERT
+  WITH CHECK (
+    auth.uid() = freelancer_id AND
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_freelancer = true)
+  );
+
+CREATE POLICY "Users can view own proposals"
+  ON proposals FOR SELECT
+  USING (auth.uid() = freelancer_id);
+
+CREATE POLICY "Clients can view proposals for their jobs"
+  ON proposals FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM jobs 
+      WHERE jobs.id = proposals.job_id 
+      AND jobs.client_id = auth.uid()
+    )
+  );
+```
+
+---
+
+## Connects System (Spam Prevention)
+
+### Credit Cost Structure
+
+```typescript
+const PROPOSAL_COSTS = {
+  budget_under_500: 2,    // Jobs under $500
+  budget_500_5000: 4,    // Jobs $500-$5000
+  budget_over_5000: 6,   // Jobs over $5000
+};
+
+function getProposalCost(jobBudget: number): number {
+  if (jobBudget < 50000) return PROPOSAL_COSTS.budget_under_500; // $500 in cents
+  if (jobBudget < 500000) return PROPOSAL_COSTS.budget_500_5000; // $5000 in cents
+  return PROPOSAL_COSTS.budget_over_5000;
+}
+```
+
+### Transaction Flow
+
+**Before Insert Proposal:**
+
+```typescript
+async function submitProposal(
+  jobId: string,
+  freelancerId: string,
+  proposalData: ProposalInput
+) {
+  // 1. Get job to determine cost
+  const job = await db.select('*')
+    .from('jobs')
+    .where('id', jobId)
+    .single();
+  
+  const cost = getProposalCost(job.budget_max);
+  
+  // 2. Check credit balance
+  const credits = await db.select('*')
+    .from('user_credits')
+    .where('user_id', freelancerId)
+    .single();
+  
+  if (credits.balance < cost) {
+    throw new Error('Insufficient Connects. Please purchase more credits.');
+  }
+  
+  // 3. Start transaction
+  await db.transaction(async (trx) => {
+    // Decrement credits
+    await trx('user_credits')
+      .where('user_id', freelancerId)
+      .decrement('balance', cost);
+    
+    // Record transaction
+    await trx('credit_transactions').insert({
+      user_id: freelancerId,
+      amount: -cost,
+      reason: 'proposal_submission',
+    });
+    
+    // Insert proposal
+    const [proposal] = await trx('proposals').insert({
+      job_id: jobId,
+      freelancer_id: freelancerId,
+      cover_letter: proposalData.cover_letter,
+      price_bid: proposalData.price_bid,
+      estimated_duration: proposalData.estimated_duration,
+      connects_spent: cost,
+      status: 'pending',
+    }).returning('*');
+    
+    return proposal;
+  });
+}
+```
+
+### Credit Refund Logic
+
+```typescript
+// Refund credits if proposal is withdrawn before hiring decision
+async function withdrawProposal(proposalId: string, freelancerId: string) {
+  const proposal = await db.select('*')
+    .from('proposals')
+    .where('id', proposalId)
+    .where('freelancer_id', freelancerId)
+    .single();
+  
+  if (proposal.status === 'hired') {
+    throw new Error('Cannot withdraw a hired proposal');
+  }
+  
+  // Refund 50% of connects if withdrawn
+  const refundAmount = Math.floor(proposal.connects_spent * 0.5);
+  
+  await db.transaction(async (trx) => {
+    await trx('proposals')
+      .where('id', proposalId)
+      .update({ status: 'withdrawn' });
+    
+    await trx('user_credits')
+      .where('user_id', freelancerId)
+      .increment('balance', refundAmount);
+    
+    await trx('credit_transactions').insert({
+      user_id: freelancerId,
+      amount: refundAmount,
+      reason: 'proposal_withdrawal_refund',
+      proposal_id: proposalId,
+    });
+  });
+}
+```
+
+---
+
+## Hiring Handshake Process
+
+### Step-by-Step Flow
+
+**Step 1: Client Clicks "Hire" on Proposal**
+
+```typescript
+async function initiateHire(proposalId: string, clientId: string) {
+  const proposal = await db.select('*')
+    .from('proposals')
+    .where('id', proposalId)
+    .single();
+  
+  const job = await db.select('*')
+    .from('jobs')
+    .where('id', proposal.job_id)
+    .where('client_id', clientId)
+    .single();
+  
+  // Validate
+  if (proposal.status !== 'pending' && proposal.status !== 'shortlisted') {
+    throw new Error('Proposal is not available for hiring');
+  }
+  
+  // Create contract
+  const [contract] = await db('contracts').insert({
+    job_id: job.id,
+    proposal_id: proposal.id,
+    freelancer_id: proposal.freelancer_id,
+    client_id: clientId,
+    total_amount: proposal.price_bid,
+    escrow_status: 'pending_offer',
+  }).returning('*');
+  
+  // Update proposal status
+  await db('proposals')
+    .where('id', proposalId)
+    .update({ status: 'hired' });
+  
+  // Update job status
+  await db('jobs')
+    .where('id', job.id)
+    .update({ status: 'hired' });
+  
+  // Notify freelancer (via notification system)
+  await sendNotification({
+    userId: proposal.freelancer_id,
+    type: 'contract_offer',
+    contractId: contract.id,
+  });
+  
+  return contract;
+}
+```
+
+**Step 2: Freelancer Accepts Offer**
+
+```typescript
+async function acceptContractOffer(contractId: string, freelancerId: string) {
+  const contract = await db.select('*')
+    .from('contracts')
+    .where('id', contractId)
+    .where('freelancer_id', freelancerId)
+    .where('escrow_status', 'pending_offer')
+    .single();
+  
+  // Get freelancer's Stripe Connect account
+  const freelancerProfile = await db.select('*')
+    .from('profiles')
+    .where('id', freelancerId)
+    .single();
+  
+  if (!freelancerProfile.stripe_connected_account_id) {
+    throw new Error('Freelancer must connect Stripe account first');
+  }
+  
+  // Update contract
+  await db('contracts')
+    .where('id', contractId)
+    .update({
+      escrow_status: 'pending_funding',
+      stripe_connected_account_id: freelancerProfile.stripe_connected_account_id,
+    });
+  
+  // Create Stripe PaymentIntent (client will pay)
+  const paymentIntent = await createPaymentIntent(contract);
+  
+  await db('contracts')
+    .where('id', contractId)
+    .update({
+      stripe_payment_intent_id: paymentIntent.id,
+    });
+  
+  // Notify client to complete payment
+  await sendNotification({
+    userId: contract.client_id,
+    type: 'payment_required',
+    contractId: contract.id,
+  });
+  
+  return contract;
+}
+```
+
+**Step 3: Client Funds Escrow**
+
+```typescript
+async function fundEscrow(contractId: string, clientId: string) {
+  const contract = await db.select('*')
+    .from('contracts')
+    .where('id', contractId)
+    .where('client_id', clientId)
+    .where('escrow_status', 'pending_funding')
+    .single();
+  
+  // Capture payment (already authorized)
+  await stripe.paymentIntents.capture(contract.stripe_payment_intent_id);
+  
+  // Update contract to active
+  await db('contracts')
+    .where('id', contractId)
+    .update({
+      escrow_status: 'funded',
+      started_at: new Date(),
+    });
+  
+  // Create default milestone if none exist
+  const milestoneCount = await db('milestones')
+    .where('contract_id', contractId)
+    .count();
+  
+  if (milestoneCount === 0) {
+    await db('milestones').insert({
+      contract_id: contractId,
+      description: 'Complete project deliverables',
+      amount: contract.total_amount,
+      order_index: 1,
+      status: 'pending',
+    });
+  }
+  
+  // Notify both parties
+  await sendNotification({
+    userId: contract.freelancer_id,
+    type: 'contract_active',
+    contractId: contract.id,
+  });
+  
+  return contract;
+}
+```
+
+---
+
+## Frontend Architecture
+
+### Job Board (Freelancer View)
+
+**Search & Filtering:**
+
+```typescript
+interface JobSearchFilters {
+  query?: string; // Full-text search
+  minBudget?: number;
+  maxBudget?: number;
+  budgetType?: 'fixed' | 'hourly';
+  skills?: string[];
+  expertiseLevel?: 'entry' | 'intermediate' | 'expert';
+}
+
+async function searchJobs(filters: JobSearchFilters) {
+  let query = db('jobs')
+    .where('status', 'open')
+    .where('visibility', 'public');
+  
+  // Full-text search
+  if (filters.query) {
+    query = query.where(function() {
+      this.where('title', 'ilike', `%${filters.query}%`)
+        .orWhere('description', 'ilike', `%${filters.query}%`);
+    });
+  }
+  
+  // Budget filter
+  if (filters.minBudget) {
+    query = query.where('budget_max', '>=', filters.minBudget);
+  }
+  if (filters.maxBudget) {
+    query = query.where('budget_max', '<=', filters.maxBudget);
+  }
+  
+  // Skills filter (array overlap)
+  if (filters.skills && filters.skills.length > 0) {
+    query = query.whereRaw('skills_required && ?', [filters.skills]);
+  }
+  
+  return query.orderBy('created_at', 'desc');
+}
+```
+
+**Best Match Algorithm:**
+
+```typescript
+function calculateJobMatchScore(
+  job: Job,
+  freelancerSkills: string[]
+): number {
+  let score = 0;
+  
+  // Skill overlap (70% weight)
+  const jobSkills = job.skills_required || [];
+  const matchingSkills = jobSkills.filter(skill => 
+    freelancerSkills.includes(skill)
+  );
+  const skillMatchRatio = jobSkills.length > 0 
+    ? matchingSkills.length / jobSkills.length 
+    : 0;
+  score += skillMatchRatio * 70;
+  
+  // Budget alignment (20% weight)
+  // Assume freelancer has preferred rate
+  const freelancerRate = 5000; // $50/hour in cents
+  if (job.budget_type === 'hourly') {
+    const hourlyRate = job.budget_max / 40; // Assume 40 hours
+    const rateMatch = 1 - Math.abs(hourlyRate - freelancerRate) / freelancerRate;
+    score += Math.max(0, rateMatch) * 20;
+  }
+  
+  // Recency (10% weight)
+  const daysSincePosted = (Date.now() - new Date(job.created_at).getTime()) / (1000 * 60 * 60 * 24);
+  const recencyScore = Math.max(0, 1 - daysSincePosted / 30); // Decay over 30 days
+  score += recencyScore * 10;
+  
+  return Math.round(score);
+}
+```
+
+### Applicant Tracking System (Client View)
+
+**Kanban Board Structure:**
+
+```typescript
+interface ApplicantColumn {
+  status: ProposalStatus;
+  proposals: Proposal[];
+}
+
+async function getApplicantBoard(jobId: string, clientId: string) {
+  // Verify ownership
+  const job = await db('jobs')
+    .where('id', jobId)
+    .where('client_id', clientId)
+    .single();
+  
+  const proposals = await db('proposals')
+    .where('job_id', jobId)
+    .orderBy('created_at', 'desc');
+  
+  // Group by status
+  const columns: ApplicantColumn[] = [
+    { status: 'pending', proposals: [] },
+    { status: 'shortlisted', proposals: [] },
+    { status: 'rejected', proposals: [] },
+    { status: 'hired', proposals: [] },
+  ];
+  
+  proposals.forEach(proposal => {
+    const column = columns.find(col => col.status === proposal.status);
+    if (column) {
+      column.proposals.push(proposal);
+    }
+  });
+  
+  return columns;
+}
+```
+
+**Status Update (Drag & Drop):**
+
+```typescript
+async function updateProposalStatus(
+  proposalId: string,
+  newStatus: ProposalStatus,
+  clientId: string
+) {
+  const proposal = await db('proposals')
+    .where('id', proposalId)
+    .single();
+  
+  const job = await db('jobs')
+    .where('id', proposal.job_id)
+    .where('client_id', clientId)
+    .single();
+  
+  // Validate transition
+  const validTransitions: Record<ProposalStatus, ProposalStatus[]> = {
+    pending: ['shortlisted', 'rejected'],
+    shortlisted: ['hired', 'rejected', 'pending'],
+    rejected: ['pending', 'shortlisted'], // Allow un-rejecting
+    hired: [], // Terminal
+    withdrawn: [], // Terminal
+  };
+  
+  if (!validTransitions[proposal.status].includes(newStatus)) {
+    throw new Error(`Invalid status transition from ${proposal.status} to ${newStatus}`);
+  }
+  
+  // If hiring, create contract
+  if (newStatus === 'hired') {
+    await initiateHire(proposalId, clientId);
+  } else {
+    await db('proposals')
+      .where('id', proposalId)
+      .update({ status: newStatus });
+  }
+}
+```
+
+### Workroom (Chat + Files)
+
+**Integration with Social Media Engine:**
+
+The Workroom uses the chat system defined in `social-media-engine.mdc`:
+
+```typescript
+// Workroom is a specialized chat room for contracts
+interface Workroom {
+  contractId: string;
+  participants: [string, string]; // [clientId, freelancerId]
+  messages: ChatMessage[];
+  files: FileAttachment[];
+}
+
+// Create workroom when contract becomes active
+async function createWorkroom(contractId: string) {
+  const contract = await db('contracts')
+    .where('id', contractId)
+    .single();
+  
+  // Use chat system from social-media-engine.mdc
+  const chatRoom = await createChatRoom({
+    type: 'contract',
+    participants: [contract.client_id, contract.freelancer_id],
+    metadata: {
+      contractId: contract.id,
+      jobId: contract.job_id,
+    },
+  });
+  
+  return chatRoom;
+}
+```
+
+---
+
+## Validation Schemas (Zod)
+
+### Proposal Submission Schema
+
+```typescript
+import { z } from 'zod';
+
+const ProposalSchema = z.object({
+  job_id: z.string().uuid('Invalid job ID'),
+  cover_letter: z.string()
+    .min(50, 'Cover letter must be at least 50 characters')
+    .max(5000, 'Cover letter must not exceed 5000 characters'),
+  price_bid: z.number()
+    .int('Price must be in cents (integer)')
+    .positive('Price must be positive')
+    .refine(
+      async (price, ctx) => {
+        const job = await db('jobs')
+          .where('id', ctx.parent.job_id)
+          .single();
+        
+        if (price > job.budget_max) {
+          return false;
+        }
+        if (job.budget_min && price < job.budget_min) {
+          return false;
+        }
+        return true;
+      },
+      {
+        message: 'Bid amount must be within job budget range',
+      }
+    ),
+  estimated_duration: z.number()
+    .int('Duration must be in days (integer)')
+    .positive('Duration must be positive')
+    .max(365, 'Duration cannot exceed 365 days'),
+});
+
+type ProposalInput = z.infer<typeof ProposalSchema>;
+```
+
+### Job Creation Schema
+
+```typescript
+const JobSchema = z.object({
+  title: z.string()
+    .min(10, 'Title must be at least 10 characters')
+    .max(200, 'Title must not exceed 200 characters'),
+  description: z.string()
+    .min(100, 'Description must be at least 100 characters')
+    .max(10000, 'Description must not exceed 10000 characters'),
+  budget_type: z.enum(['fixed', 'hourly'], {
+    errorMap: () => ({ message: 'Budget type must be "fixed" or "hourly"' }),
+  }),
+  budget_min: z.number()
+    .int()
+    .positive()
+    .optional(),
+  budget_max: z.number()
+    .int()
+    .positive('Maximum budget is required'),
+  skills_required: z.array(z.string())
+    .min(1, 'At least one skill is required')
+    .max(20, 'Maximum 20 skills allowed'),
+  visibility: z.enum(['public', 'invite_only']).default('public'),
+  expires_at: z.date().optional(),
+}).refine(
+  (data) => {
+    if (data.budget_type === 'fixed' && data.budget_min) {
+      return data.budget_min <= data.budget_max;
+    }
+    return true;
+  },
+  {
+    message: 'Minimum budget must be less than or equal to maximum budget',
+    path: ['budget_min'],
+  }
+);
+
+type JobInput = z.infer<typeof JobSchema>;
+```
+
+### Milestone Schema
+
+```typescript
+const MilestoneSchema = z.object({
+  contract_id: z.string().uuid(),
+  description: z.string()
+    .min(10, 'Description must be at least 10 characters')
+    .max(1000, 'Description must not exceed 1000 characters'),
+  amount: z.number()
+    .int()
+    .positive('Amount must be positive'),
+  order_index: z.number().int().positive(),
+}).refine(
+  async (data) => {
+    const contract = await db('contracts')
+      .where('id', data.contract_id)
+      .single();
+    
+    // Sum of all milestone amounts should not exceed contract total
+    const existingMilestones = await db('milestones')
+      .where('contract_id', data.contract_id)
+      .sum('amount as total');
+    
+    const currentTotal = existingMilestones[0]?.total || 0;
+    if (currentTotal + data.amount > contract.total_amount) {
+      return false;
+    }
+    return true;
+  },
+  {
+    message: 'Total milestone amounts cannot exceed contract total',
+    path: ['amount'],
+  }
+);
+
+type MilestoneInput = z.infer<typeof MilestoneSchema>;
+```
+
+---
+
+## Utility Functions
+
+### Fee Calculation (Critical: Handle Floating Point Errors)
+
+```typescript
+/**
+ * Calculate platform fee and payout amount.
+ * ALWAYS calculate in cents to avoid floating point errors.
+ * 
+ * @param amount Total amount in cents
+ * @param feePercent Platform fee percentage (e.g., 10 = 10%)
+ * @returns Object with platformFee and payoutAmount (both in cents)
+ */
+function calculatePayout(
+  amount: number, // In cents
+  feePercent: number // Percentage (e.g., 10 = 10%)
+): { platformFee: number; payoutAmount: number } {
+  // Validate inputs
+  if (amount <= 0) {
+    throw new Error('Amount must be positive');
+  }
+  if (feePercent < 0 || feePercent > 100) {
+    throw new Error('Fee percentage must be between 0 and 100');
+  }
+  
+  // Calculate fee in cents (multiply first, then divide to minimize rounding errors)
+  // Use Math.round to ensure integer cents
+  const platformFee = Math.round((amount * feePercent) / 100);
+  
+  // Payout is remainder
+  const payoutAmount = amount - platformFee;
+  
+  // Sanity check
+  if (payoutAmount < 0) {
+    throw new Error('Payout amount cannot be negative');
+  }
+  
+  return {
+    platformFee,
+    payoutAmount,
+  };
+}
+
+// Example usage:
+// calculatePayout(100000, 10) => { platformFee: 10000, payoutAmount: 90000 }
+// ($1000 with 10% fee = $100 fee, $900 payout)
+```
+
+### Platform Fee Calculation Helper
+
+```typescript
+function calculatePlatformFee(amount: number, feePercent: number): number {
+  return calculatePayout(amount, feePercent).platformFee;
+}
+```
+
+### Currency Formatting (Display Only)
+
+```typescript
+/**
+ * Format cents to dollar string for display.
+ * NEVER use this for calculations.
+ */
+function formatCurrency(cents: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(cents / 100);
+}
+
+/**
+ * Parse dollar string to cents.
+ * Use for user input conversion.
+ */
+function parseCurrency(dollarString: string): number {
+  const cleaned = dollarString.replace(/[^0-9.]/g, '');
+  const dollars = parseFloat(cleaned);
+  if (isNaN(dollars)) {
+    throw new Error('Invalid currency format');
+  }
+  return Math.round(dollars * 100); // Convert to cents
+}
+```
+
+---
+
+## Invite Logic (Private Jobs)
+
+### Creating an Invite-Only Job
+
+```typescript
+async function createInviteOnlyJob(
+  clientId: string,
+  jobData: JobInput,
+  invitedFreelancerIds: string[]
+) {
+  // Create job with invite_only visibility
+  const [job] = await db('jobs').insert({
+    ...jobData,
+    client_id: clientId,
+    visibility: 'invite_only',
+    status: 'open',
+  }).returning('*');
+  
+  // Create invites
+  const invites = invitedFreelancerIds.map(freelancerId => ({
+    job_id: job.id,
+    freelancer_id: freelancerId,
+    invited_by: clientId,
+    status: 'pending',
+    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+  }));
+  
+  await db('job_invites').insert(invites);
+  
+  // Send notifications to invited freelancers
+  for (const freelancerId of invitedFreelancerIds) {
+    await sendNotification({
+      userId: freelancerId,
+      type: 'job_invitation',
+      jobId: job.id,
+    });
+  }
+  
+  return job;
+}
+```
+
+### Freelancer Viewing Invited Jobs
+
+```typescript
+async function getInvitedJobs(freelancerId: string) {
+  return db('job_invites')
+    .join('jobs', 'job_invites.job_id', 'jobs.id')
+    .where('job_invites.freelancer_id', freelancerId)
+    .where('job_invites.status', 'pending')
+    .where('job_invites.expires_at', '>', new Date())
+    .select('jobs.*', 'job_invites.message as invite_message')
+    .orderBy('job_invites.created_at', 'desc');
+}
+```
+
+### Accepting/Declining Invites
+
+```typescript
+async function respondToInvite(
+  inviteId: string,
+  freelancerId: string,
+  response: 'accepted' | 'declined'
+) {
+  const invite = await db('job_invites')
+    .where('id', inviteId)
+    .where('freelancer_id', freelancerId)
+    .where('status', 'pending')
+    .single();
+  
+  if (!invite) {
+    throw new Error('Invite not found or already responded');
+  }
+  
+  await db('job_invites')
+    .where('id', inviteId)
+    .update({
+      status: response === 'accepted' ? 'accepted' : 'declined',
+    });
+  
+  // If accepted, job becomes visible to freelancer
+  // They can now submit a proposal without spending connects
+  if (response === 'accepted') {
+    await sendNotification({
+      userId: invite.invited_by,
+      type: 'invite_accepted',
+      jobId: invite.job_id,
+      freelancerId: freelancerId,
+    });
+  }
+}
+```
+
+### Invite-Only Proposal Submission (Free)
+
+```typescript
+async function submitInvitedProposal(
+  jobId: string,
+  freelancerId: string,
+  proposalData: ProposalInput
+) {
+  // Check if freelancer was invited
+  const invite = await db('job_invites')
+    .where('job_id', jobId)
+    .where('freelancer_id', freelancerId)
+    .where('status', 'accepted')
+    .single();
+  
+  const job = await db('jobs')
+    .where('id', jobId)
+    .single();
+  
+  if (job.visibility === 'invite_only' && !invite) {
+    throw new Error('This job is invite-only. You must be invited to submit a proposal.');
+  }
+  
+  // If invited, proposal is free (no connects charged)
+  const cost = invite ? 0 : getProposalCost(job.budget_max);
+  
+  if (cost > 0) {
+    // Standard proposal flow with connects
+    await submitProposal(jobId, freelancerId, proposalData);
+  } else {
+    // Free proposal for invited freelancers
+    await db('proposals').insert({
+      job_id: jobId,
+      freelancer_id: freelancerId,
+      cover_letter: proposalData.cover_letter,
+      price_bid: proposalData.price_bid,
+      estimated_duration: proposalData.estimated_duration,
+      connects_spent: 0,
+      status: 'pending',
+    });
+  }
+}
+```
+
+---
+
+## Review System (Double-Blind)
+
+### Submitting a Review
+
+```typescript
+async function submitReview(
+  contractId: string,
+  reviewerId: string,
+  rating: number,
+  comment?: string
+) {
+  const contract = await db('contracts')
+    .where('id', contractId)
+    .where('escrow_status', 'completed')
+    .single();
+  
+  // Determine reviewee
+  const revieweeId = contract.client_id === reviewerId
+    ? contract.freelancer_id
+    : contract.client_id;
+  
+  // Check if review already exists
+  const existingReview = await db('reviews')
+    .where('contract_id', contractId)
+    .where('reviewer_id', reviewerId)
+    .single();
+  
+  if (existingReview) {
+    throw new Error('Review already submitted');
+  }
+  
+  // Insert review (initially hidden)
+  await db('reviews').insert({
+    contract_id: contractId,
+    reviewer_id: reviewerId,
+    reviewee_id: revieweeId,
+    rating,
+    comment,
+    is_visible: false,
+  });
+  
+  // Check if both reviews are submitted
+  const reviewCount = await db('reviews')
+    .where('contract_id', contractId)
+    .count();
+  
+  if (reviewCount >= 2) {
+    // Make both reviews visible
+    await db('reviews')
+      .where('contract_id', contractId)
+      .update({ is_visible: true });
+  }
+}
+```
+
+### Auto-Visibility After Timeout
+
+```typescript
+// Cron job: Run daily
+async function autoRevealReviews() {
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  
+  // Find contracts completed more than 14 days ago
+  const oldContracts = await db('contracts')
+    .where('escrow_status', 'completed')
+    .where('completed_at', '<', fourteenDaysAgo);
+  
+  for (const contract of oldContracts) {
+    // Check if reviews exist but are not visible
+    const hiddenReviews = await db('reviews')
+      .where('contract_id', contract.id)
+      .where('is_visible', false);
+    
+    if (hiddenReviews.length > 0) {
+      // Make all reviews visible
+      await db('reviews')
+        .where('contract_id', contract.id)
+        .update({ is_visible: true });
+    }
+  }
+}
+```
+
+### Calculating Average Rating
+
+```typescript
+async function getFreelancerRating(freelancerId: string) {
+  const reviews = await db('reviews')
+    .where('reviewee_id', freelancerId)
+    .where('is_visible', true);
+  
+  if (reviews.length === 0) {
+    return {
+      averageRating: 0,
+      totalReviews: 0,
+      ratingBreakdown: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+    };
+  }
+  
+  const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
+  const averageRating = totalRating / reviews.length;
+  
+  const ratingBreakdown = reviews.reduce((acc, review) => {
+    acc[review.rating] = (acc[review.rating] || 0) + 1;
+    return acc;
+  }, {} as Record<number, number>);
+  
+  return {
+    averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal
+    totalReviews: reviews.length,
+    ratingBreakdown: {
+      1: ratingBreakdown[1] || 0,
+      2: ratingBreakdown[2] || 0,
+      3: ratingBreakdown[3] || 0,
+      4: ratingBreakdown[4] || 0,
+      5: ratingBreakdown[5] || 0,
+    },
+  };
+}
+```
+
+---
+
+## API Endpoints Summary
+
+### Freelancer Endpoints
+
+- `GET /api/jobs` - Search and filter jobs
+- `GET /api/jobs/:id` - Get job details
+- `POST /api/proposals` - Submit proposal (spends connects)
+- `GET /api/proposals` - List own proposals
+- `PATCH /api/proposals/:id/withdraw` - Withdraw proposal (partial refund)
+- `GET /api/invites` - List job invitations
+- `POST /api/invites/:id/accept` - Accept invitation
+- `POST /api/invites/:id/decline` - Decline invitation
+- `POST /api/contracts/:id/accept` - Accept contract offer
+- `POST /api/milestones/:id/submit` - Submit milestone for approval
+- `GET /api/workroom/:contractId` - Get workroom (chat + files)
+
+### Client Endpoints
+
+- `POST /api/jobs` - Create job posting
+- `GET /api/jobs/:id/applicants` - Get applicant board
+- `PATCH /api/proposals/:id/status` - Update proposal status (shortlist/reject/hire)
+- `POST /api/jobs/:id/invite` - Invite freelancer to job
+- `POST /api/contracts/:id/fund` - Fund escrow
+- `POST /api/milestones/:id/approve` - Approve milestone (releases payment)
+- `POST /api/milestones/:id/reject` - Request changes
+- `POST /api/disputes` - Raise dispute
+
+### Shared Endpoints
+
+- `POST /api/reviews` - Submit review
+- `GET /api/reviews/:userId` - Get user reviews (only visible ones)
+- `GET /api/contracts/:id` - Get contract details
+- `POST /api/workroom/:contractId/messages` - Send message in workroom
+
+---
+
+## Security Considerations
+
+### Row Level Security (RLS)
+
+All tables should have RLS policies enabled:
+
+```sql
+ALTER TABLE jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE proposals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE contracts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE milestones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
+```
+
+### Payment Security
+
+- **Never store full payment card details** - Use Stripe PaymentIntents
+- **Validate amounts server-side** - Never trust client-submitted amounts
+- **Use idempotency keys** - Prevent duplicate charges
+- **Log all financial transactions** - Audit trail for disputes
+
+### Rate Limiting
+
+- Proposal submissions: 10 per hour per freelancer
+- Job postings: 5 per day per client
+- Status updates: 50 per hour per user
+
+---
+
+## Cron Jobs
+
+### Daily Jobs
+
+1. **Auto-release milestones** (every hour)
+   - Release milestones submitted >14 days ago
+
+2. **Auto-reveal reviews** (daily at 2 AM)
+   - Make reviews visible after 14-day timeout
+
+3. **Expire job invites** (daily)
+   - Mark expired invites as 'expired'
+
+4. **Close expired jobs** (daily)
+   - Auto-close jobs past expiration date
+
+### Weekly Jobs
+
+1. **Calculate freelancer rankings**
+   - Update best match scores
+   - Refresh skill match indices
+
+---
+
+## Testing Checklist
+
+### Unit Tests
+
+- [ ] `calculatePayout()` - Test floating point edge cases
+- [ ] `getProposalCost()` - Test budget tier logic
+- [ ] `calculateJobMatchScore()` - Test scoring algorithm
+- [ ] Zod schema validation - Test all edge cases
+
+### Integration Tests
+
+- [ ] Proposal submission with connects deduction
+- [ ] Contract creation and funding flow
+- [ ] Milestone approval and payout
+- [ ] Auto-release after 14 days
+- [ ] Double-blind review visibility
+- [ ] Invite-only job flow
+
+### E2E Tests
+
+- [ ] Complete hiring flow: Job → Proposal → Contract → Milestone → Payment
+- [ ] Dispute resolution flow
+- [ ] Review submission and visibility
+
+---
+
+## Migration Notes
+
+### Initial Setup
+
+1. Create all tables in order (respecting foreign keys)
+2. Enable RLS on all tables
+3. Create indexes for performance
+4. Set up Stripe Connect webhooks
+5. Configure cron jobs
+
+### Data Seeding
+
+- Create test users (clients and freelancers)
+- Seed sample jobs
+- Create test proposals
+- Set up test contracts
+
+---
+
+**End of Document**

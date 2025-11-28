@@ -1,0 +1,1470 @@
+# AI Transcription Engine - Source of Truth
+
+**Version:** 1.0  
+**Last Updated:** 2024  
+**Status:** Architecture Specification
+
+---
+
+## Table of Contents
+
+1. [Critical Architecture Principles](#critical-architecture-principles)
+2. [Phase 1: Database Schema](#phase-1-database-schema)
+3. [Phase 2: AI Pipeline (Server-Side)](#phase-2-ai-pipeline-server-side)
+4. [Phase 3: Synced Editor (Frontend UX)](#phase-3-synced-editor-frontend-ux)
+5. [Phase 4: Implementation Details](#phase-4-implementation-details)
+6. [API Contracts](#api-contracts)
+7. [Error Handling & Edge Cases](#error-handling--edge-cases)
+
+---
+
+## Critical Architecture Principles
+
+### The "Async" Rule
+
+**⚠️ NEVER BLOCK THE UI**
+
+Audio transcription is inherently slow (30 seconds to 5+ minutes depending on file size). The entire system must be built on an **optimistic, state-driven architecture**:
+
+- **States:** `queued` → `processing` → `completed` | `failed`
+- **UI Updates:** Real-time status updates via WebSocket or polling
+- **User Experience:** Users can navigate away and return; the system remembers state
+
+### The "Karaoke" Bond
+
+The text editor and audio player are **synchronized**:
+
+- **Click-to-Seek:** Clicking any word in the transcript seeks the audio to that timestamp
+- **Play-to-Highlight:** As audio plays, the corresponding word/segment is highlighted
+- **Bidirectional Sync:** Changes in one affect the other in real-time
+
+### Large File Handling
+
+Files >25MB require **Resumable Multipart Uploads**:
+
+- **Storage:** S3-compatible (Supabase Storage, AWS S3)
+- **Strategy:** Chunk files into 5MB parts
+- **Resume Logic:** Track upload progress, allow retry on failure
+- **Progress UI:** Real-time upload percentage with pause/resume capability
+
+---
+
+## Phase 1: Database Schema
+
+### Supabase / PostgreSQL Tables
+
+#### 1. `recordings` Table
+
+```sql
+CREATE TABLE recordings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  
+  -- File Metadata
+  file_url TEXT NOT NULL,
+  file_size_bytes BIGINT,
+  duration_seconds DECIMAL(10, 2),
+  mime_type TEXT,
+  
+  -- Status & Processing
+  status TEXT NOT NULL DEFAULT 'uploading' 
+    CHECK (status IN ('uploading', 'processing', 'completed', 'failed')),
+  error_message TEXT,
+  
+  -- Transcription Data (JSONB for performance)
+  transcript_data JSONB,
+  
+  -- LLM-Generated Metadata
+  title TEXT,
+  summary TEXT,
+  action_items JSONB, -- Array of strings
+  
+  -- Configuration
+  language_code TEXT DEFAULT 'en',
+  transcription_provider TEXT DEFAULT 'whisper', -- 'whisper' | 'deepgram'
+  
+  -- Timestamps
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  completed_at TIMESTAMPTZ
+);
+
+-- Indexes for performance
+CREATE INDEX idx_recordings_user_id ON recordings(user_id);
+CREATE INDEX idx_recordings_status ON recordings(status);
+CREATE INDEX idx_recordings_created_at ON recordings(created_at DESC);
+CREATE INDEX idx_recordings_transcript_gin ON recordings USING GIN(transcript_data);
+```
+
+**Transcript JSON Structure:**
+
+```json
+{
+  "segments": [
+    {
+      "id": "seg_001",
+      "start": 0.5,
+      "end": 1.2,
+      "text": "Hello, welcome to the meeting.",
+      "speaker": "A",
+      "confidence": 0.95,
+      "words": [
+        { "start": 0.5, "end": 0.7, "text": "Hello", "confidence": 0.98 },
+        { "start": 0.7, "end": 0.8, "text": ",", "confidence": 1.0 },
+        { "start": 0.8, "end": 1.0, "text": "welcome", "confidence": 0.94 }
+      ]
+    }
+  ],
+  "metadata": {
+    "language": "en",
+    "duration": 120.5,
+    "speaker_count": 2,
+    "transcription_provider": "whisper",
+    "processed_at": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+#### 2. `speakers` Table
+
+```sql
+CREATE TABLE speakers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  recording_id UUID NOT NULL REFERENCES recordings(id) ON DELETE CASCADE,
+  
+  -- Speaker Identification
+  label TEXT NOT NULL, -- 'Speaker A', 'Speaker B', etc.
+  identified_name TEXT, -- User-editable: 'John', 'Sarah', etc.
+  color_hex TEXT, -- For UI visualization: '#3B82F6'
+  
+  -- Metadata
+  total_duration_seconds DECIMAL(10, 2), -- Calculated from segments
+  segment_count INTEGER,
+  
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  UNIQUE(recording_id, label)
+);
+
+CREATE INDEX idx_speakers_recording_id ON speakers(recording_id);
+```
+
+#### 3. `upload_sessions` Table (For Resumable Uploads)
+
+```sql
+CREATE TABLE upload_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  recording_id UUID REFERENCES recordings(id) ON DELETE CASCADE,
+  
+  -- Upload State
+  file_name TEXT NOT NULL,
+  file_size_bytes BIGINT NOT NULL,
+  total_parts INTEGER NOT NULL,
+  part_size_bytes INTEGER NOT NULL DEFAULT 5242880, -- 5MB
+  
+  -- Progress Tracking
+  uploaded_parts JSONB, -- Array of { part_number, etag, uploaded_at }
+  completed_parts INTEGER DEFAULT 0,
+  
+  -- Storage
+  upload_id TEXT, -- S3 multipart upload ID
+  storage_bucket TEXT DEFAULT 'recordings',
+  
+  -- Status
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'uploading', 'completed', 'failed', 'cancelled')),
+  
+  expires_at TIMESTAMPTZ, -- Cleanup old sessions
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_upload_sessions_user_id ON upload_sessions(user_id);
+CREATE INDEX idx_upload_sessions_recording_id ON upload_sessions(recording_id);
+CREATE INDEX idx_upload_sessions_status ON upload_sessions(status);
+```
+
+---
+
+## Phase 2: AI Pipeline (Server-Side)
+
+### 1. Transcription Service Adapter Pattern
+
+**Interface Definition:**
+
+```typescript
+interface TranscriptionService {
+  transcribe(
+    audioFile: Buffer | Stream,
+    options: TranscriptionOptions
+  ): Promise<TranscriptionResult>;
+}
+
+interface TranscriptionOptions {
+  language?: string;
+  enableDiarization: boolean;
+  speakerCount?: number;
+  model?: string; // 'whisper-1', 'nova-2', etc.
+}
+
+interface TranscriptionResult {
+  segments: TranscriptSegment[];
+  metadata: {
+    language: string;
+    duration: number;
+    speakerCount: number;
+    provider: string;
+  };
+}
+
+interface TranscriptSegment {
+  id: string;
+  start: number;
+  end: number;
+  text: string;
+  speaker: string;
+  confidence: number;
+  words?: WordTimestamp[];
+}
+
+interface WordTimestamp {
+  start: number;
+  end: number;
+  text: string;
+  confidence: number;
+}
+```
+
+**Implementation: OpenAI Whisper**
+
+```typescript
+class WhisperTranscriptionService implements TranscriptionService {
+  private client: OpenAI;
+
+  async transcribe(
+    audioFile: Buffer,
+    options: TranscriptionOptions
+  ): Promise<TranscriptionResult> {
+    // Upload to temporary storage or use direct stream
+    const file = await this.client.files.create({
+      file: new File([audioFile], 'audio.mp3'),
+      purpose: 'assistants'
+    });
+
+    // Request transcription with timestamps
+    const transcription = await this.client.audio.transcriptions.create({
+      file: file.id,
+      model: options.model || 'whisper-1',
+      language: options.language,
+      response_format: 'verbose_json',
+      timestamp_granularities: ['word', 'segment']
+    });
+
+    // Parse and normalize response
+    return this.normalizeResponse(transcription, options.enableDiarization);
+  }
+
+  private normalizeResponse(
+    response: any,
+    enableDiarization: boolean
+  ): TranscriptionResult {
+    // Transform Whisper response to standardized format
+    // Note: Whisper doesn't natively support diarization
+    // Would need to use pyannote.audio or similar for speaker separation
+  }
+}
+```
+
+**Implementation: Deepgram**
+
+```typescript
+class DeepgramTranscriptionService implements TranscriptionService {
+  private client: DeepgramClient;
+
+  async transcribe(
+    audioFile: Buffer,
+    options: TranscriptionOptions
+  ): Promise<TranscriptionResult> {
+    const response = await this.client.listen.rest.v('1').transcriptions.syncTranscribeFile(
+      {
+        model: options.model || 'nova-2',
+        language: options.language || 'en',
+        punctuate: true,
+        diarize: options.enableDiarization,
+        smart_format: true,
+        utterances: true, // Get word-level timestamps
+        paragraphs: true
+      },
+      {
+        buffer: audioFile,
+        mimetype: 'audio/mpeg'
+      }
+    );
+
+    return this.normalizeResponse(response);
+  }
+
+  private normalizeResponse(response: any): TranscriptionResult {
+    const segments: TranscriptSegment[] = [];
+
+    response.results?.utterances?.forEach((utterance: any, index: number) => {
+      segments.push({
+        id: `seg_${String(index + 1).padStart(3, '0')}`,
+        start: utterance.start,
+        end: utterance.end,
+        text: utterance.transcript,
+        speaker: `Speaker ${utterance.speaker}`,
+        confidence: utterance.confidence || 0.9,
+        words: utterance.words?.map((word: any) => ({
+          start: word.start,
+          end: word.end,
+          text: word.word,
+          confidence: word.confidence || 0.9
+        }))
+      });
+    });
+
+    return {
+      segments,
+      metadata: {
+        language: response.metadata?.language || 'en',
+        duration: response.metadata?.duration || 0,
+        speakerCount: response.metadata?.channels?.[0]?.alternatives?.[0]?.speakers || 1,
+        provider: 'deepgram'
+      }
+    };
+  }
+}
+```
+
+**Service Factory:**
+
+```typescript
+class TranscriptionServiceFactory {
+  static create(provider: 'whisper' | 'deepgram'): TranscriptionService {
+    switch (provider) {
+      case 'whisper':
+        return new WhisperTranscriptionService();
+      case 'deepgram':
+        return new DeepgramTranscriptionService();
+      default:
+        throw new Error(`Unknown provider: ${provider}`);
+    }
+  }
+}
+```
+
+### 2. The Worker (Supabase Edge Function)
+
+**Trigger:** Storage bucket `onObjectCreated` event
+
+**Function: `transcribe-audio`**
+
+```typescript
+// supabase/functions/transcribe-audio/index.ts
+
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+interface TranscriptionEvent {
+  type: 'INSERT';
+  table: 'recordings';
+  record: {
+    id: string;
+    file_url: string;
+    transcription_provider: string;
+    language_code: string;
+  };
+}
+
+serve(async (req) => {
+  try {
+    const event: TranscriptionEvent = await req.json();
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    );
+
+    const recording = event.record;
+
+    // Update status to processing
+    await supabase
+      .from('recordings')
+      .update({ status: 'processing' })
+      .eq('id', recording.id);
+
+    // Download file from storage
+    const { data: fileData, error: downloadError } = await supabase.storage
+      .from('recordings')
+      .download(recording.file_url);
+
+    if (downloadError) throw downloadError;
+
+    // Convert to buffer
+    const audioBuffer = await fileData.arrayBuffer();
+
+    // Get transcription service
+    const service = TranscriptionServiceFactory.create(
+      recording.transcription_provider as 'whisper' | 'deepgram'
+    );
+
+    // Transcribe
+    const result = await service.transcribe(Buffer.from(audioBuffer), {
+      language: recording.language_code,
+      enableDiarization: true
+    });
+
+    // Extract speakers
+    const speakerLabels = new Set(
+      result.segments.map(seg => seg.speaker)
+    );
+
+    // Save speakers
+    for (const label of speakerLabels) {
+      await supabase.from('speakers').upsert({
+        recording_id: recording.id,
+        label,
+        identified_name: null,
+        color_hex: generateColorForSpeaker(label)
+      });
+    }
+
+    // Update recording with transcript
+    const { error: updateError } = await supabase
+      .from('recordings')
+      .update({
+        status: 'completed',
+        transcript_data: {
+          segments: result.segments,
+          metadata: result.metadata
+        },
+        completed_at: new Date().toISOString()
+      })
+      .eq('id', recording.id);
+
+    if (updateError) throw updateError;
+
+    // Trigger LLM post-processing (async, don't wait)
+    await triggerLLMPostProcessing(recording.id, result.segments);
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Transcription error:', error);
+
+    // Update status to failed
+    await supabase
+      .from('recordings')
+      .update({
+        status: 'failed',
+        error_message: error.message
+      })
+      .eq('id', event.record.id);
+
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500 }
+    );
+  }
+});
+```
+
+### 3. Post-Processing Intelligence (LLM)
+
+**Function: `llm-post-process`**
+
+```typescript
+// supabase/functions/llm-post-process/index.ts
+
+async function triggerLLMPostProcessing(
+  recordingId: string,
+  segments: TranscriptSegment[]
+) {
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  );
+
+  // Combine all segment text
+  const fullText = segments
+    .map(seg => `${seg.speaker}: ${seg.text}`)
+    .join('\n');
+
+  // Call GPT-4o
+  const openai = new OpenAI({
+    apiKey: Deno.env.get('OPENAI_API_KEY')!
+  });
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: `You are a meeting analysis assistant. Analyze the following transcription and extract:
+1. A concise title (max 10 words)
+2. A 3-sentence summary
+3. 5 actionable items (as a JSON array)
+
+Format your response as JSON:
+{
+  "title": "...",
+  "summary": "...",
+  "actionItems": ["...", "...", "...", "...", "..."]
+}`
+      },
+      {
+        role: 'user',
+        content: fullText
+      }
+    ],
+    response_format: { type: 'json_object' }
+  });
+
+  const analysis = JSON.parse(completion.choices[0].message.content);
+
+  // Update recording
+  await supabase
+    .from('recordings')
+    .update({
+      title: analysis.title,
+      summary: analysis.summary,
+      action_items: analysis.actionItems
+    })
+    .eq('id', recordingId);
+}
+```
+
+---
+
+## Phase 3: Synced Editor (Frontend UX)
+
+### 1. The `ActiveTranscript` Component
+
+**State Management:**
+
+```typescript
+// components/ActiveTranscript.tsx
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+
+interface ActiveTranscriptProps {
+  recordingId: string;
+  transcriptData: TranscriptData;
+  audioUrl: string;
+}
+
+export function ActiveTranscript({
+  recordingId,
+  transcriptData,
+  audioUrl
+}: ActiveTranscriptProps) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const segmentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  const [currentTime, setCurrentTime] = useState(0);
+  const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // Binary search for efficient segment lookup
+  const findSegmentAtTime = useCallback((time: number): string | null => {
+    const segments = transcriptData.segments;
+    let left = 0;
+    let right = segments.length - 1;
+
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      const segment = segments[mid];
+
+      if (time >= segment.start && time <= segment.end) {
+        return segment.id;
+      } else if (time < segment.start) {
+        right = mid - 1;
+      } else {
+        left = mid + 1;
+      }
+    }
+
+    return null;
+  }, [transcriptData]);
+
+  // Update active segment on time change
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    const segmentId = findSegmentAtTime(currentTime);
+    if (segmentId !== activeSegmentId) {
+      setActiveSegmentId(segmentId);
+
+      // Auto-scroll to active segment
+      const segmentElement = segmentRefs.current.get(segmentId);
+      if (segmentElement) {
+        segmentElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+      }
+    }
+  }, [currentTime, isPlaying, findSegmentAtTime, activeSegmentId]);
+
+  // Audio event handlers
+  const handleTimeUpdate = (e: React.SyntheticEvent<HTMLAudioElement>) => {
+    setCurrentTime(e.currentTarget.currentTime);
+  };
+
+  const handlePlay = () => setIsPlaying(true);
+  const handlePause = () => setIsPlaying(false);
+
+  // Click-to-seek handler
+  const handleWordClick = useCallback((word: WordTimestamp) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = word.start;
+      audioRef.current.play();
+    }
+  }, []);
+
+  // Real-time editing handler
+  const handleSegmentEdit = useCallback(async (
+    segmentId: string,
+    newText: string
+  ) => {
+    // Update local state optimistically
+    const updatedSegments = transcriptData.segments.map(seg =>
+      seg.id === segmentId ? { ...seg, text: newText } : seg
+    );
+
+    // Persist to database (debounced)
+    await updateTranscript(recordingId, {
+      ...transcriptData,
+      segments: updatedSegments
+    });
+  }, [recordingId, transcriptData]);
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Audio Player */}
+      <audio
+        ref={audioRef}
+        src={audioUrl}
+        onTimeUpdate={handleTimeUpdate}
+        onPlay={handlePlay}
+        onPause={handlePause}
+        controls
+        className="w-full"
+      />
+
+      {/* Transcript Container */}
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-y-auto p-4 space-y-2"
+      >
+        {transcriptData.segments.map((segment) => {
+          const isActive = segment.id === activeSegmentId;
+
+          return (
+            <div
+              key={segment.id}
+              ref={(el) => {
+                if (el) segmentRefs.current.set(segment.id, el);
+              }}
+              className={`
+                p-3 rounded-lg transition-all
+                ${isActive
+                  ? 'bg-blue-50 border-l-4 border-blue-500'
+                  : 'bg-gray-50 hover:bg-gray-100'
+                }
+              `}
+            >
+              {/* Speaker Label */}
+              <div className="text-sm font-semibold text-gray-600 mb-1">
+                {segment.speaker}
+              </div>
+
+              {/* Word-Level Text */}
+              <div className="text-base leading-relaxed">
+                {segment.words?.map((word, idx) => {
+                  const isWordActive =
+                    isActive &&
+                    currentTime >= word.start &&
+                    currentTime <= word.end;
+
+                  return (
+                    <span
+                      key={idx}
+                      onClick={() => handleWordClick(word)}
+                      className={`
+                        cursor-pointer px-0.5 rounded
+                        transition-colors
+                        ${isWordActive
+                          ? 'bg-yellow-300 font-semibold'
+                          : 'hover:bg-yellow-100'
+                        }
+                      `}
+                    >
+                      {word.text}
+                    </span>
+                  );
+                }) || segment.text}
+              </div>
+
+              {/* Timestamp */}
+              <div className="text-xs text-gray-400 mt-1">
+                {formatTimestamp(segment.start)} - {formatTimestamp(segment.end)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function formatTimestamp(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+```
+
+### 2. The Audio Visualizer (Wavesurfer.js)
+
+```typescript
+// components/AudioWaveform.tsx
+
+import { useEffect, useRef } from 'react';
+import WaveSurfer from 'wavesurfer.js';
+
+interface AudioWaveformProps {
+  audioUrl: string;
+  onSeek?: (time: number) => void;
+  currentTime?: number;
+}
+
+export function AudioWaveform({
+  audioUrl,
+  onSeek,
+  currentTime
+}: AudioWaveformProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const wavesurferRef = useRef<WaveSurfer | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const wavesurfer = WaveSurfer.create({
+      container: containerRef.current,
+      waveColor: '#3B82F6',
+      progressColor: '#1E40AF',
+      cursorColor: '#EF4444',
+      barWidth: 2,
+      barRadius: 3,
+      responsive: true,
+      height: 80,
+      normalize: true,
+      backend: 'WebAudio',
+      mediaControls: false
+    });
+
+    wavesurfer.load(audioUrl);
+
+    wavesurfer.on('seek', () => {
+      if (onSeek) {
+        onSeek(wavesurfer.getCurrentTime());
+      }
+    });
+
+    wavesurferRef.current = wavesurfer;
+
+    return () => {
+      wavesurfer.destroy();
+    };
+  }, [audioUrl, onSeek]);
+
+  // Sync with external time updates
+  useEffect(() => {
+    if (wavesurferRef.current && currentTime !== undefined) {
+      const current = wavesurferRef.current.getCurrentTime();
+      if (Math.abs(current - currentTime) > 0.1) {
+        wavesurferRef.current.seekTo(currentTime / wavesurferRef.current.getDuration());
+      }
+    }
+  }, [currentTime]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full bg-gray-50 rounded-lg p-2"
+    />
+  );
+}
+```
+
+### 3. Real-Time Editing Logic
+
+**Key Principle:** Preserve timestamps when editing text.
+
+```typescript
+// hooks/useTranscriptEditor.ts
+
+export function useTranscriptEditor(recordingId: string) {
+  const [transcript, setTranscript] = useState<TranscriptData | null>(null);
+  const debounceRef = useRef<NodeJS.Timeout>();
+
+  const updateSegmentText = useCallback(
+    async (segmentId: string, newText: string) => {
+      if (!transcript) return;
+
+      // Update local state immediately (optimistic)
+      const updatedSegments = transcript.segments.map(seg =>
+        seg.id === segmentId
+          ? { ...seg, text: newText }
+          : seg
+      );
+
+      setTranscript({
+        ...transcript,
+        segments: updatedSegments
+      });
+
+      // Debounce database update (500ms)
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+
+      debounceRef.current = setTimeout(async () => {
+        await supabase
+          .from('recordings')
+          .update({
+            transcript_data: {
+              ...transcript,
+              segments: updatedSegments
+            }
+          })
+          .eq('id', recordingId);
+      }, 500);
+    },
+    [recordingId, transcript]
+  );
+
+  const enterRetimingMode = useCallback((segmentId: string) => {
+    // Advanced feature: Allow user to manually adjust word timestamps
+    // This would open a specialized UI for timestamp editing
+  }, []);
+
+  return {
+    transcript,
+    updateSegmentText,
+    enterRetimingMode
+  };
+}
+```
+
+---
+
+## Phase 4: Implementation Details
+
+### 1. The VTT Exporter
+
+```typescript
+// utils/vttExporter.ts
+
+interface TranscriptSegment {
+  id: string;
+  start: number;
+  end: number;
+  text: string;
+  speaker: string;
+}
+
+export function exportToVTT(segments: TranscriptSegment[]): string {
+  let vtt = 'WEBVTT\n\n';
+
+  segments.forEach((segment) => {
+    const startTime = formatVTTTimestamp(segment.start);
+    const endTime = formatVTTTimestamp(segment.end);
+
+    vtt += `${startTime} --> ${endTime}\n`;
+    vtt += `<v ${segment.speaker}>${segment.text}</v>\n\n`;
+  });
+
+  return vtt;
+}
+
+export function exportToSRT(segments: TranscriptSegment[]): string {
+  let srt = '';
+
+  segments.forEach((segment, index) => {
+    const startTime = formatSRTTimestamp(segment.start);
+    const endTime = formatSRTTimestamp(segment.end);
+
+    srt += `${index + 1}\n`;
+    srt += `${startTime} --> ${endTime}\n`;
+    srt += `${segment.speaker}: ${segment.text}\n\n`;
+  });
+
+  return srt;
+}
+
+function formatVTTTimestamp(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  const millis = Math.floor((seconds % 1) * 1000);
+
+  return `${hours.toString().padStart(2, '0')}:${mins
+    .toString()
+    .padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${millis
+    .toString()
+    .padStart(3, '0')}`;
+}
+
+function formatSRTTimestamp(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  const millis = Math.floor((seconds % 1) * 1000);
+
+  return `${hours.toString().padStart(2, '0')}:${mins
+    .toString()
+    .padStart(2, '0')}:${secs.toString().padStart(2, '0')},${millis
+    .toString()
+    .padStart(3, '0')}`;
+}
+
+// Usage in component
+export function TranscriptExportButton({ recordingId }: { recordingId: string }) {
+  const handleExport = async (format: 'vtt' | 'srt') => {
+    const { data } = await supabase
+      .from('recordings')
+      .select('transcript_data')
+      .eq('id', recordingId)
+      .single();
+
+    if (!data?.transcript_data) return;
+
+    const content =
+      format === 'vtt'
+        ? exportToVTT(data.transcript_data.segments)
+        : exportToSRT(data.transcript_data.segments);
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transcript-${recordingId}.${format}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="flex gap-2">
+      <button onClick={() => handleExport('vtt')}>Export VTT</button>
+      <button onClick={() => handleExport('srt')}>Export SRT</button>
+    </div>
+  );
+}
+```
+
+### 2. The Drag-and-Drop Zone
+
+```typescript
+// components/AudioUploadZone.tsx
+
+import { useCallback, useState } from 'react';
+import { useDropzone } from 'react-dropzone';
+import { useResumableUpload } from '@/hooks/useResumableUpload';
+
+const ACCEPTED_AUDIO_TYPES = {
+  'audio/mpeg': ['.mp3'],
+  'audio/wav': ['.wav'],
+  'audio/mp4': ['.m4a', '.mp4'],
+  'audio/webm': ['.webm'],
+  'audio/ogg': ['.ogg']
+};
+
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+
+export function AudioUploadZone({ onUploadComplete }: { onUploadComplete: (recordingId: string) => void }) {
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'completed'>('idle');
+  const { uploadFile } = useResumableUpload();
+
+  const onDrop = useCallback(
+    async (acceptedFiles: File[]) => {
+      const file = acceptedFiles[0];
+      if (!file) return;
+
+      setUploadStatus('uploading');
+
+      try {
+        const recordingId = await uploadFile(file, {
+          onProgress: (progress) => {
+            setUploadProgress(progress);
+          },
+          onComplete: () => {
+            setUploadStatus('processing');
+          }
+        });
+
+        onUploadComplete(recordingId);
+      } catch (error) {
+        console.error('Upload failed:', error);
+        setUploadStatus('idle');
+      }
+    },
+    [uploadFile, onUploadComplete]
+  );
+
+  const { getRootProps, getInputProps, isDragActive, fileRejections } = useDropzone({
+    onDrop,
+    accept: ACCEPTED_AUDIO_TYPES,
+    maxSize: MAX_FILE_SIZE,
+    multiple: false,
+    disabled: uploadStatus === 'uploading' || uploadStatus === 'processing'
+  });
+
+  return (
+    <div className="w-full">
+      <div
+        {...getRootProps()}
+        className={`
+          border-2 border-dashed rounded-lg p-8 text-center cursor-pointer
+          transition-colors
+          ${isDragActive
+            ? 'border-blue-500 bg-blue-50'
+            : 'border-gray-300 hover:border-gray-400'
+          }
+          ${uploadStatus === 'uploading' || uploadStatus === 'processing'
+            ? 'opacity-50 cursor-not-allowed'
+            : ''
+          }
+        `}
+      >
+        <input {...getInputProps()} />
+        <div className="space-y-2">
+          <p className="text-lg font-medium">
+            {isDragActive
+              ? 'Drop audio file here'
+              : 'Drag & drop audio file, or click to select'}
+          </p>
+          <p className="text-sm text-gray-500">
+            Supports: MP3, WAV, M4A, WebM, OGG (max 500MB)
+          </p>
+        </div>
+      </div>
+
+      {/* Upload Progress */}
+      {uploadStatus === 'uploading' && (
+        <div className="mt-4">
+          <div className="flex justify-between text-sm mb-1">
+            <span>Uploading...</span>
+            <span>{Math.round(uploadProgress)}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-blue-500 h-2 rounded-full transition-all"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Processing Status */}
+      {uploadStatus === 'processing' && (
+        <div className="mt-4 p-4 bg-yellow-50 rounded-lg">
+          <p className="text-sm text-yellow-800">
+            ⏳ Processing transcription... This may take a few minutes.
+          </p>
+        </div>
+      )}
+
+      {/* File Rejection Errors */}
+      {fileRejections.length > 0 && (
+        <div className="mt-4 p-4 bg-red-50 rounded-lg">
+          {fileRejections.map(({ file, errors }) => (
+            <div key={file.name}>
+              <p className="text-sm font-medium text-red-800">{file.name}</p>
+              <ul className="text-sm text-red-600 list-disc list-inside">
+                {errors.map((error) => (
+                  <li key={error.code}>
+                    {error.code === 'file-too-large'
+                      ? 'File is too large (max 500MB)'
+                      : error.code === 'file-invalid-type'
+                      ? 'Invalid file type. Please upload an audio file.'
+                      : error.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+**Resumable Upload Hook:**
+
+```typescript
+// hooks/useResumableUpload.ts
+
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+
+export function useResumableUpload() {
+  const uploadFile = async (
+    file: File,
+    callbacks: {
+      onProgress: (progress: number) => void;
+      onComplete: () => void;
+    }
+  ): Promise<string> => {
+    // Check if file needs multipart upload
+    const needsMultipart = file.size > 25 * 1024 * 1024; // 25MB
+
+    if (needsMultipart) {
+      return await uploadMultipart(file, callbacks);
+    } else {
+      return await uploadSimple(file, callbacks);
+    }
+  };
+
+  const uploadMultipart = async (
+    file: File,
+    callbacks: { onProgress: (progress: number) => void; onComplete: () => void }
+  ): Promise<string> => {
+    // 1. Create upload session
+    const { data: session } = await supabase
+      .from('upload_sessions')
+      .insert({
+        file_name: file.name,
+        file_size_bytes: file.size,
+        total_parts: Math.ceil(file.size / CHUNK_SIZE),
+        part_size_bytes: CHUNK_SIZE
+      })
+      .select()
+      .single();
+
+    // 2. Initialize multipart upload (Supabase Storage)
+    const { data: uploadData, error } = await supabase.storage
+      .from('recordings')
+      .createMultipartUpload(file.name, {
+        upsert: false
+      });
+
+    if (error) throw error;
+
+    // 3. Upload parts in parallel (with concurrency limit)
+    const parts: { partNumber: number; etag: string }[] = [];
+    const totalParts = Math.ceil(file.size / CHUNK_SIZE);
+    const concurrency = 3; // Upload 3 parts simultaneously
+
+    for (let i = 0; i < totalParts; i += concurrency) {
+      const batch = [];
+      for (let j = 0; j < concurrency && i + j < totalParts; j++) {
+        const partNumber = i + j + 1;
+        const start = partNumber * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunk = file.slice(start, end);
+
+        batch.push(
+          supabase.storage
+            .from('recordings')
+            .uploadPart(uploadData.uploadId, partNumber, chunk)
+            .then(({ data: partData }) => {
+              parts.push({ partNumber, etag: partData.etag });
+              callbacks.onProgress(((partNumber / totalParts) * 100));
+            })
+        );
+      }
+      await Promise.all(batch);
+    }
+
+    // 4. Complete multipart upload
+    const { data: fileData } = await supabase.storage
+      .from('recordings')
+      .completeMultipartUpload(uploadData.uploadId, parts);
+
+    // 5. Create recording record
+    const { data: recording } = await supabase
+      .from('recordings')
+      .insert({
+        file_url: fileData.path,
+        file_size_bytes: file.size,
+        status: 'processing'
+      })
+      .select()
+      .single();
+
+    callbacks.onComplete();
+
+    return recording.id;
+  };
+
+  const uploadSimple = async (
+    file: File,
+    callbacks: { onProgress: (progress: number) => void; onComplete: () => void }
+  ): Promise<string> => {
+    const filePath = `${Date.now()}-${file.name}`;
+
+    const { data, error } = await supabase.storage
+      .from('recordings')
+      .upload(filePath, file, {
+        onUploadProgress: (progress) => {
+          const percent = (progress.loaded / progress.total) * 100;
+          callbacks.onProgress(percent);
+        }
+      });
+
+    if (error) throw error;
+
+    const { data: recording } = await supabase
+      .from('recordings')
+      .insert({
+        file_url: data.path,
+        file_size_bytes: file.size,
+        status: 'processing'
+      })
+      .select()
+      .single();
+
+    callbacks.onComplete();
+
+    return recording.id;
+  };
+
+  return { uploadFile };
+}
+```
+
+### 3. Speaker Renaming Logic
+
+```typescript
+// hooks/useSpeakerRenaming.ts
+
+export function useSpeakerRenaming(recordingId: string) {
+  const renameSpeaker = useCallback(
+    async (oldLabel: string, newName: string) => {
+      // 1. Update speakers table
+      await supabase
+        .from('speakers')
+        .update({ identified_name: newName })
+        .eq('recording_id', recordingId)
+        .eq('label', oldLabel);
+
+      // 2. Update all instances in transcript JSON
+      const { data: recording } = await supabase
+        .from('recordings')
+        .select('transcript_data')
+        .eq('id', recordingId)
+        .single();
+
+      if (!recording?.transcript_data) return;
+
+      const updatedSegments = recording.transcript_data.segments.map(
+        (segment: TranscriptSegment) => {
+          if (segment.speaker === oldLabel) {
+            return {
+              ...segment,
+              speaker: newName // Update speaker label
+            };
+          }
+          return segment;
+        }
+      );
+
+      // 3. Persist updated transcript
+      await supabase
+        .from('recordings')
+        .update({
+          transcript_data: {
+            ...recording.transcript_data,
+            segments: updatedSegments
+          }
+        })
+        .eq('id', recordingId);
+    },
+    [recordingId]
+  );
+
+  return { renameSpeaker };
+}
+
+// Component Usage
+export function SpeakerManagement({ recordingId }: { recordingId: string }) {
+  const { renameSpeaker } = useSpeakerRenaming(recordingId);
+  const [speakers, setSpeakers] = useState<Speaker[]>([]);
+
+  const handleRename = async (oldLabel: string, newName: string) => {
+    await renameSpeaker(oldLabel, newName);
+    // Refresh speakers list
+    const { data } = await supabase
+      .from('speakers')
+      .select('*')
+      .eq('recording_id', recordingId);
+    setSpeakers(data || []);
+  };
+
+  return (
+    <div className="space-y-2">
+      {speakers.map((speaker) => (
+        <div key={speaker.id} className="flex items-center gap-2">
+          <div
+            className="w-4 h-4 rounded-full"
+            style={{ backgroundColor: speaker.color_hex }}
+          />
+          <span className="font-medium">{speaker.label}</span>
+          <input
+            type="text"
+            placeholder="Enter name..."
+            defaultValue={speaker.identified_name || ''}
+            onBlur={(e) => {
+              if (e.target.value && e.target.value !== speaker.identified_name) {
+                handleRename(speaker.label, e.target.value);
+              }
+            }}
+            className="px-2 py-1 border rounded"
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+---
+
+## API Contracts
+
+### REST Endpoints
+
+#### `POST /api/recordings/upload`
+Initiate file upload (returns upload session ID for multipart).
+
+**Request:**
+```json
+{
+  "fileName": "meeting.mp3",
+  "fileSize": 52428800,
+  "mimeType": "audio/mpeg"
+}
+```
+
+**Response:**
+```json
+{
+  "uploadSessionId": "uuid",
+  "recordingId": "uuid",
+  "uploadId": "s3-upload-id",
+  "partSize": 5242880
+}
+```
+
+#### `POST /api/recordings/:id/transcript/update`
+Update transcript text (preserves timestamps).
+
+**Request:**
+```json
+{
+  "segmentId": "seg_001",
+  "text": "Updated text here"
+}
+```
+
+#### `PATCH /api/speakers/:id`
+Rename speaker.
+
+**Request:**
+```json
+{
+  "identifiedName": "John Doe"
+}
+```
+
+### WebSocket Events (Real-time Status Updates)
+
+```typescript
+// Client subscribes to recording status
+supabase
+  .channel(`recording:${recordingId}`)
+  .on(
+    'postgres_changes',
+    {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'recordings',
+      filter: `id=eq.${recordingId}`
+    },
+    (payload) => {
+      // Update UI with new status
+      if (payload.new.status === 'completed') {
+        // Reload transcript
+      }
+    }
+  )
+  .subscribe();
+```
+
+---
+
+## Error Handling & Edge Cases
+
+### 1. Transcription Failures
+
+- **Retry Logic:** Automatic retry (3 attempts) with exponential backoff
+- **Fallback Provider:** If Whisper fails, attempt Deepgram
+- **User Notification:** Clear error messages with actionable steps
+
+### 2. Network Interruptions
+
+- **Resumable Uploads:** Track uploaded parts, resume from last checkpoint
+- **Transcript Sync:** Optimistic updates with conflict resolution
+
+### 3. Large File Performance
+
+- **Lazy Loading:** Load transcript segments on-demand (virtual scrolling)
+- **Debouncing:** All text edits debounced (500ms) to reduce API calls
+- **Caching:** Cache transcript data in IndexedDB for offline access
+
+### 4. Audio Playback Issues
+
+- **Format Compatibility:** Transcode unsupported formats server-side
+- **Seek Precision:** Round timestamps to nearest 0.1s to avoid jitter
+- **Buffering:** Preload next 30 seconds of audio
+
+---
+
+## Performance Optimizations
+
+1. **Binary Search:** O(log n) segment lookup instead of O(n)
+2. **Virtual Scrolling:** Only render visible transcript segments
+3. **Debounced Updates:** Batch database writes
+4. **CDN Caching:** Cache audio files at edge
+5. **Database Indexing:** GIN index on JSONB transcript_data for fast queries
+
+---
+
+## Security Considerations
+
+1. **File Validation:** Server-side MIME type checking
+2. **Size Limits:** Enforce 500MB max file size
+3. **Rate Limiting:** Prevent abuse of transcription API
+4. **Access Control:** Row-level security (RLS) on Supabase tables
+5. **API Keys:** Store provider keys in environment variables only
+
+---
+
+## Testing Strategy
+
+1. **Unit Tests:** Transcription service adapters, VTT exporter
+2. **Integration Tests:** End-to-end upload → transcription → display flow
+3. **Performance Tests:** Large file handling, concurrent uploads
+4. **E2E Tests:** Playwright tests for synced editor interactions
+
+---
+
+**END OF DOCUMENTATION**

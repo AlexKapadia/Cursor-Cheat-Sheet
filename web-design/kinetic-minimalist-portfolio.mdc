@@ -1,0 +1,818 @@
+# Kinetic Minimalist Portfolio
+## Source of Truth Documentation
+
+> **The Core Philosophy:** This style is **NOT** about static layouts. It is about **how things move**. Content is often hidden until the user interacts. The vibe is "Effortless Cool" — high-end typography, smooth scrolling, and micro-interactions that feel "buttery."
+
+---
+
+## PHASE 1: VISUAL FORENSICS
+
+### The "Project List" Interaction
+
+**Observed Behavior:**
+- **Vertical List Layout:** Projects are displayed as a vertical list, not a grid
+- **Hover State Mechanics:**
+  - Text shifts slightly to the right (translateX: 8-12px)
+  - Opacity change on hover (from 0.6-0.7 to 1.0)
+  - **Signature Move:** A project image appears floating near the cursor position
+  - Image follows cursor with a slight delay (spring physics)
+  - Image scales from 0.8 to 1.0 on hover
+  - Image opacity transitions from 0 to 1
+
+**Typography Scale:**
+- **Big Type:** Massive display typography (8-12vw for headers)
+- **Tiny Type:** Small monospaced metadata (Year, Role, Type) at 0.75-0.875rem
+- **Body Type:** Characterful Sans-Serif (Neue Montreal, Suisse Int'l) or sharp Serif (Editorial New)
+
+**Page Transition:**
+- On project click: New page slides up from bottom (translateY: 100vh → 0)
+- Old page scales down and fades out (scale: 1 → 0.95, opacity: 1 → 0)
+- Transition duration: 600-800ms with easing curve `[0.16, 1, 0.3, 1]`
+
+---
+
+## PHASE 2: THE KINETIC PHYSICS (THE RULES)
+
+### 1. Design DNA: "The Interactive List"
+
+#### Layout
+- **Primary Navigation:** Vertical List (not a Grid of cards)
+- **Spacing:** Generous vertical rhythm (4-6rem between items)
+- **Alignment:** Left-aligned text with consistent indentation
+
+#### Colors: "Gallery Neutral"
+```css
+:root {
+  --bg-canvas: #F4F4F4;        /* Off-white option */
+  /* OR */
+  --bg-canvas: #111111;        /* Soft Black option */
+  
+  --text-primary: #000000;     /* Contrast color for light bg */
+  /* OR */
+  --text-primary: #FFFFFF;     /* Contrast color for dark bg */
+  
+  --text-secondary: rgba(0, 0, 0, 0.6);  /* Subtle text */
+  --accent: #000000;           /* Used ONLY for active states */
+  --accent-hover: rgba(0, 0, 0, 0.1);    /* Subtle hover bg */
+}
+```
+
+#### Typography
+- **Display Font:** Characterful Sans-Serif
+  - `Neue Montreal` (Primary choice)
+  - `Suisse Int'l` (Alternative)
+  - Or sharp Serif: `Editorial New`
+  
+- **Micro Font:** Monospace for tags
+  - `JetBrains Mono`
+  - `IBM Plex Mono`
+  - `SF Mono`
+
+**Font Sizes:**
+```css
+--font-display: clamp(2rem, 8vw, 12rem);    /* Massive headers */
+--font-body: clamp(1rem, 1.5vw, 1.5rem);    /* Body text */
+--font-micro: 0.75rem;                      /* Metadata */
+```
+
+---
+
+### 2. Component Requirements (Production Code)
+
+#### The `HoverRevealList` Component
+
+**Purpose:** List item where hovering text triggers a `motion.img` to appear at cursor's X/Y coordinates with spring physics.
+
+**Implementation:**
+
+```tsx
+import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
+import { useState, useRef } from 'react';
+
+interface HoverRevealListProps {
+  title: string;
+  year: string;
+  role: string;
+  imageUrl: string;
+  href: string;
+}
+
+export const HoverRevealList: React.FC<HoverRevealListProps> = ({
+  title,
+  year,
+  role,
+  imageUrl,
+  href
+}) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const itemRef = useRef<HTMLLIElement>(null);
+
+  // Motion values for cursor following (NO RE-RENDERS)
+  const cursorX = useMotionValue(0);
+  const cursorY = useMotionValue(0);
+  
+  // Spring physics for trailing effect
+  const springConfig = { stiffness: 150, damping: 15 };
+  const imageX = useSpring(cursorX, springConfig);
+  const imageY = useSpring(cursorY, springConfig);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!itemRef.current) return;
+    
+    const rect = itemRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Update motion values directly (no re-render)
+    cursorX.set(e.clientX);
+    cursorY.set(e.clientY);
+    
+    setMousePosition({ x, y });
+  };
+
+  return (
+    <li
+      ref={itemRef}
+      className="project-item"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onMouseMove={handleMouseMove}
+    >
+      <a href={href} className="project-link">
+        <div className="project-content">
+          <span className="project-title">{title}</span>
+          <span className="project-meta">
+            <span className="project-year">{year}</span>
+            <span className="project-role">{role}</span>
+          </span>
+        </div>
+      </a>
+
+      {/* Floating Image - follows cursor with spring physics */}
+      <motion.img
+        src={imageUrl}
+        alt={title}
+        className="project-preview-image"
+        style={{
+          x: imageX,
+          y: imageY,
+          opacity: isHovered ? 1 : 0,
+          scale: isHovered ? 1 : 0.8,
+          pointerEvents: 'none',
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '400px',
+          height: 'auto',
+          zIndex: 1000,
+          transform: 'translate(-50%, -50%)',
+        }}
+        initial={{ opacity: 0, scale: 0.8 }}
+        transition={{
+          opacity: { duration: 0.2 },
+          scale: { duration: 0.3, type: 'spring', stiffness: 200 }
+        }}
+      />
+    </li>
+  );
+};
+```
+
+**CSS Styling:**
+```css
+.project-item {
+  list-style: none;
+  padding: 2rem 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.project-link {
+  text-decoration: none;
+  color: var(--text-primary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.project-title {
+  font-size: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.3s ease;
+}
+
+.project-item:hover .project-title {
+  transform: translateX(12px);
+  opacity: 1;
+}
+
+.project-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: var(--font-micro);
+  opacity: 0.6;
+  display: flex;
+  gap: 1rem;
+}
+
+.project-preview-image {
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+```
+
+---
+
+#### The `MagneticButton` Component
+
+**Purpose:** Circular button that sticks to the mouse cursor when close.
+
+**Implementation:**
+
+```tsx
+import { motion, useMotionValue, useSpring } from 'framer-motion';
+import { useRef, useState } from 'react';
+
+interface MagneticButtonProps {
+  children: React.ReactNode;
+  onClick?: () => void;
+  radius?: number; // Magnetic attraction radius in pixels
+}
+
+export const MagneticButton: React.FC<MagneticButtonProps> = ({
+  children,
+  onClick,
+  radius = 100
+}) => {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [isHovered, setIsHovered] = useState(false);
+
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+
+  const springConfig = { stiffness: 300, damping: 30 };
+  const springX = useSpring(x, springConfig);
+  const springY = useSpring(y, springConfig);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!buttonRef.current) return;
+
+    const rect = buttonRef.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const distanceX = e.clientX - centerX;
+    const distanceY = e.clientY - centerY;
+    const distance = Math.sqrt(distanceX ** 2 + distanceY ** 2);
+
+    if (distance < radius) {
+      // Calculate magnetic pull strength (stronger when closer)
+      const strength = 1 - distance / radius;
+      const pullX = distanceX * strength * 0.3;
+      const pullY = distanceY * strength * 0.3;
+
+      x.set(pullX);
+      y.set(pullY);
+    } else {
+      x.set(0);
+      y.set(0);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+    x.set(0);
+    y.set(0);
+  };
+
+  return (
+    <motion.button
+      ref={buttonRef}
+      className="magnetic-button"
+      onClick={onClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={handleMouseLeave}
+      onMouseMove={handleMouseMove}
+      style={{
+        x: springX,
+        y: springY,
+        scale: isHovered ? 1.1 : 1,
+      }}
+      whileTap={{ scale: 0.95 }}
+      transition={{
+        scale: { duration: 0.2 }
+      }}
+    >
+      {children}
+    </motion.button>
+  );
+};
+```
+
+**CSS Styling:**
+```css
+.magnetic-button {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 1px solid var(--text-primary);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.magnetic-button:hover {
+  background: var(--text-primary);
+  color: var(--bg-canvas);
+}
+```
+
+---
+
+#### The `SmoothScroll` Wrapper
+
+**Purpose:** Mandatory implementation of `@studio-freight/lenis` for momentum scrolling.
+
+**Implementation:**
+
+```tsx
+import { useEffect } from 'react';
+import Lenis from '@studio-freight/lenis';
+import { ReactLenis } from '@studio-freight/react-lenis';
+
+interface SmoothScrollProps {
+  children: React.ReactNode;
+}
+
+export const SmoothScroll: React.FC<SmoothScrollProps> = ({ children }) => {
+  useEffect(() => {
+    const lenis = new Lenis({
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      orientation: 'vertical',
+      gestureOrientation: 'vertical',
+      smoothWheel: true,
+      wheelMultiplier: 1,
+      smoothTouch: false,
+      touchMultiplier: 2,
+      infinite: false,
+    });
+
+    function raf(time: number) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+
+    requestAnimationFrame(raf);
+
+    return () => {
+      lenis.destroy();
+    };
+  }, []);
+
+  return (
+    <ReactLenis root>
+      {children}
+    </ReactLenis>
+  );
+};
+```
+
+**Alternative Implementation (without React wrapper):**
+
+```tsx
+import { useEffect } from 'react';
+import Lenis from '@studio-freight/lenis';
+
+interface SmoothScrollProps {
+  children: React.ReactNode;
+}
+
+export const SmoothScroll: React.FC<SmoothScrollProps> = ({ children }) => {
+  useEffect(() => {
+    const lenis = new Lenis({
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      orientation: 'vertical',
+      gestureOrientation: 'vertical',
+      smoothWheel: true,
+      wheelMultiplier: 1,
+      smoothTouch: false,
+      touchMultiplier: 2,
+      infinite: false,
+    });
+
+    function raf(time: number) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+
+    requestAnimationFrame(raf);
+
+    return () => {
+      lenis.destroy();
+    };
+  }, []);
+
+  return <>{children}</>;
+};
+```
+
+**Installation:**
+```bash
+npm install @studio-freight/lenis
+# OR
+npm install @studio-freight/react-lenis
+```
+
+---
+
+## PHASE 3: CRITICAL IMPLEMENTATIONS
+
+### Text Stagger Effect (Letters Slide Up One by One)
+
+**CRITICAL REQUIREMENT:** Exact `framer-motion` variants for text stagger.
+
+**Implementation:**
+
+```tsx
+import { motion } from 'framer-motion';
+
+// Variant definitions
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.03, // Delay between each letter (30ms)
+      delayChildren: 0.2,    // Initial delay before animation starts
+    }
+  }
+};
+
+const letterVariants = {
+  hidden: {
+    opacity: 0,
+    y: 50,                    // Start 50px below
+    rotateX: -90,             // Optional: 3D rotation effect
+  },
+  visible: {
+    opacity: 1,
+    y: 0,                     // End at natural position
+    rotateX: 0,
+    transition: {
+      duration: 0.6,
+      ease: [0.16, 1, 0.3, 1], // Custom easing curve
+    }
+  }
+};
+
+// Component Usage
+interface StaggeredTextProps {
+  text: string;
+  className?: string;
+}
+
+export const StaggeredText: React.FC<StaggeredTextProps> = ({ 
+  text, 
+  className 
+}) => {
+  return (
+    <motion.div
+      className={className}
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      style={{
+        display: 'inline-block',
+        perspective: '1000px', // For 3D rotation effect
+      }}
+    >
+      {text.split('').map((char, index) => (
+        <motion.span
+          key={index}
+          variants={letterVariants}
+          style={{
+            display: 'inline-block',
+            whiteSpace: char === ' ' ? 'pre' : 'normal',
+          }}
+        >
+          {char === ' ' ? '\u00A0' : char}
+        </motion.span>
+      ))}
+    </motion.div>
+  );
+};
+```
+
+**Alternative: Word-by-Word Stagger:**
+
+```tsx
+const wordContainerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1, // Delay between words
+      delayChildren: 0.2,
+    }
+  }
+};
+
+const wordVariants = {
+  hidden: {
+    opacity: 0,
+    y: 30,
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.5,
+      ease: [0.16, 1, 0.3, 1],
+    }
+  }
+};
+
+export const StaggeredWords: React.FC<StaggeredTextProps> = ({ 
+  text, 
+  className 
+}) => {
+  const words = text.split(' ');
+
+  return (
+    <motion.div
+      className={className}
+      variants={wordContainerVariants}
+      initial="hidden"
+      animate="visible"
+    >
+      {words.map((word, index) => (
+        <motion.span
+          key={index}
+          variants={wordVariants}
+          style={{ display: 'inline-block', marginRight: '0.25em' }}
+        >
+          {word}
+        </motion.span>
+      ))}
+    </motion.div>
+  );
+};
+```
+
+---
+
+### Cursor Follower Logic (useMotionValue Pattern)
+
+**CRITICAL REQUIREMENT:** How to pass mouse position to floating image without re-renders.
+
+**The Solution:** Use `useMotionValue` and `useSpring` from Framer Motion. These update the DOM directly without triggering React re-renders.
+
+**Complete Implementation:**
+
+```tsx
+import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
+import { useEffect, useRef } from 'react';
+
+export const CursorFollower: React.FC = () => {
+  // Motion values (NO RE-RENDERS)
+  const cursorX = useMotionValue(0);
+  const cursorY = useMotionValue(0);
+  
+  // Spring physics for smooth trailing
+  const springConfig = { stiffness: 150, damping: 15 };
+  const followerX = useSpring(cursorX, springConfig);
+  const followerY = useSpring(cursorY, springConfig);
+
+  // Optional: Transform for additional effects
+  const rotate = useTransform(followerX, (x) => x * 0.1);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      // Update motion values directly (no re-render!)
+      cursorX.set(e.clientX);
+      cursorY.set(e.clientY);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, [cursorX, cursorY]);
+
+  return (
+    <motion.div
+      className="cursor-follower"
+      style={{
+        x: followerX,
+        y: followerY,
+        rotate,
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '20px',
+        height: '20px',
+        borderRadius: '50%',
+        background: 'rgba(0, 0, 0, 0.5)',
+        pointerEvents: 'none',
+        zIndex: 9999,
+        transform: 'translate(-50%, -50%)',
+      }}
+    />
+  );
+};
+```
+
+**Key Points:**
+1. **`useMotionValue`** creates a value that can be updated without re-renders
+2. **`useSpring`** applies spring physics to create the trailing effect
+3. **Direct DOM updates:** Framer Motion updates the DOM directly via `style` prop
+4. **Performance:** No React re-renders = buttery smooth 60fps animations
+
+**Usage in HoverRevealList:**
+The `HoverRevealList` component above already implements this pattern. The critical part is:
+
+```tsx
+// Create motion values
+const cursorX = useMotionValue(0);
+const cursorY = useMotionValue(0);
+
+// Apply spring physics
+const imageX = useSpring(cursorX, { stiffness: 150, damping: 15 });
+const imageY = useSpring(cursorY, { stiffness: 150, damping: 15 });
+
+// Update on mouse move (no re-render!)
+const handleMouseMove = (e: React.MouseEvent) => {
+  cursorX.set(e.clientX);  // Direct update, no setState
+  cursorY.set(e.clientY);
+};
+
+// Use in motion component
+<motion.img
+  style={{
+    x: imageX,  // Framer Motion handles DOM updates
+    y: imageY,
+  }}
+/>
+```
+
+---
+
+## Page Transition Implementation
+
+**Slide Up / Scale Down Transition:**
+
+```tsx
+import { motion, AnimatePresence } from 'framer-motion';
+import { useRouter } from 'next/router';
+
+const pageVariants = {
+  initial: {
+    y: '100%',
+    opacity: 1,
+  },
+  enter: {
+    y: 0,
+    opacity: 1,
+    transition: {
+      duration: 0.8,
+      ease: [0.16, 1, 0.3, 1],
+    }
+  },
+  exit: {
+    scale: 0.95,
+    opacity: 0,
+    transition: {
+      duration: 0.6,
+      ease: [0.16, 1, 0.3, 1],
+    }
+  }
+};
+
+export const PageTransition: React.FC<{ children: React.ReactNode }> = ({ 
+  children 
+}) => {
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        variants={pageVariants}
+        initial="initial"
+        animate="enter"
+        exit="exit"
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+```
+
+---
+
+## Complete Example: Project List Page
+
+```tsx
+import { SmoothScroll } from './components/SmoothScroll';
+import { HoverRevealList } from './components/HoverRevealList';
+import { StaggeredText } from './components/StaggeredText';
+import { MagneticButton } from './components/MagneticButton';
+
+const projects = [
+  {
+    title: 'Signal Discover',
+    year: '2024',
+    role: 'Design',
+    imageUrl: '/images/signal.jpg',
+    href: '/project/signal'
+  },
+  // ... more projects
+];
+
+export default function ProjectsPage() {
+  return (
+    <SmoothScroll>
+      <div className="projects-page">
+        <header className="page-header">
+          <StaggeredText 
+            text="Projects" 
+            className="page-title"
+          />
+        </header>
+
+        <ul className="projects-list">
+          {projects.map((project, index) => (
+            <HoverRevealList
+              key={index}
+              title={project.title}
+              year={project.year}
+              role={project.role}
+              imageUrl={project.imageUrl}
+              href={project.href}
+            />
+          ))}
+        </ul>
+
+        <footer>
+          <MagneticButton onClick={() => console.log('Clicked')}>
+            →
+          </MagneticButton>
+        </footer>
+      </div>
+    </SmoothScroll>
+  );
+}
+```
+
+---
+
+## Performance Optimization Tips
+
+1. **Use `useMotionValue` for cursor tracking** - No re-renders
+2. **Lazy load images** - Only load project images when needed
+3. **Debounce scroll events** - If using custom scroll handlers
+4. **Use `will-change` CSS property** - For animated elements
+5. **Reduce motion for accessibility** - Respect `prefers-reduced-motion`
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+```
+
+---
+
+## Summary
+
+**The DNA of This Style:**
+- Vertical list navigation (not grids)
+- Hidden content revealed on interaction
+- Spring physics for all movements
+- Massive typography with tiny metadata
+- Gallery-neutral color palette
+- Buttery smooth scrolling (Lenis)
+- Micro-interactions that feel expensive
+
+**Critical Technical Patterns:**
+- ✅ `useMotionValue` for cursor following (no re-renders)
+- ✅ Spring physics: `{ stiffness: 150, damping: 15 }`
+- ✅ Text stagger: `staggerChildren: 0.03` with letter-by-letter animation
+- ✅ Smooth scrolling: `@studio-freight/lenis` mandatory
+- ✅ Page transitions: Slide up (new) + Scale down (old)
+
+---
+
+*This documentation serves as the Source of Truth for implementing the Kinetic Minimalist Portfolio style.*

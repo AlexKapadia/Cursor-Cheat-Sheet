@@ -1,0 +1,793 @@
+# Japanese Corporate Playful Design System
+## Source of Truth: KOKUYO "Curiosity is Life" Visual Physics
+
+---
+
+## PHASE 1: VISUAL FORENSICS
+
+### Site Analysis: `https://www.kokuyo.com/en/special/curiosity-is-life/`
+
+**Core Design Philosophy:** "Playful Professional" — Structured grids intentionally broken by organic, floating elements that represent curiosity.
+
+**The Vibe:** "Structured Joy" — Clean lines + unexpected movement.
+
+---
+
+## PHASE 2: THE PLAYFUL PHYSICS (THE RULES)
+
+### 1. Design DNA: "Curiosity Grid"
+
+#### Layout Philosophy
+- **Base Structure:** Rigid, mathematical grid system
+- **Breaking Mechanism:** Intentional disruption via floating, organic shapes
+- **Visual Tension:** Order vs. chaos creates visual interest and represents "curiosity"
+
+#### Grid System
+```
+Primary Grid: 12-column responsive system
+Breakpoints:
+  - Mobile: 320px - 767px (4 columns)
+  - Tablet: 768px - 1023px (8 columns)
+  - Desktop: 1024px+ (12 columns)
+
+Gutter: 24px (desktop), 16px (tablet), 12px (mobile)
+Margin: 40px (desktop), 24px (tablet), 16px (mobile)
+```
+
+#### Floating Elements System
+- **Purpose:** Represent curiosity breaking through structure
+- **Placement:** Random, but algorithmically controlled
+- **Types:**
+  - Blobs (organic amoeba shapes)
+  - Sparks (small, energetic particles)
+  - Geometric fragments (broken grid pieces)
+
+---
+
+### 2. Color System: "Creative Primary"
+
+#### Base Palette
+```css
+/* Canvas & Backgrounds */
+--bg-canvas: #FFFFFF;        /* Pure White */
+--bg-canvas-alt: #FAFAFA;    /* Subtle off-white */
+--bg-overlay: rgba(0, 0, 0, 0.05); /* Subtle overlay */
+
+/* Text Hierarchy */
+--text-primary: #000000;     /* Pure Black */
+--text-secondary: #333333;   /* Dark Gray */
+--text-tertiary: #666666;    /* Medium Gray */
+--text-inverse: #FFFFFF;     /* White text on dark */
+
+/* Accent Colors - "Joy Palette" */
+--accent-cyan: #0097A7;      /* KOKUYO Cyan */
+--accent-yellow: #FFD700;    /* Vibrant Yellow */
+--accent-magenta: #E91E63;   /* Playful Magenta */
+--accent-blue: #2196F3;      /* Bright Blue */
+
+/* Semantic Colors */
+--success: #4CAF50;
+--warning: #FFC107;
+--error: #F44336;
+--info: #0097A7;
+```
+
+#### Color Usage Rules
+1. **Primary Background:** Always `--bg-canvas` (white)
+2. **Text:** Primarily `--text-primary` or `--text-secondary`
+3. **Accents:** Use sparingly for highlights, CTAs, and floating shapes
+4. **CMYK Inspiration:** Accent colors should feel print-inspired but digital-bright
+
+---
+
+### 3. Typography: "Bilingual Harmony"
+
+#### English Typography
+**Primary Font Stack:**
+```css
+--font-primary-en: 'Poppins', 'Circular', 'Futura', -apple-system, sans-serif;
+--font-weight-light: 300;
+--font-weight-regular: 400;
+--font-weight-medium: 500;
+--font-weight-bold: 700;
+
+/* Scale */
+--font-size-xs: 0.75rem;    /* 12px */
+--font-size-sm: 0.875rem;   /* 14px */
+--font-size-base: 1rem;     /* 16px */
+--font-size-lg: 1.125rem;   /* 18px */
+--font-size-xl: 1.25rem;    /* 20px */
+--font-size-2xl: 1.5rem;    /* 24px */
+--font-size-3xl: 1.875rem;  /* 30px */
+--font-size-4xl: 2.25rem;   /* 36px */
+--font-size-5xl: 3rem;      /* 48px */
+```
+
+**English Typography Rules:**
+- Use geometric sans-serif for headings
+- Maintain generous line-height: 1.6 for body, 1.2 for headings
+- Letter-spacing: -0.02em for large headings, normal for body
+
+#### Japanese Typography
+**Primary Font Stack:**
+```css
+--font-primary-jp: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Hiragino Kaku Gothic Pro', 'Yu Gothic', 'Meiryo', sans-serif;
+--font-weight-jp-light: 300;
+--font-weight-jp-regular: 400;
+--font-weight-jp-medium: 500;
+--font-weight-jp-bold: 700;
+```
+
+**Japanese Typography Rules:**
+- Use modern Gothic (sans-serif) fonts
+- Slightly larger base size: 1.0625rem (17px) for readability
+- Line-height: 1.8 for body text (Japanese requires more vertical space)
+- No letter-spacing adjustments (Japanese characters are monospaced)
+
+#### Bilingual Typography Alignment
+
+**Vertical Alignment Strategy:**
+```css
+.bilingual-container {
+  display: flex;
+  align-items: baseline; /* Align to baseline, not center */
+  gap: 0.5rem;
+}
+
+.bilingual-en {
+  font-family: var(--font-primary-en);
+  font-size: 1rem;
+  line-height: 1.6;
+  vertical-align: baseline;
+}
+
+.bilingual-jp {
+  font-family: var(--font-primary-jp);
+  font-size: 1.0625rem; /* Slightly larger for visual balance */
+  line-height: 1.8;
+  vertical-align: baseline;
+}
+```
+
+**Horizontal Layout (Side-by-Side):**
+- English on left, Japanese on right (or vice versa based on context)
+- Use `writing-mode: horizontal-tb` for both (no vertical Japanese)
+- Maintain consistent spacing between languages
+
+**Vertical Layout (Stacked):**
+- English above, Japanese below
+- Use consistent margin-bottom between language blocks
+- Ensure both languages align to the same left/right edge
+
+**Mixed Content:**
+- When mixing English and Japanese in the same line, use `vertical-align: baseline`
+- Adjust font-size slightly to achieve visual balance (Japanese may need +0.0625rem)
+- Use `text-rendering: optimizeLegibility` for better character rendering
+
+---
+
+### 4. Component Requirements (Production Code)
+
+#### FloatingShape Component
+
+**Purpose:** Background element that drifts slowly, representing curiosity breaking through structure.
+
+**Implementation (React + Framer Motion):**
+```tsx
+import { motion } from 'framer-motion';
+import { useRef, useEffect, useState } from 'react';
+
+interface FloatingShapeProps {
+  shape: 'blob' | 'spark' | 'fragment';
+  size: 'small' | 'medium' | 'large';
+  color: string;
+  duration?: number; // Animation duration in seconds
+  delay?: number; // Initial delay
+}
+
+const FloatingShape: React.FC<FloatingShapeProps> = ({
+  shape,
+  size,
+  color,
+  duration = 15,
+  delay = 0,
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [path, setPath] = useState<{ x: number; y: number }[]>([]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
+    
+    // Generate random path points
+    const points: { x: number; y: number }[] = [];
+    const numPoints = 5 + Math.floor(Math.random() * 5);
+    
+    for (let i = 0; i < numPoints; i++) {
+      points.push({
+        x: Math.random() * containerRect.width,
+        y: Math.random() * containerRect.height,
+      });
+    }
+    
+    setPath(points);
+  }, []);
+
+  const sizeMap = {
+    small: '60px',
+    medium: '120px',
+    large: '200px',
+  };
+
+  const shapePaths = {
+    blob: 'M 50,50 Q 100,20 150,50 T 150,100 T 50,100 T 50,50',
+    spark: 'M 50,50 L 60,40 L 70,50 L 60,60 Z',
+    fragment: 'M 0,0 L 100,0 L 100,100 L 0,100 Z',
+  };
+
+  const animation = {
+    x: path.map(p => p.x),
+    y: path.map(p => p.y),
+    transition: {
+      duration: duration,
+      repeat: Infinity,
+      repeatType: 'loop' as const,
+      ease: 'easeInOut',
+      delay: delay,
+    },
+  };
+
+  return (
+    <div ref={containerRef} className="floating-shape-container">
+      <motion.svg
+        width={sizeMap[size]}
+        height={sizeMap[size]}
+        style={{ position: 'absolute' }}
+        animate={animation}
+        initial={{ x: path[0]?.x || 0, y: path[0]?.y || 0 }}
+      >
+        <motion.path
+          d={shapePaths[shape]}
+          fill={color}
+          opacity={0.3}
+          animate={{
+            scale: [1, 1.1, 1],
+            opacity: [0.3, 0.5, 0.3],
+          }}
+          transition={{
+            duration: 4,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        />
+      </motion.svg>
+    </div>
+  );
+};
+
+export default FloatingShape;
+```
+
+**Usage:**
+```tsx
+<FloatingShape
+  shape="blob"
+  size="medium"
+  color="var(--accent-cyan)"
+  duration={20}
+  delay={2}
+/>
+```
+
+**Physics Rules:**
+- Minimum duration: 10 seconds
+- Maximum duration: 30 seconds
+- Random x/y movement within container bounds
+- Smooth easing: `easeInOut`
+- Continuous loop
+- Opacity animation: 0.3 → 0.5 → 0.3 (breathing effect)
+
+---
+
+#### StaggeredText Component
+
+**Purpose:** Text block where lines reveal themselves with a delay, creating a "scrollytelling" effect.
+
+**Implementation:**
+```tsx
+import { motion } from 'framer-motion';
+import { useInView } from 'framer-motion';
+import { useRef } from 'react';
+
+interface StaggeredTextProps {
+  text: string;
+  className?: string;
+  staggerDelay?: number; // Delay between each line (seconds)
+  initialDelay?: number;
+}
+
+const StaggeredText: React.FC<StaggeredTextProps> = ({
+  text,
+  className = '',
+  staggerDelay = 0.1,
+  initialDelay = 0,
+}) => {
+  const ref = useRef(null);
+  const isInView = useInView(ref, { once: true, amount: 0.3 });
+
+  const lines = text.split('\n');
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: staggerDelay,
+        delayChildren: initialDelay,
+      },
+    },
+  };
+
+  const lineVariants = {
+    hidden: {
+      y: 20,
+      opacity: 0,
+    },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: {
+        duration: 0.6,
+        ease: [0.6, -0.05, 0.01, 0.99], // Custom easing
+      },
+    },
+  };
+
+  return (
+    <motion.div
+      ref={ref}
+      className={className}
+      variants={containerVariants}
+      initial="hidden"
+      animate={isInView ? 'visible' : 'hidden'}
+    >
+      {lines.map((line, index) => (
+        <motion.div key={index} variants={lineVariants}>
+          {line}
+        </motion.div>
+      ))}
+    </motion.div>
+  );
+};
+
+export default StaggeredText;
+```
+
+**Usage:**
+```tsx
+<StaggeredText
+  text="Curiosity is Life\n探索は人生"
+  className="hero-title"
+  staggerDelay={0.15}
+  initialDelay={0.2}
+/>
+```
+
+**Animation Rules:**
+- Initial state: `y: 20, opacity: 0`
+- Final state: `y: 0, opacity: 1`
+- Stagger delay: 0.1s - 0.2s between lines
+- Duration: 0.6s per line
+- Custom easing: `[0.6, -0.05, 0.01, 0.99]` (smooth, organic)
+
+---
+
+#### Curtain Page Transition
+
+**Purpose:** Full-screen wipe using brand colors when navigating between pages.
+
+**Implementation:**
+```tsx
+import { motion, AnimatePresence } from 'framer-motion';
+import { useRouter } from 'next/router';
+
+const CurtainTransition: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const router = useRouter();
+
+  const curtainVariants = {
+    initial: {
+      x: '-100%',
+    },
+    animate: {
+      x: '0%',
+      transition: {
+        duration: 0.6,
+        ease: [0.6, -0.05, 0.01, 0.99],
+      },
+    },
+    exit: {
+      x: '100%',
+      transition: {
+        duration: 0.6,
+        ease: [0.6, -0.05, 0.01, 0.99],
+      },
+    },
+  };
+
+  const colorSequence = [
+    'var(--accent-cyan)',
+    'var(--accent-yellow)',
+    'var(--bg-canvas)',
+  ];
+
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div key={router.asPath}>
+        {/* Curtain layers */}
+        {colorSequence.map((color, index) => (
+          <motion.div
+            key={index}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              backgroundColor: color,
+              zIndex: 9999 - index,
+            }}
+            variants={curtainVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          />
+        ))}
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+export default CurtainTransition;
+```
+
+**Transition Sequence:**
+1. **Cyan** wipes in from left (0.2s)
+2. **Yellow** follows (0.2s delay, 0.2s duration)
+3. **White** completes the transition (0.2s delay, 0.2s duration)
+4. Total duration: ~0.6s
+
+**Usage (Next.js):**
+```tsx
+// _app.tsx
+import CurtainTransition from '@/components/CurtainTransition';
+
+function MyApp({ Component, pageProps }) {
+  return (
+    <CurtainTransition>
+      <Component {...pageProps} />
+    </CurtainTransition>
+  );
+}
+```
+
+---
+
+## PHASE 3: MICRO-INTERACTIONS
+
+### Button Interactions
+
+#### Primary Button: "Jiggle" Effect
+```css
+.button-primary {
+  position: relative;
+  padding: 12px 24px;
+  background: var(--accent-cyan);
+  color: var(--text-inverse);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.button-primary:hover {
+  animation: jiggle 0.5s ease;
+  transform: scale(1.05);
+}
+
+.button-primary:active {
+  transform: scale(0.98);
+}
+
+@keyframes jiggle {
+  0%, 100% { transform: rotate(0deg) scale(1.05); }
+  25% { transform: rotate(-2deg) scale(1.05); }
+  75% { transform: rotate(2deg) scale(1.05); }
+}
+```
+
+#### Secondary Button: "Bounce" Effect
+```css
+.button-secondary {
+  position: relative;
+  padding: 12px 24px;
+  background: transparent;
+  color: var(--text-primary);
+  border: 2px solid var(--accent-cyan);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.button-secondary:hover {
+  animation: bounce 0.6s ease;
+  background: var(--accent-cyan);
+  color: var(--text-inverse);
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+```
+
+#### Icon Button: "Pulse" Effect
+```css
+.button-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--bg-canvas);
+  border: 1px solid var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.button-icon:hover {
+  animation: pulse 1s ease infinite;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 8px rgba(0, 151, 167, 0.1);
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 151, 167, 0.3); }
+  50% { box-shadow: 0 0 0 12px rgba(0, 151, 167, 0); }
+}
+```
+
+### Link Interactions
+
+#### Text Link: "Underline Slide"
+```css
+.link-text {
+  color: var(--accent-cyan);
+  text-decoration: none;
+  position: relative;
+  padding-bottom: 2px;
+}
+
+.link-text::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: var(--accent-cyan);
+  transition: width 0.3s ease;
+}
+
+.link-text:hover::after {
+  width: 100%;
+}
+```
+
+### Card Interactions
+
+#### Card: "Lift & Shadow"
+```css
+.card {
+  background: var(--bg-canvas);
+  border-radius: 8px;
+  padding: 24px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+```
+
+### Input Interactions
+
+#### Input Field: "Focus Glow"
+```css
+.input-field {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid var(--text-tertiary);
+  border-radius: 4px;
+  font-size: var(--font-size-base);
+  transition: all 0.3s ease;
+  outline: none;
+}
+
+.input-field:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 4px rgba(0, 151, 167, 0.1);
+  animation: focusGlow 2s ease infinite;
+}
+
+@keyframes focusGlow {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(0, 151, 167, 0.1); }
+  50% { box-shadow: 0 0 0 8px rgba(0, 151, 167, 0.05); }
+}
+```
+
+### Scroll Interactions
+
+#### Scroll Indicator: "Bounce Arrow"
+```css
+.scroll-indicator {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  animation: bounceArrow 2s ease infinite;
+}
+
+@keyframes bounceArrow {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-10px); }
+}
+```
+
+---
+
+## PHASE 4: IMPLEMENTATION GUIDELINES
+
+### Performance Considerations
+
+1. **Floating Shapes:**
+   - Limit to 3-5 shapes per viewport
+   - Use `will-change: transform` for animated elements
+   - Consider using CSS transforms instead of position changes
+
+2. **Staggered Text:**
+   - Use `IntersectionObserver` for viewport detection
+   - Animate only when in view
+   - Use `transform` and `opacity` (GPU-accelerated)
+
+3. **Page Transitions:**
+   - Preload next page assets
+   - Use `transform: translateX()` instead of `left` property
+   - Consider reducing motion for users with `prefers-reduced-motion`
+
+### Accessibility
+
+1. **Motion Preferences:**
+```css
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+```
+
+2. **Focus States:**
+- All interactive elements must have visible focus indicators
+- Use `:focus-visible` for keyboard navigation
+- Maintain 3:1 contrast ratio for focus indicators
+
+3. **Screen Readers:**
+- Provide `aria-label` for decorative floating shapes
+- Use semantic HTML for text content
+- Ensure proper heading hierarchy
+
+### Browser Support
+
+- **Modern Browsers:** Full support (Chrome, Firefox, Safari, Edge)
+- **CSS Grid:** Use `@supports` for fallbacks
+- **Framer Motion:** Requires React 16.8+ (hooks)
+
+---
+
+## PHASE 5: DESIGN TOKENS
+
+### Spacing Scale
+```css
+--space-xs: 4px;
+--space-sm: 8px;
+--space-md: 16px;
+--space-lg: 24px;
+--space-xl: 32px;
+--space-2xl: 48px;
+--space-3xl: 64px;
+--space-4xl: 96px;
+```
+
+### Border Radius
+```css
+--radius-sm: 4px;
+--radius-md: 8px;
+--radius-lg: 12px;
+--radius-full: 9999px;
+```
+
+### Shadows
+```css
+--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+--shadow-md: 0 4px 8px rgba(0, 0, 0, 0.1);
+--shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+--shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.15);
+```
+
+### Z-Index Scale
+```css
+--z-base: 0;
+--z-dropdown: 1000;
+--z-sticky: 1020;
+--z-fixed: 1030;
+--z-modal-backdrop: 1040;
+--z-modal: 1050;
+--z-popover: 1060;
+--z-tooltip: 1070;
+--z-transition: 9999;
+```
+
+---
+
+## PHASE 6: EXAMPLES & USE CASES
+
+### Hero Section
+```tsx
+<section className="hero">
+  <FloatingShape shape="blob" size="large" color="var(--accent-cyan)" />
+  <FloatingShape shape="spark" size="small" color="var(--accent-yellow)" />
+  
+  <StaggeredText
+    text="Curiosity is Life\n探索は人生"
+    className="hero-title"
+    staggerDelay={0.15}
+  />
+  
+  <button className="button-primary">
+    Explore
+  </button>
+</section>
+```
+
+### Content Card
+```tsx
+<article className="card">
+  <h3>Innovation</h3>
+  <p>We believe in the power of curiosity...</p>
+  <a href="#" className="link-text">Learn more</a>
+</article>
+```
+
+---
+
+## CONCLUSION
+
+This design system captures the essence of KOKUYO's "Curiosity is Life" campaign: structured grids broken by playful, organic elements. The system balances professionalism with unexpected moments of joy, creating a unique visual language that represents curiosity breaking through structure.
+
+**Key Principles:**
+1. **Structure First:** Always start with a solid grid
+2. **Break Intentionally:** Use floating elements to create visual interest
+3. **Animate Thoughtfully:** Every animation should have purpose
+4. **Bilingual Harmony:** English and Japanese must coexist visually
+5. **Micro-Interactions Matter:** Small details create big impact
+
+---
+
+*Last Updated: 2024*
+*Based on: https://www.kokuyo.com/en/special/curiosity-is-life/*

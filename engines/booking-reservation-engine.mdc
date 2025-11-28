@@ -1,0 +1,943 @@
+# Booking & Reservation Engine
+## Source of Truth: Availability Logic, Date Range Locking, and Timezone Management
+
+> **CRITICAL ARCHITECTURE PRINCIPLE: THE "NO DOUBLE-BOOKING" RULE**
+> 
+> - **Atomic Transactions:** Never check availability and then book separately. Use Database Transactions (Postgres Isolation Levels) to ensure two concurrent requests cannot book the same slot.
+> - **Timezones:** All data stored in UTC. All availability logic converts User Local Time → UTC before querying the database.
+> - **The "Block" System:** A calendar is made of "Slots." A booking consumes slots. Overlapping slots = conflict.
+
+---
+
+## PHASE 1: THE DATABASE SCHEMA (SUPABASE / POSTGRES)
+
+### Core Principle: Time is the Primary Key
+
+All time-based operations use **Postgres Range Types** (`tsrange`) for ultra-fast overlap detection. This is 100x faster than checking `start < X AND end > Y`.
+
+---
+
+### 1. Core Tables
+
+#### `listings` / `resources`
+
+Stores the bookable resources (properties, rooms, services, etc.).
+
+```sql
+CREATE TABLE listings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id UUID NOT NULL REFERENCES auth.users(id),
+    title TEXT NOT NULL,
+    description TEXT,
+    price_per_unit DECIMAL(10, 2) NOT NULL, -- Price per night/hour
+    currency TEXT DEFAULT 'USD',
+    timezone TEXT NOT NULL DEFAULT 'UTC', -- e.g., 'America/New_York'
+    buffer_time INTERVAL DEFAULT '0 minutes', -- Time needed between bookings
+    min_booking_duration INTERVAL DEFAULT '1 day', -- Minimum stay
+    max_booking_duration INTERVAL DEFAULT '30 days', -- Maximum stay
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_listings_owner ON listings(owner_id);
+```
+
+**Key Fields:**
+- `timezone`: Critical for converting user local time to UTC for availability queries
+- `buffer_time`: Prevents back-to-back bookings (e.g., 2 hours between check-out and next check-in)
+- `price_per_unit`: Base price used by the pricing engine
+
+---
+
+#### `bookings`
+
+Stores all booking attempts and confirmed reservations.
+
+```sql
+CREATE TABLE bookings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    listing_id UUID NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id),
+    start_time TIMESTAMPTZ NOT NULL, -- UTC
+    end_time TIMESTAMPTZ NOT NULL, -- UTC
+    status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'confirmed', 'cancelled', 'expired'
+    total_price DECIMAL(10, 2) NOT NULL,
+    currency TEXT DEFAULT 'USD',
+    payment_intent_id TEXT, -- Stripe PaymentIntent ID
+    expires_at TIMESTAMPTZ, -- For pending bookings (TTL)
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- Ensure end_time > start_time
+    CONSTRAINT valid_time_range CHECK (end_time > start_time)
+);
+
+-- CRITICAL: GIST Index for ultra-fast overlap detection
+CREATE INDEX idx_bookings_availability 
+ON bookings USING GIST (listing_id, tsrange(start_time, end_time));
+
+-- Additional indexes for common queries
+CREATE INDEX idx_bookings_listing_status ON bookings(listing_id, status);
+CREATE INDEX idx_bookings_user ON bookings(user_id);
+CREATE INDEX idx_bookings_expires ON bookings(expires_at) WHERE status = 'pending';
+```
+
+**Critical Architecture:**
+- **GIST Index on `tsrange`:** This enables Postgres to use spatial indexing for time ranges. The overlap operator `&&` becomes extremely fast.
+- **Status Field:** Implements the state machine (pending → confirmed → cancelled)
+- **expires_at:** TTL for pending bookings (typically 10 minutes)
+
+---
+
+#### `availability_rules`
+
+Defines recurring availability patterns (e.g., "Open Monday-Friday, 9 AM - 5 PM").
+
+```sql
+CREATE TABLE availability_rules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    listing_id UUID NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+    day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6), -- 0=Sunday, 6=Saturday
+    start_hour INTEGER NOT NULL CHECK (start_hour BETWEEN 0 AND 23),
+    end_hour INTEGER NOT NULL CHECK (end_hour BETWEEN 0 AND 23),
+    is_available BOOLEAN DEFAULT true, -- false = blocked on this day
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    UNIQUE(listing_id, day_of_week, start_hour, end_hour)
+);
+
+CREATE INDEX idx_availability_rules_listing ON availability_rules(listing_id);
+```
+
+**Usage:**
+- Default: If no rule exists for a day, assume available 24/7
+- Multiple rules per day: Can define "9 AM - 12 PM" and "1 PM - 5 PM" separately
+- `is_available = false`: Explicitly blocks a day (e.g., "Closed on Sundays")
+
+---
+
+#### `blocked_dates`
+
+Manual overrides for specific dates (holidays, maintenance, etc.).
+
+```sql
+CREATE TABLE blocked_dates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    listing_id UUID NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL, -- Inclusive
+    reason TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    CONSTRAINT valid_date_range CHECK (end_date >= start_date)
+);
+
+CREATE INDEX idx_blocked_dates_listing ON blocked_dates(listing_id);
+CREATE INDEX idx_blocked_dates_range ON blocked_dates USING GIST (listing_id, daterange(start_date, end_date, '[]'));
+```
+
+**Note:** Uses `daterange` (not `tsrange`) since these are date-only blocks, not time-specific.
+
+---
+
+### 2. The Availability Query (The "Hard" Part)
+
+#### Core Logic
+
+To determine if a listing is available for a given time range:
+
+1. **Generate requested range** (Start → End) in UTC
+2. **Query `bookings`:** Does ANY confirmed or pending booking overlap this range?
+3. **Query `availability_rules`:** Is the property "Open" during this range (considering day of week and hours)?
+4. **Query `blocked_dates`:** Is there a manual block?
+5. **Apply `buffer_time`:** Ensure no bookings are too close together
+
+---
+
+#### Postgres Function: `is_available()`
+
+```sql
+CREATE OR REPLACE FUNCTION is_available(
+    p_listing_id UUID,
+    p_start_time TIMESTAMPTZ,
+    p_end_time TIMESTAMPTZ
+) RETURNS BOOLEAN AS $$
+DECLARE
+    v_listing RECORD;
+    v_buffer INTERVAL;
+    v_adjusted_start TIMESTAMPTZ;
+    v_adjusted_end TIMESTAMPTZ;
+    v_has_conflict BOOLEAN;
+    v_day_of_week INTEGER;
+    v_current_date DATE;
+    v_listing_timezone TEXT;
+BEGIN
+    -- Fetch listing details
+    SELECT timezone, buffer_time INTO v_listing_timezone, v_buffer
+    FROM listings
+    WHERE id = p_listing_id;
+    
+    IF NOT FOUND THEN
+        RETURN FALSE;
+    END IF;
+    
+    -- Apply buffer time (expand the range to check for conflicts)
+    v_adjusted_start := p_start_time - COALESCE(v_buffer, INTERVAL '0 minutes');
+    v_adjusted_end := p_end_time + COALESCE(v_buffer, INTERVAL '0 minutes');
+    
+    -- Check 1: Overlapping bookings (confirmed or pending)
+    SELECT EXISTS(
+        SELECT 1
+        FROM bookings
+        WHERE listing_id = p_listing_id
+        AND status IN ('confirmed', 'pending')
+        AND tsrange(start_time, end_time) && tsrange(v_adjusted_start, v_adjusted_end)
+    ) INTO v_has_conflict;
+    
+    IF v_has_conflict THEN
+        RETURN FALSE;
+    END IF;
+    
+    -- Check 2: Blocked dates
+    SELECT EXISTS(
+        SELECT 1
+        FROM blocked_dates
+        WHERE listing_id = p_listing_id
+        AND daterange(start_date, end_date, '[]') @> DATE(p_start_time)
+        AND daterange(start_date, end_date, '[]') @> DATE(p_end_time - INTERVAL '1 day')
+    ) INTO v_has_conflict;
+    
+    IF v_has_conflict THEN
+        RETURN FALSE;
+    END IF;
+    
+    -- Check 3: Availability rules (check each day in the range)
+    v_current_date := DATE(p_start_time AT TIME ZONE v_listing_timezone);
+    
+    WHILE v_current_date <= DATE(p_end_time AT TIME ZONE v_listing_timezone) LOOP
+        v_day_of_week := EXTRACT(DOW FROM v_current_date);
+        
+        -- Check if there's a rule that blocks this day
+        SELECT EXISTS(
+            SELECT 1
+            FROM availability_rules
+            WHERE listing_id = p_listing_id
+            AND day_of_week = v_day_of_week
+            AND is_available = FALSE
+        ) INTO v_has_conflict;
+        
+        IF v_has_conflict THEN
+            RETURN FALSE;
+        END IF;
+        
+        -- If there are availability rules, check if the time range is within allowed hours
+        -- (This is a simplified check; you may want to expand this for more complex rules)
+        IF EXISTS(
+            SELECT 1
+            FROM availability_rules
+            WHERE listing_id = p_listing_id
+            AND day_of_week = v_day_of_week
+            AND is_available = TRUE
+        ) THEN
+            -- Verify the booking times fall within the allowed hours
+            -- (Implementation depends on your specific rule structure)
+        END IF;
+        
+        v_current_date := v_current_date + INTERVAL '1 day';
+    END LOOP;
+    
+    RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+**Key Points:**
+- Uses `tsrange(...) && tsrange(...)` for overlap detection (leveraging the GIST index)
+- Applies `buffer_time` before checking conflicts
+- Converts to listing timezone for day-of-week calculations
+- Returns `FALSE` if any conflict is found
+
+---
+
+#### Optimized Query: Get Available Time Slots
+
+```sql
+CREATE OR REPLACE FUNCTION get_available_slots(
+    p_listing_id UUID,
+    p_start_date DATE,
+    p_end_date DATE,
+    p_duration INTERVAL DEFAULT '1 day'
+) RETURNS TABLE (
+    start_time TIMESTAMPTZ,
+    end_time TIMESTAMPTZ
+) AS $$
+DECLARE
+    v_listing_timezone TEXT;
+    v_current_date DATE;
+    v_slot_start TIMESTAMPTZ;
+    v_slot_end TIMESTAMPTZ;
+BEGIN
+    SELECT timezone INTO v_listing_timezone
+    FROM listings
+    WHERE id = p_listing_id;
+    
+    v_current_date := p_start_date;
+    
+    WHILE v_current_date <= p_end_date LOOP
+        -- Convert date to UTC timestamps (assuming full-day slots)
+        v_slot_start := (v_current_date AT TIME ZONE v_listing_timezone)::TIMESTAMPTZ;
+        v_slot_end := v_slot_start + p_duration;
+        
+        -- Check availability
+        IF is_available(p_listing_id, v_slot_start, v_slot_end) THEN
+            RETURN QUERY SELECT v_slot_start, v_slot_end;
+        END IF;
+        
+        v_current_date := v_current_date + INTERVAL '1 day';
+    END LOOP;
+    
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+---
+
+## PHASE 2: THE BOOKING FLOW (STATE MACHINE)
+
+### State Machine Diagram
+
+```
+[pending] → [confirmed] → [cancelled]
+    ↓
+[expired] (auto-deleted)
+```
+
+**States:**
+- `pending`: Temporary hold (10-minute TTL)
+- `confirmed`: Payment received, booking locked
+- `cancelled`: User or owner cancelled
+- `expired`: Pending booking timed out (deleted by cron)
+
+---
+
+### 1. The "Hold" Pattern (Preventing Double-Booking)
+
+#### Step-by-Step Flow
+
+**Step 1: User Clicks "Reserve"**
+
+Frontend sends:
+```json
+{
+  "listing_id": "uuid",
+  "start_time": "2024-12-25T15:00:00Z", // UTC
+  "end_time": "2024-12-27T11:00:00Z",   // UTC
+  "user_id": "uuid"
+}
+```
+
+**Step 2: Create Pending Booking (Atomic Transaction)**
+
+```sql
+BEGIN;
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE; -- CRITICAL: Prevents concurrent bookings
+
+-- Check availability (within transaction)
+DO $$
+DECLARE
+    v_is_available BOOLEAN;
+BEGIN
+    SELECT is_available(
+        'listing-uuid'::UUID,
+        '2024-12-25T15:00:00Z'::TIMESTAMPTZ,
+        '2024-12-27T11:00:00Z'::TIMESTAMPTZ
+    ) INTO v_is_available;
+    
+    IF NOT v_is_available THEN
+        RAISE EXCEPTION 'Slot is no longer available';
+    END IF;
+    
+    -- Create pending booking
+    INSERT INTO bookings (
+        listing_id,
+        user_id,
+        start_time,
+        end_time,
+        status,
+        total_price,
+        expires_at
+    ) VALUES (
+        'listing-uuid'::UUID,
+        'user-uuid'::UUID,
+        '2024-12-25T15:00:00Z'::TIMESTAMPTZ,
+        '2024-12-27T11:00:00Z'::TIMESTAMPTZ,
+        'pending',
+        250.00,
+        NOW() + INTERVAL '10 minutes'
+    );
+END $$;
+
+COMMIT;
+```
+
+**Critical:** `SERIALIZABLE` isolation level ensures that if two requests try to book the same slot simultaneously, one will fail with a serialization error. The application must retry on serialization failure.
+
+**Step 3: User Pays via Stripe**
+
+Frontend calls Stripe Checkout. Payment Intent is created with `metadata.booking_id`.
+
+**Step 4: Webhook Confirms Payment**
+
+```sql
+-- Stripe webhook handler (Supabase Edge Function or similar)
+UPDATE bookings
+SET 
+    status = 'confirmed',
+    payment_intent_id = $1,
+    expires_at = NULL
+WHERE id = $2
+AND status = 'pending';
+```
+
+**Step 5: Expiry Cleanup (Cron Job)**
+
+```sql
+-- Run every minute via pg_cron or Supabase Cron
+DELETE FROM bookings
+WHERE status = 'pending'
+AND expires_at < NOW();
+```
+
+This automatically frees up slots that weren't paid for within 10 minutes.
+
+---
+
+### 2. Pricing Engine
+
+#### Dynamic Pricing Logic
+
+The pricing engine calculates total cost based on:
+- Base price per unit (night/hour)
+- Weekend multiplier (Friday/Saturday = 1.5x)
+- Length of stay discount (> 7 days = 0.9x)
+- Seasonal pricing (future: holiday multipliers)
+
+---
+
+#### Utility Function: `calculateTotal()`
+
+**Server-Side (TypeScript/Node.js):**
+
+```typescript
+interface Listing {
+  id: string;
+  price_per_unit: number;
+  currency: string;
+  timezone: string;
+}
+
+interface PricingOptions {
+  weekendMultiplier?: number; // Default: 1.5
+  longStayDiscount?: {
+    thresholdDays: number; // Default: 7
+    discountMultiplier: number; // Default: 0.9
+  };
+}
+
+function calculateTotal(
+  listing: Listing,
+  startTime: Date, // UTC
+  endTime: Date,   // UTC
+  options: PricingOptions = {}
+): number {
+  const {
+    weekendMultiplier = 1.5,
+    longStayDiscount = { thresholdDays: 7, discountMultiplier: 0.9 }
+  } = options;
+
+  // Convert UTC to listing timezone for day-of-week calculations
+  const listingTz = listing.timezone;
+  const startLocal = new Date(startTime.toLocaleString('en-US', { timeZone: listingTz }));
+  const endLocal = new Date(endTime.toLocaleString('en-US', { timeZone: listingTz }));
+
+  // Calculate number of nights/units
+  const diffMs = endTime.getTime() - startTime.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  
+  let total = 0;
+  let currentDate = new Date(startLocal);
+
+  // Iterate through each day
+  for (let i = 0; i < diffDays; i++) {
+    const dayOfWeek = currentDate.getDay(); // 0=Sunday, 6=Saturday
+    const isWeekend = dayOfWeek === 5 || dayOfWeek === 6; // Friday or Saturday
+    
+    let dayPrice = listing.price_per_unit;
+    
+    // Apply weekend multiplier
+    if (isWeekend) {
+      dayPrice *= weekendMultiplier;
+    }
+    
+    total += dayPrice;
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  // Apply length of stay discount
+  if (diffDays >= longStayDiscount.thresholdDays) {
+    total *= longStayDiscount.discountMultiplier;
+  }
+
+  return Math.round(total * 100) / 100; // Round to 2 decimal places
+}
+```
+
+**Client-Side (React):**
+
+Use the same function (shared utility) to display estimated price before booking.
+
+**Server Validation:**
+
+Always recalculate on the server before creating a booking to prevent price manipulation:
+
+```sql
+-- In your booking creation function
+DO $$
+DECLARE
+    v_calculated_price DECIMAL(10, 2);
+    v_client_price DECIMAL(10, 2);
+BEGIN
+    -- Calculate server-side
+    v_calculated_price := calculate_total_price(
+        p_listing_id,
+        p_start_time,
+        p_end_time
+    );
+    
+    -- Compare with client-provided price
+    IF v_calculated_price != p_client_price THEN
+        RAISE EXCEPTION 'Price mismatch. Expected: %, Got: %', v_calculated_price, p_client_price;
+    END IF;
+END $$;
+```
+
+---
+
+## PHASE 3: TIMEZONE MANAGEMENT
+
+### Core Principle: UTC Storage, Local Display
+
+**Storage:** All `TIMESTAMPTZ` columns store UTC internally.
+
+**Display:** Convert UTC → Listing Timezone for user-facing dates.
+
+---
+
+### Timezone Helper Utilities
+
+#### `toListingTime(utcDate, listingTimezone)`
+
+Converts a UTC timestamp to the listing's local timezone for display.
+
+**TypeScript:**
+
+```typescript
+function toListingTime(utcDate: Date, listingTimezone: string): Date {
+  // Create a date string in the listing's timezone
+  const localString = utcDate.toLocaleString('en-US', {
+    timeZone: listingTimezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+  
+  // Parse as if it were UTC (for display purposes)
+  // Note: This returns a Date object that, when formatted, shows the local time
+  return new Date(localString);
+}
+
+// Format for display
+function formatListingTime(utcDate: Date, listingTimezone: string): string {
+  return utcDate.toLocaleString('en-US', {
+    timeZone: listingTimezone,
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+}
+
+// Example: "Check-in is at 3:00 PM (Eastern Time)"
+const checkInUTC = new Date('2024-12-25T20:00:00Z');
+const listingTz = 'America/New_York';
+const displayTime = formatListingTime(checkInUTC, listingTz);
+// Output: "Wed, Dec 25, 2024, 3:00 PM"
+```
+
+**Postgres Function:**
+
+```sql
+CREATE OR REPLACE FUNCTION to_listing_time(
+    p_utc_time TIMESTAMPTZ,
+    p_listing_timezone TEXT
+) RETURNS TIMESTAMPTZ AS $$
+BEGIN
+    RETURN p_utc_time AT TIME ZONE 'UTC' AT TIME ZONE p_listing_timezone;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+---
+
+#### Converting User Input (Local → UTC)
+
+When a user selects "December 25, 2024 at 3:00 PM" in the listing's timezone, convert to UTC:
+
+**TypeScript:**
+
+```typescript
+function userLocalTimeToUTC(
+  localDateString: string, // "2024-12-25T15:00:00"
+  listingTimezone: string
+): Date {
+  // Create date string with timezone
+  const dateWithTz = `${localDateString} ${listingTimezone}`;
+  
+  // Use a library like date-fns-tz or moment-timezone for reliable conversion
+  // For simplicity, using Intl:
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: listingTimezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+  
+  // Parse and convert
+  // Note: For production, use a library like date-fns-tz
+  return new Date(localDateString + 'Z'); // Simplified; use proper library
+}
+```
+
+**Recommended Library:** Use `date-fns-tz` or `luxon` for reliable timezone conversions.
+
+---
+
+## PHASE 4: FRONTEND UX (DATE PICKERS)
+
+### The `RangeCalendar` Component
+
+#### Requirements
+
+1. **Visual Library:** Use `react-day-picker` (v8+) for the calendar UI
+2. **Disabled Dates:**
+   - All dates in the past
+   - Dates with existing bookings (confirmed or pending)
+   - Dates in `blocked_dates`
+3. **Visual Style:** Link to `apple-design.mdc` for clean, rounded calendar aesthetics
+4. **Real-time Availability:** Fetch availability for the visible month
+
+---
+
+#### Implementation Outline
+
+```typescript
+import { DayPicker, DateRange } from 'react-day-picker';
+import { useQuery } from '@tanstack/react-query';
+
+interface RangeCalendarProps {
+  listingId: string;
+  listingTimezone: string;
+  onSelect: (range: DateRange) => void;
+  selectedRange?: DateRange;
+}
+
+function RangeCalendar({
+  listingId,
+  listingTimezone,
+  onSelect,
+  selectedRange
+}: RangeCalendarProps) {
+  const [month, setMonth] = useState(new Date());
+
+  // Fetch blocked dates and bookings for the visible month
+  const { data: availability } = useQuery({
+    queryKey: ['availability', listingId, month],
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/listings/${listingId}/availability?month=${month.toISOString()}`
+      );
+      return response.json();
+    }
+  });
+
+  // Convert UTC bookings to local dates for display
+  const disabledDates = useMemo(() => {
+    const dates: Date[] = [];
+    
+    // Add past dates
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Add booked dates
+    availability?.bookings?.forEach((booking: any) => {
+      const start = new Date(booking.start_time);
+      const end = new Date(booking.end_time);
+      let current = new Date(start);
+      
+      while (current < end) {
+        dates.push(new Date(current));
+        current.setDate(current.getDate() + 1);
+      }
+    });
+    
+    // Add blocked dates
+    availability?.blockedDates?.forEach((block: any) => {
+      const start = new Date(block.start_date);
+      const end = new Date(block.end_date);
+      let current = new Date(start);
+      
+      while (current <= end) {
+        dates.push(new Date(current));
+        current.setDate(current.getDate() + 1);
+      }
+    });
+    
+    return dates;
+  }, [availability]);
+
+  const isDateDisabled = (date: Date) => {
+    // Disable past dates
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (date < today) return true;
+    
+    // Disable booked/blocked dates
+    return disabledDates.some(
+      (disabled) => disabled.toDateString() === date.toDateString()
+    );
+  };
+
+  return (
+    <DayPicker
+      mode="range"
+      selected={selectedRange}
+      onSelect={onSelect}
+      disabled={isDateDisabled}
+      month={month}
+      onMonthChange={setMonth}
+      className="rounded-lg border border-gray-200 p-4"
+      // Apply styles from apple-design.mdc
+    />
+  );
+}
+```
+
+---
+
+#### API Endpoint: Get Availability for Month
+
+```typescript
+// API Route: /api/listings/[id]/availability
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const { searchParams } = new URL(request.url);
+  const month = new Date(searchParams.get('month') || Date.now());
+  
+  const startOfMonth = new Date(month.getFullYear(), month.getMonth(), 1);
+  const endOfMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+  
+  // Query database
+  const bookings = await db.query(`
+    SELECT start_time, end_time, status
+    FROM bookings
+    WHERE listing_id = $1
+    AND status IN ('confirmed', 'pending')
+    AND tsrange(start_time, end_time) && tsrange($2, $3)
+  `, [params.id, startOfMonth, endOfMonth]);
+  
+  const blockedDates = await db.query(`
+    SELECT start_date, end_date
+    FROM blocked_dates
+    WHERE listing_id = $1
+    AND daterange(start_date, end_date, '[]') && daterange($2, $3)
+  `, [params.id, startOfMonth, endOfMonth]);
+  
+  return Response.json({
+    bookings: bookings.rows,
+    blockedDates: blockedDates.rows
+  });
+}
+```
+
+---
+
+## PHASE 5: CRITICAL IMPLEMENTATION NOTES
+
+### 1. Atomic Booking Creation (The "No Double-Booking" Rule)
+
+**NEVER do this:**
+```typescript
+// ❌ WRONG: Race condition possible
+const isAvailable = await checkAvailability(listingId, start, end);
+if (isAvailable) {
+  await createBooking(listingId, start, end); // Another request could book here!
+}
+```
+
+**ALWAYS do this:**
+```typescript
+// ✅ CORRECT: Atomic transaction
+await db.transaction(async (tx) => {
+  const isAvailable = await tx.query(
+    'SELECT is_available($1, $2, $3)',
+    [listingId, start, end]
+  );
+  
+  if (!isAvailable.rows[0].is_available) {
+    throw new Error('Slot no longer available');
+  }
+  
+  await tx.query(
+    'INSERT INTO bookings (...) VALUES (...)',
+    [listingId, userId, start, end, ...]
+  );
+}, { isolationLevel: 'SERIALIZABLE' });
+```
+
+---
+
+### 2. Handling Serialization Failures
+
+When using `SERIALIZABLE` isolation, concurrent transactions may conflict. Handle retries:
+
+```typescript
+async function createBookingWithRetry(
+  listingId: string,
+  userId: string,
+  startTime: Date,
+  endTime: Date,
+  maxRetries = 3
+) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await db.transaction(async (tx) => {
+        // ... booking creation logic
+      }, { isolationLevel: 'SERIALIZABLE' });
+    } catch (error) {
+      if (error.code === '40001' && attempt < maxRetries - 1) {
+        // Serialization failure - retry with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, attempt)));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+```
+
+---
+
+### 3. Index Maintenance
+
+The GIST index on `tsrange` is critical for performance. Monitor index usage:
+
+```sql
+-- Check index usage
+SELECT 
+    schemaname,
+    tablename,
+    indexname,
+    idx_scan,
+    idx_tup_read,
+    idx_tup_fetch
+FROM pg_stat_user_indexes
+WHERE tablename = 'bookings';
+```
+
+---
+
+### 4. Timezone Validation
+
+Always validate timezone strings:
+
+```typescript
+function isValidTimezone(timezone: string): boolean {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+```
+
+---
+
+## SUMMARY: THE "NO DOUBLE-BOOKING" CHECKLIST
+
+- [x] Use `tsrange` for time intervals (not separate start/end columns)
+- [x] Create GIST index on `(listing_id, tsrange(start_time, end_time))`
+- [x] Use `SERIALIZABLE` isolation level for booking transactions
+- [x] Check availability AND create booking in the same transaction
+- [x] Handle serialization failures with retries
+- [x] Store all times in UTC
+- [x] Convert user local time → UTC before querying
+- [x] Convert UTC → listing timezone for display
+- [x] Implement TTL for pending bookings (10 minutes)
+- [x] Run cron job to clean up expired pending bookings
+- [x] Validate pricing on server (never trust client)
+- [x] Use overlap operator `&&` for range queries
+
+---
+
+## APPENDIX: USEFUL POSTGRES QUERIES
+
+### Find All Overlapping Bookings
+
+```sql
+SELECT b1.*, b2.*
+FROM bookings b1
+JOIN bookings b2 ON b1.listing_id = b2.listing_id
+WHERE b1.id != b2.id
+AND b1.status IN ('confirmed', 'pending')
+AND b2.status IN ('confirmed', 'pending')
+AND tsrange(b1.start_time, b1.end_time) && tsrange(b2.start_time, b2.end_time);
+```
+
+### Get Next Available Date
+
+```sql
+SELECT 
+    listing_id,
+    MAX(end_time) + buffer_time AS next_available
+FROM bookings
+WHERE listing_id = $1
+AND status = 'confirmed'
+GROUP BY listing_id, buffer_time;
+```
+
+### Check Availability for Multiple Listings
+
+```sql
+SELECT 
+    l.id,
+    l.title,
+    is_available(l.id, $1::TIMESTAMPTZ, $2::TIMESTAMPTZ) AS available
+FROM listings l
+WHERE l.owner_id = $3;
+```
+
+---
+
+**END OF DOCUMENTATION**

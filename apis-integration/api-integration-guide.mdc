@@ -1,0 +1,2379 @@
+# API Integration Guide - Universal Reference
+## Comprehensive Guide for Integrating Any API
+
+> **Core Philosophy:** "Understand the API deeply before integrating. Security, reliability, and maintainability are non-negotiable."
+
+This document provides a complete framework for understanding, integrating, and maintaining any API integration. Use this as your reference when adding new APIs to your projects.
+
+---
+
+## Table of Contents
+
+1. [Pre-Integration Analysis](#pre-integration-analysis)
+2. [Authentication Methods](#authentication-methods)
+3. [Request/Response Patterns](#requestresponse-patterns)
+4. [Error Handling](#error-handling)
+5. [Rate Limiting and Quotas](#rate-limiting-and-quotas)
+6. [Security Best Practices](#security-best-practices)
+7. [Testing Strategies](#testing-strategies)
+8. [Code Architecture](#code-architecture)
+9. [Monitoring and Observability](#monitoring-and-observability)
+10. [Documentation Requirements](#documentation-requirements)
+11. [Common Integration Patterns](#common-integration-patterns)
+12. [Troubleshooting Guide](#troubleshooting-guide)
+13. [Maintenance and Updates](#maintenance-and-updates)
+
+---
+
+## Pre-Integration Analysis
+
+### 1.1 API Discovery and Documentation Review
+
+**CRITICAL:** Never start coding without thoroughly understanding the API.
+
+#### Documentation Checklist
+
+- [ ] **Read the official API documentation** completely before writing any code
+- [ ] **Identify API versioning strategy** - How are versions managed? What's the deprecation policy?
+- [ ] **Review authentication requirements** - What methods are supported? What are the security implications?
+- [ ] **Understand rate limits** - What are the limits? How are they enforced? What happens when exceeded?
+- [ ] **Check pricing model** - Is it usage-based? Are there free tiers? What are the cost implications?
+- [ ] **Review data formats** - JSON, XML, form-data? What encoding is required?
+- [ ] **Identify required vs optional parameters** - What's the minimum viable request?
+- [ ] **Understand response structures** - Success responses, error responses, pagination patterns
+- [ ] **Check for webhooks/events** - Does the API support push notifications?
+- [ ] **Review SDK availability** - Official SDKs? Community libraries? REST-only?
+- [ ] **Check API status and reliability** - Historical uptime? Status page? SLA guarantees?
+
+#### API Capability Assessment
+
+```markdown
+### API Assessment Template
+
+**API Name:** [Name]
+**Provider:** [Company/Organization]
+**Documentation URL:** [Link]
+**API Version:** [Version]
+**Base URL:** [Base URL]
+
+**Authentication:**
+- Method: [API Key / OAuth 2.0 / JWT / Basic Auth / Custom]
+- Security Level: [High / Medium / Low]
+- Key Rotation: [Supported / Not Supported]
+
+**Rate Limits:**
+- Requests per minute: [Number]
+- Requests per hour: [Number]
+- Requests per day: [Number]
+- Burst capacity: [Number]
+
+**Pricing:**
+- Free tier: [Yes / No]
+- Pricing model: [Per request / Per data / Subscription]
+- Cost per 1000 requests: [Amount]
+
+**Data Formats:**
+- Request: [JSON / XML / Form-data / Other]
+- Response: [JSON / XML / Binary / Other]
+- Encoding: [UTF-8 / Other]
+
+**Reliability:**
+- SLA: [99.9% / Other]
+- Status page: [URL]
+- Historical uptime: [Percentage]
+
+**SDK Support:**
+- Official SDKs: [Languages]
+- Community libraries: [Languages]
+- REST-only: [Yes / No]
+
+**Webhooks/Events:**
+- Supported: [Yes / No]
+- Event types: [List]
+- Delivery method: [HTTP POST / WebSocket / Other]
+
+**Versioning:**
+- Strategy: [URL / Header / Query parameter]
+- Deprecation policy: [Timeline]
+- Breaking changes: [Frequency]
+```
+
+### 1.2 Environment Setup
+
+#### Configuration Management
+
+**CRITICAL:** Never hardcode API credentials or configuration.
+
+```typescript
+// ✅ CORRECT: Environment-based configuration
+interface APIConfig {
+  baseUrl: string;
+  apiKey?: string;
+  apiSecret?: string;
+  timeout: number;
+  retryAttempts: number;
+  rateLimitRpm: number;
+}
+
+const getAPIConfig = (): APIConfig => {
+  return {
+    baseUrl: process.env.API_BASE_URL || 'https://api.example.com',
+    apiKey: process.env.API_KEY,
+    apiSecret: process.env.API_SECRET,
+    timeout: parseInt(process.env.API_TIMEOUT || '30000', 10),
+    retryAttempts: parseInt(process.env.API_RETRY_ATTEMPTS || '3', 10),
+    rateLimitRpm: parseInt(process.env.API_RATE_LIMIT_RPM || '60', 10),
+  };
+};
+
+// ❌ WRONG: Hardcoded values
+const config = {
+  baseUrl: 'https://api.example.com',
+  apiKey: 'sk_live_1234567890', // NEVER DO THIS
+};
+```
+
+#### Environment Variable Template
+
+```bash
+# .env.example
+# API Configuration
+API_BASE_URL=https://api.example.com
+API_VERSION=v1
+API_KEY=your_api_key_here
+API_SECRET=your_api_secret_here
+
+# Rate Limiting
+API_RATE_LIMIT_RPM=60
+API_RATE_LIMIT_BURST=10
+
+# Timeouts
+API_TIMEOUT=30000
+API_CONNECT_TIMEOUT=5000
+
+# Retry Configuration
+API_RETRY_ATTEMPTS=3
+API_RETRY_DELAY=1000
+API_RETRY_BACKOFF_MULTIPLIER=2
+
+# Environment
+API_ENVIRONMENT=development
+API_DEBUG=false
+
+# Webhook Configuration (if applicable)
+WEBHOOK_SECRET=your_webhook_secret_here
+WEBHOOK_URL=https://your-app.com/webhooks
+```
+
+---
+
+## Authentication Methods
+
+### 2.1 API Key Authentication
+
+**When to use:** Simple, stateless authentication for server-to-server communication.
+
+#### Implementation Pattern
+
+```typescript
+// ✅ CORRECT: Secure API key handling
+class APIKeyAuth {
+  private apiKey: string;
+  private headerName: string;
+
+  constructor(apiKey: string, headerName: string = 'X-API-Key') {
+    if (!apiKey) {
+      throw new Error('API key is required');
+    }
+    this.apiKey = apiKey;
+    this.headerName = headerName;
+  }
+
+  getHeaders(): Record<string, string> {
+    return {
+      [this.headerName]: this.apiKey,
+      'Content-Type': 'application/json',
+    };
+  }
+
+  // Never log the actual key
+  getMaskedKey(): string {
+    if (this.apiKey.length <= 8) {
+      return '****';
+    }
+    return `${this.apiKey.substring(0, 4)}...${this.apiKey.substring(this.apiKey.length - 4)}`;
+  }
+}
+
+// Usage
+const auth = new APIKeyAuth(process.env.API_KEY!);
+const headers = auth.getHeaders();
+```
+
+#### Security Best Practices
+
+- **Never commit API keys** to version control
+- **Use environment variables** or secret management services
+- **Rotate keys regularly** - Implement key rotation policies
+- **Use different keys** for different environments (dev, staging, prod)
+- **Restrict key permissions** - Use least-privilege principle
+- **Monitor key usage** - Log access patterns (without logging the key itself)
+- **Validate key format** before making requests (if format is known)
+
+### 2.2 OAuth 2.0 Authentication
+
+**When to use:** User-facing applications that need to access user data.
+
+#### OAuth 2.0 Flow Implementation
+
+```typescript
+// OAuth 2.0 Client Credentials Flow (Server-to-Server)
+class OAuth2Client {
+  private clientId: string;
+  private clientSecret: string;
+  private tokenUrl: string;
+  private accessToken: string | null = null;
+  private tokenExpiry: number | null = null;
+
+  constructor(clientId: string, clientSecret: string, tokenUrl: string) {
+    this.clientId = clientId;
+    this.clientSecret = clientSecret;
+    this.tokenUrl = tokenUrl;
+  }
+
+  async getAccessToken(): Promise<string> {
+    // Check if token is still valid
+    if (this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry) {
+      return this.accessToken;
+    }
+
+    // Request new token
+    const response = await fetch(this.tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64')}`,
+      },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        scope: 'read write', // Adjust based on API requirements
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to obtain access token: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    this.accessToken = data.access_token;
+    // Set expiry with 5-minute buffer
+    this.tokenExpiry = Date.now() + (data.expires_in - 300) * 1000;
+
+    return this.accessToken;
+  }
+
+  async getHeaders(): Promise<Record<string, string>> {
+    const token = await this.getAccessToken();
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+  }
+}
+```
+
+#### OAuth 2.0 Authorization Code Flow (User-Facing)
+
+```typescript
+// For user-facing applications
+class OAuth2UserFlow {
+  private clientId: string;
+  private redirectUri: string;
+  private authUrl: string;
+  private tokenUrl: string;
+
+  constructor(clientId: string, redirectUri: string, authUrl: string, tokenUrl: string) {
+    this.clientId = clientId;
+    this.redirectUri = redirectUri;
+    this.authUrl = authUrl;
+    this.tokenUrl = tokenUrl;
+  }
+
+  getAuthorizationUrl(state: string, scopes: string[]): string {
+    const params = new URLSearchParams({
+      client_id: this.clientId,
+      redirect_uri: this.redirectUri,
+      response_type: 'code',
+      scope: scopes.join(' '),
+      state: state, // CSRF protection
+    });
+
+    return `${this.authUrl}?${params.toString()}`;
+  }
+
+  async exchangeCodeForToken(code: string, clientSecret: string): Promise<TokenResponse> {
+    const response = await fetch(this.tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: this.redirectUri,
+        client_id: this.clientId,
+        client_secret: clientSecret,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Token exchange failed: ${response.statusText}`);
+    }
+
+    return await response.json();
+  }
+}
+```
+
+### 2.3 JWT (JSON Web Token) Authentication
+
+**When to use:** Stateless authentication with token-based access.
+
+```typescript
+import jwt from 'jsonwebtoken';
+
+class JWTAuth {
+  private secret: string;
+  private issuer: string;
+  private audience: string;
+
+  constructor(secret: string, issuer: string, audience: string) {
+    this.secret = secret;
+    this.issuer = issuer;
+    this.audience = audience;
+  }
+
+  generateToken(payload: Record<string, any>, expiresIn: string = '1h'): string {
+    return jwt.sign(
+      {
+        ...payload,
+        iss: this.issuer,
+        aud: this.audience,
+        iat: Math.floor(Date.now() / 1000),
+      },
+      this.secret,
+      { expiresIn }
+    );
+  }
+
+  verifyToken(token: string): any {
+    try {
+      return jwt.verify(token, this.secret, {
+        issuer: this.issuer,
+        audience: this.audience,
+      });
+    } catch (error) {
+      throw new Error(`Invalid token: ${error.message}`);
+    }
+  }
+
+  getHeaders(token: string): Record<string, string> {
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+  }
+}
+```
+
+### 2.4 Basic Authentication
+
+**When to use:** Simple username/password authentication (use HTTPS only).
+
+```typescript
+class BasicAuth {
+  private username: string;
+  private password: string;
+
+  constructor(username: string, password: string) {
+    this.username = username;
+    this.password = password;
+  }
+
+  getHeaders(): Record<string, string> {
+    const credentials = Buffer.from(`${this.username}:${this.password}`).toString('base64');
+    return {
+      'Authorization': `Basic ${credentials}`,
+      'Content-Type': 'application/json',
+    };
+  }
+}
+```
+
+### 2.5 Custom Authentication Methods
+
+**When to use:** API-specific authentication schemes (signatures, HMAC, etc.).
+
+```typescript
+// Example: HMAC Signature Authentication
+import crypto from 'crypto';
+
+class HMACAuth {
+  private apiKey: string;
+  private apiSecret: string;
+
+  constructor(apiKey: string, apiSecret: string) {
+    this.apiKey = apiKey;
+    this.apiSecret = apiSecret;
+  }
+
+  generateSignature(method: string, path: string, body: string, timestamp: string): string {
+    const message = `${method}${path}${body}${timestamp}`;
+    return crypto
+      .createHmac('sha256', this.apiSecret)
+      .update(message)
+      .digest('hex');
+  }
+
+  getHeaders(method: string, path: string, body: string): Record<string, string> {
+    const timestamp = Date.now().toString();
+    const signature = this.generateSignature(method, path, body, timestamp);
+
+    return {
+      'X-API-Key': this.apiKey,
+      'X-Timestamp': timestamp,
+      'X-Signature': signature,
+      'Content-Type': 'application/json',
+    };
+  }
+}
+```
+
+---
+
+## Request/Response Patterns
+
+### 3.1 HTTP Client Abstraction
+
+**CRITICAL:** Always abstract HTTP calls behind an interface for testability and maintainability.
+
+```typescript
+// HTTP Client Interface
+interface HTTPClient {
+  get<T>(url: string, config?: RequestConfig): Promise<T>;
+  post<T>(url: string, data?: any, config?: RequestConfig): Promise<T>;
+  put<T>(url: string, data?: any, config?: RequestConfig): Promise<T>;
+  patch<T>(url: string, data?: any, config?: RequestConfig): Promise<T>;
+  delete<T>(url: string, config?: RequestConfig): Promise<T>;
+}
+
+interface RequestConfig {
+  headers?: Record<string, string>;
+  timeout?: number;
+  retries?: number;
+  retryDelay?: number;
+  params?: Record<string, string | number | boolean>;
+}
+
+// Implementation
+class FetchHTTPClient implements HTTPClient {
+  private baseUrl: string;
+  private defaultHeaders: Record<string, string>;
+  private defaultTimeout: number;
+
+  constructor(
+    baseUrl: string,
+    defaultHeaders: Record<string, string> = {},
+    defaultTimeout: number = 30000
+  ) {
+    this.baseUrl = baseUrl;
+    this.defaultHeaders = defaultHeaders;
+    this.defaultTimeout = defaultTimeout;
+  }
+
+  private buildUrl(url: string, params?: Record<string, string | number | boolean>): string {
+    const fullUrl = url.startsWith('http') ? url : `${this.baseUrl}${url}`;
+    
+    if (!params || Object.keys(params).length === 0) {
+      return fullUrl;
+    }
+
+    const urlObj = new URL(fullUrl);
+    Object.entries(params).forEach(([key, value]) => {
+      urlObj.searchParams.append(key, String(value));
+    });
+
+    return urlObj.toString();
+  }
+
+  private async request<T>(
+    method: string,
+    url: string,
+    data?: any,
+    config?: RequestConfig
+  ): Promise<T> {
+    const fullUrl = this.buildUrl(url, config?.params);
+    const headers = {
+      ...this.defaultHeaders,
+      ...config?.headers,
+    };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), config?.timeout || this.defaultTimeout);
+
+    try {
+      const response = await fetch(fullUrl, {
+        method,
+        headers,
+        body: data ? JSON.stringify(data) : undefined,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new APIError(
+          `Request failed: ${response.statusText}`,
+          response.status,
+          await response.text()
+        );
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (contentType?.includes('application/json')) {
+        return await response.json();
+      }
+
+      return (await response.text()) as T;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error instanceof APIError) {
+        throw error;
+      }
+
+      if (error.name === 'AbortError') {
+        throw new APIError('Request timeout', 408, 'Request exceeded timeout limit');
+      }
+
+      throw new APIError(`Network error: ${error.message}`, 0, error.message);
+    }
+  }
+
+  async get<T>(url: string, config?: RequestConfig): Promise<T> {
+    return this.request<T>('GET', url, undefined, config);
+  }
+
+  async post<T>(url: string, data?: any, config?: RequestConfig): Promise<T> {
+    return this.request<T>('POST', url, data, config);
+  }
+
+  async put<T>(url: string, data?: any, config?: RequestConfig): Promise<T> {
+    return this.request<T>('PUT', url, data, config);
+  }
+
+  async patch<T>(url: string, data?: any, config?: RequestConfig): Promise<T> {
+    return this.request<T>('PATCH', url, data, config);
+  }
+
+  async delete<T>(url: string, config?: RequestConfig): Promise<T> {
+    return this.request<T>('DELETE', url, undefined, config);
+  }
+}
+```
+
+### 3.2 Request Validation
+
+**CRITICAL:** Always validate requests before sending to the API.
+
+```typescript
+// Request Validation
+class RequestValidator {
+  static validateRequired<T extends Record<string, any>>(
+    data: T,
+    requiredFields: (keyof T)[]
+  ): void {
+    const missing = requiredFields.filter(field => {
+      const value = data[field];
+      return value === undefined || value === null || value === '';
+    });
+
+    if (missing.length > 0) {
+      throw new ValidationError(
+        `Missing required fields: ${missing.join(', ')}`
+      );
+    }
+  }
+
+  static validateType(value: any, expectedType: string, fieldName: string): void {
+    const actualType = typeof value;
+    if (actualType !== expectedType) {
+      throw new ValidationError(
+        `Field '${fieldName}' must be of type ${expectedType}, got ${actualType}`
+      );
+    }
+  }
+
+  static validateEnum<T>(value: T, allowedValues: T[], fieldName: string): void {
+    if (!allowedValues.includes(value)) {
+      throw new ValidationError(
+        `Field '${fieldName}' must be one of: ${allowedValues.join(', ')}`
+      );
+    }
+  }
+
+  static validateRange(
+    value: number,
+    min: number,
+    max: number,
+    fieldName: string
+  ): void {
+    if (value < min || value > max) {
+      throw new ValidationError(
+        `Field '${fieldName}' must be between ${min} and ${max}`
+      );
+    }
+  }
+}
+
+// Usage
+interface CreateUserRequest {
+  email: string;
+  name: string;
+  age: number;
+  role: 'admin' | 'user' | 'guest';
+}
+
+function validateCreateUserRequest(data: any): CreateUserRequest {
+  RequestValidator.validateRequired(data, ['email', 'name', 'age', 'role']);
+  RequestValidator.validateType(data.email, 'string', 'email');
+  RequestValidator.validateType(data.name, 'string', 'name');
+  RequestValidator.validateType(data.age, 'number', 'age');
+  RequestValidator.validateEnum(data.role, ['admin', 'user', 'guest'], 'role');
+  RequestValidator.validateRange(data.age, 0, 150, 'age');
+
+  // Email format validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(data.email)) {
+    throw new ValidationError('Invalid email format');
+  }
+
+  return data as CreateUserRequest;
+}
+```
+
+### 3.3 Response Parsing and Validation
+
+**CRITICAL:** Always validate API responses before using them.
+
+```typescript
+// Response Validation
+class ResponseValidator {
+  static validateStructure<T>(
+    data: any,
+    schema: Record<string, (value: any) => boolean>
+  ): T {
+    const errors: string[] = [];
+
+    Object.entries(schema).forEach(([key, validator]) => {
+      if (!(key in data)) {
+        errors.push(`Missing field: ${key}`);
+      } else if (!validator(data[key])) {
+        errors.push(`Invalid value for field: ${key}`);
+      }
+    });
+
+    if (errors.length > 0) {
+      throw new ValidationError(`Response validation failed: ${errors.join(', ')}`);
+    }
+
+    return data as T;
+  }
+
+  static parsePaginatedResponse<T>(
+    response: any,
+    dataField: string = 'data',
+    metaField: string = 'meta'
+  ): PaginatedResponse<T> {
+    if (!response[dataField] || !Array.isArray(response[dataField])) {
+      throw new ValidationError(`Invalid paginated response structure`);
+    }
+
+    return {
+      data: response[dataField] as T[],
+      meta: response[metaField] || {},
+      pagination: {
+        page: response[metaField]?.page || 1,
+        perPage: response[metaField]?.per_page || response[metaField]?.perPage || 10,
+        total: response[metaField]?.total || 0,
+        totalPages: response[metaField]?.total_pages || response[metaField]?.totalPages || 0,
+      },
+    };
+  }
+}
+
+interface PaginatedResponse<T> {
+  data: T[];
+  meta: Record<string, any>;
+  pagination: {
+    page: number;
+    perPage: number;
+    total: number;
+    totalPages: number;
+  };
+}
+```
+
+### 3.4 Request/Response Logging
+
+**CRITICAL:** Log all API interactions for debugging, but never log sensitive data.
+
+```typescript
+// Safe Logging Utility
+class APILogger {
+  private static sanitize(data: any): any {
+    if (typeof data !== 'object' || data === null) {
+      return data;
+    }
+
+    if (Array.isArray(data)) {
+      return data.map(item => this.sanitize(item));
+    }
+
+    const sensitiveFields = [
+      'password',
+      'apiKey',
+      'api_key',
+      'secret',
+      'token',
+      'authorization',
+      'credit_card',
+      'creditCard',
+      'ssn',
+      'social_security',
+    ];
+
+    const sanitized: Record<string, any> = {};
+    Object.entries(data).forEach(([key, value]) => {
+      const lowerKey = key.toLowerCase();
+      if (sensitiveFields.some(field => lowerKey.includes(field))) {
+        sanitized[key] = '***REDACTED***';
+      } else if (typeof value === 'object' && value !== null) {
+        sanitized[key] = this.sanitize(value);
+      } else {
+        sanitized[key] = value;
+      }
+    });
+
+    return sanitized;
+  }
+
+  static logRequest(method: string, url: string, data?: any, headers?: Record<string, string>): void {
+    console.log('[API Request]', {
+      method,
+      url,
+      data: this.sanitize(data),
+      headers: this.sanitize(headers),
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  static logResponse(url: string, status: number, data?: any, duration?: number): void {
+    console.log('[API Response]', {
+      url,
+      status,
+      data: this.sanitize(data),
+      duration: duration ? `${duration}ms` : undefined,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  static logError(url: string, error: Error, context?: Record<string, any>): void {
+    console.error('[API Error]', {
+      url,
+      error: error.message,
+      stack: error.stack,
+      context: this.sanitize(context),
+      timestamp: new Date().toISOString(),
+    });
+  }
+}
+```
+
+---
+
+## Error Handling
+
+### 4.1 Custom Error Classes
+
+**CRITICAL:** Use specific error types for different failure scenarios.
+
+```typescript
+// Base API Error
+class APIError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number,
+    public responseBody?: string,
+    public originalError?: Error
+  ) {
+    super(message);
+    this.name = 'APIError';
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+// Specific Error Types
+class ValidationError extends APIError {
+  constructor(message: string, field?: string) {
+    super(message, 400);
+    this.name = 'ValidationError';
+    if (field) {
+      this.message = `Validation error in field '${field}': ${message}`;
+    }
+  }
+}
+
+class AuthenticationError extends APIError {
+  constructor(message: string = 'Authentication failed') {
+    super(message, 401);
+    this.name = 'AuthenticationError';
+  }
+}
+
+class AuthorizationError extends APIError {
+  constructor(message: string = 'Insufficient permissions') {
+    super(message, 403);
+    this.name = 'AuthorizationError';
+  }
+}
+
+class NotFoundError extends APIError {
+  constructor(resource: string) {
+    super(`Resource not found: ${resource}`, 404);
+    this.name = 'NotFoundError';
+  }
+}
+
+class RateLimitError extends APIError {
+  constructor(
+    message: string = 'Rate limit exceeded',
+    public retryAfter?: number
+  ) {
+    super(message, 429);
+    this.name = 'RateLimitError';
+  }
+}
+
+class ServerError extends APIError {
+  constructor(message: string = 'Internal server error') {
+    super(message, 500);
+    this.name = 'ServerError';
+  }
+}
+
+class TimeoutError extends APIError {
+  constructor(timeout: number) {
+    super(`Request timeout after ${timeout}ms`, 408);
+    this.name = 'TimeoutError';
+  }
+}
+```
+
+### 4.2 Error Handling Patterns
+
+```typescript
+// Comprehensive Error Handler
+class ErrorHandler {
+  static handle(error: unknown): APIError {
+    if (error instanceof APIError) {
+      return error;
+    }
+
+    if (error instanceof Error) {
+      // Network errors
+      if (error.message.includes('fetch')) {
+        return new APIError('Network error: Unable to reach API', 0, error.message, error);
+      }
+
+      // Timeout errors
+      if (error.name === 'AbortError' || error.message.includes('timeout')) {
+        return new TimeoutError(30000);
+      }
+
+      // Generic error
+      return new APIError('Unexpected error', 500, error.message, error);
+    }
+
+    return new APIError('Unknown error occurred', 500);
+  }
+
+  static isRetryable(error: APIError): boolean {
+    // Retry on network errors, timeouts, and 5xx errors
+    if (error.statusCode === 0) return true; // Network error
+    if (error.statusCode >= 500) return true; // Server errors
+    if (error instanceof TimeoutError) return true;
+    if (error instanceof RateLimitError) return true; // Retry after delay
+
+    // Don't retry on client errors (4xx) except rate limits
+    return false;
+  }
+
+  static getUserFriendlyMessage(error: APIError): string {
+    switch (error.constructor) {
+      case ValidationError:
+        return 'Please check your input and try again.';
+      case AuthenticationError:
+        return 'Authentication failed. Please check your credentials.';
+      case AuthorizationError:
+        return 'You don\'t have permission to perform this action.';
+      case NotFoundError:
+        return 'The requested resource was not found.';
+      case RateLimitError:
+        return 'Too many requests. Please try again later.';
+      case TimeoutError:
+        return 'The request took too long. Please try again.';
+      case ServerError:
+        return 'The server encountered an error. Please try again later.';
+      default:
+        return 'An unexpected error occurred. Please try again.';
+    }
+  }
+}
+```
+
+### 4.3 Retry Logic with Exponential Backoff
+
+**CRITICAL:** Implement retry logic for transient failures.
+
+```typescript
+// Retry Utility with Exponential Backoff
+class RetryHandler {
+  static async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    options: {
+      maxRetries?: number;
+      initialDelay?: number;
+      maxDelay?: number;
+      backoffMultiplier?: number;
+      retryableErrors?: (error: Error) => boolean;
+    } = {}
+  ): Promise<T> {
+    const {
+      maxRetries = 3,
+      initialDelay = 1000,
+      maxDelay = 30000,
+      backoffMultiplier = 2,
+      retryableErrors = (error) => ErrorHandler.isRetryable(ErrorHandler.handle(error)),
+    } = options;
+
+    let lastError: Error;
+    let delay = initialDelay;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Don't retry if it's the last attempt or error is not retryable
+        if (attempt === maxRetries || !retryableErrors(lastError)) {
+          throw lastError;
+        }
+
+        // Handle rate limit retry-after header
+        if (error instanceof RateLimitError && error.retryAfter) {
+          delay = error.retryAfter * 1000;
+        } else {
+          // Exponential backoff with jitter
+          delay = Math.min(
+            delay * backoffMultiplier + Math.random() * 1000,
+            maxDelay
+          );
+        }
+
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    throw lastError!;
+  }
+}
+
+// Usage
+const result = await RetryHandler.executeWithRetry(
+  async () => {
+    return await httpClient.get('/api/users');
+  },
+  {
+    maxRetries: 3,
+    initialDelay: 1000,
+    backoffMultiplier: 2,
+  }
+);
+```
+
+---
+
+## Rate Limiting and Quotas
+
+### 5.1 Rate Limiter Implementation
+
+**CRITICAL:** Always respect API rate limits to avoid service disruption.
+
+```typescript
+// Token Bucket Rate Limiter
+class RateLimiter {
+  private tokens: number;
+  private lastRefill: number;
+  private readonly capacity: number;
+  private readonly refillRate: number; // tokens per second
+  private readonly refillInterval: number; // milliseconds
+
+  constructor(
+    capacity: number, // Maximum tokens
+    refillRate: number, // Tokens per second
+    refillInterval: number = 1000 // How often to refill (ms)
+  ) {
+    this.capacity = capacity;
+    this.tokens = capacity;
+    this.refillRate = refillRate;
+    this.refillInterval = refillInterval;
+    this.lastRefill = Date.now();
+  }
+
+  private refill(): void {
+    const now = Date.now();
+    const elapsed = (now - this.lastRefill) / 1000; // seconds
+    const tokensToAdd = elapsed * this.refillRate;
+
+    this.tokens = Math.min(this.capacity, this.tokens + tokensToAdd);
+    this.lastRefill = now;
+  }
+
+  async acquire(tokens: number = 1): Promise<void> {
+    this.refill();
+
+    if (this.tokens >= tokens) {
+      this.tokens -= tokens;
+      return;
+    }
+
+    // Calculate wait time
+    const tokensNeeded = tokens - this.tokens;
+    const waitTime = (tokensNeeded / this.refillRate) * 1000;
+
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+
+    // Refill and acquire after waiting
+    this.refill();
+    this.tokens -= tokens;
+  }
+
+  getAvailableTokens(): number {
+    this.refill();
+    return this.tokens;
+  }
+}
+
+// Sliding Window Rate Limiter
+class SlidingWindowRateLimiter {
+  private requests: number[] = [];
+  private readonly maxRequests: number;
+  private readonly windowMs: number;
+
+  constructor(maxRequests: number, windowMs: number) {
+    this.maxRequests = maxRequests;
+    this.windowMs = windowMs;
+  }
+
+  async acquire(): Promise<void> {
+    const now = Date.now();
+    
+    // Remove requests outside the window
+    this.requests = this.requests.filter(
+      timestamp => now - timestamp < this.windowMs
+    );
+
+    if (this.requests.length >= this.maxRequests) {
+      // Calculate wait time until oldest request expires
+      const oldestRequest = this.requests[0];
+      const waitTime = this.windowMs - (now - oldestRequest) + 100; // Add 100ms buffer
+      
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      
+      // Clean up again after waiting
+      this.requests = this.requests.filter(
+        timestamp => Date.now() - timestamp < this.windowMs
+      );
+    }
+
+    this.requests.push(Date.now());
+  }
+
+  getRemainingRequests(): number {
+    const now = Date.now();
+    this.requests = this.requests.filter(
+      timestamp => now - timestamp < this.windowMs
+    );
+    return Math.max(0, this.maxRequests - this.requests.length);
+  }
+}
+```
+
+### 5.2 Rate Limit Header Parsing
+
+```typescript
+// Parse Rate Limit Headers
+class RateLimitParser {
+  static parseHeaders(headers: Headers): {
+    limit: number;
+    remaining: number;
+    reset: number;
+  } | null {
+    // Common header formats:
+    // X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+    // RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset
+    // X-Rate-Limit-Limit, X-Rate-Limit-Remaining, X-Rate-Limit-Reset
+
+    const limit = this.getHeaderValue(headers, [
+      'x-ratelimit-limit',
+      'ratelimit-limit',
+      'x-rate-limit-limit',
+    ]);
+
+    const remaining = this.getHeaderValue(headers, [
+      'x-ratelimit-remaining',
+      'ratelimit-remaining',
+      'x-rate-limit-remaining',
+    ]);
+
+    const reset = this.getHeaderValue(headers, [
+      'x-ratelimit-reset',
+      'ratelimit-reset',
+      'x-rate-limit-reset',
+      'retry-after',
+    ]);
+
+    if (limit === null || remaining === null || reset === null) {
+      return null;
+    }
+
+    return {
+      limit: parseInt(limit, 10),
+      remaining: parseInt(remaining, 10),
+      reset: parseInt(reset, 10),
+    };
+  }
+
+  private static getHeaderValue(
+    headers: Headers,
+    possibleNames: string[]
+  ): string | null {
+    for (const name of possibleNames) {
+      const value = headers.get(name);
+      if (value !== null) {
+        return value;
+      }
+    }
+    return null;
+  }
+}
+```
+
+### 5.3 Quota Management
+
+```typescript
+// Quota Tracker
+class QuotaTracker {
+  private usage: Map<string, number> = new Map();
+  private limits: Map<string, number> = new Map();
+  private resetTimes: Map<string, number> = new Map();
+
+  setLimit(resource: string, limit: number, resetIntervalMs: number): void {
+    this.limits.set(resource, limit);
+    this.resetTimes.set(resource, Date.now() + resetIntervalMs);
+  }
+
+  async checkQuota(resource: string): Promise<void> {
+    const limit = this.limits.get(resource);
+    if (!limit) {
+      return; // No limit set
+    }
+
+    const currentUsage = this.usage.get(resource) || 0;
+    const resetTime = this.resetTimes.get(resource) || 0;
+
+    // Reset if time has passed
+    if (Date.now() >= resetTime) {
+      this.usage.set(resource, 0);
+      const resetInterval = resetTime - (this.resetTimes.get(resource) || Date.now());
+      this.resetTimes.set(resource, Date.now() + resetInterval);
+    }
+
+    if (currentUsage >= limit) {
+      const waitTime = resetTime - Date.now();
+      if (waitTime > 0) {
+        throw new RateLimitError(
+          `Quota exceeded for ${resource}. Reset in ${Math.ceil(waitTime / 1000)}s`,
+          Math.ceil(waitTime / 1000)
+        );
+      }
+    }
+  }
+
+  recordUsage(resource: string, amount: number = 1): void {
+    const current = this.usage.get(resource) || 0;
+    this.usage.set(resource, current + amount);
+  }
+
+  getRemaining(resource: string): number {
+    const limit = this.limits.get(resource) || 0;
+    const usage = this.usage.get(resource) || 0;
+    return Math.max(0, limit - usage);
+  }
+}
+```
+
+---
+
+## Security Best Practices
+
+### 6.1 Credential Management
+
+**CRITICAL:** Never expose credentials in code, logs, or client-side applications.
+
+```typescript
+// Secure Credential Manager
+class CredentialManager {
+  private static credentials: Map<string, string> = new Map();
+
+  static set(key: string, value: string): void {
+    // Validate that we're not in a client-side environment
+    if (typeof window !== 'undefined') {
+      throw new Error('Credentials cannot be set in client-side code');
+    }
+
+    this.credentials.set(key, value);
+  }
+
+  static get(key: string): string | undefined {
+    // In production, use secret management service
+    // AWS Secrets Manager, Azure Key Vault, HashiCorp Vault, etc.
+    
+    // Fallback to environment variables
+    return this.credentials.get(key) || process.env[key];
+  }
+
+  static validate(key: string): void {
+    const value = this.get(key);
+    if (!value || value.trim() === '') {
+      throw new Error(`Required credential '${key}' is missing or empty`);
+    }
+  }
+
+  static rotate(key: string, newValue: string): void {
+    // Implement key rotation logic
+    // 1. Validate new key works
+    // 2. Update credential
+    // 3. Invalidate old key (if API supports it)
+    this.set(key, newValue);
+  }
+}
+```
+
+### 6.2 Input Sanitization
+
+```typescript
+// Input Sanitization
+class InputSanitizer {
+  static sanitizeString(input: string, maxLength?: number): string {
+    if (typeof input !== 'string') {
+      throw new ValidationError('Input must be a string');
+    }
+
+    // Remove null bytes
+    let sanitized = input.replace(/\0/g, '');
+
+    // Trim whitespace
+    sanitized = sanitized.trim();
+
+    // Enforce max length
+    if (maxLength && sanitized.length > maxLength) {
+      sanitized = sanitized.substring(0, maxLength);
+    }
+
+    return sanitized;
+  }
+
+  static sanitizeEmail(email: string): string {
+    const sanitized = this.sanitizeString(email, 254);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    
+    if (!emailRegex.test(sanitized)) {
+      throw new ValidationError('Invalid email format');
+    }
+
+    return sanitized.toLowerCase();
+  }
+
+  static sanitizeURL(url: string): string {
+    try {
+      const parsed = new URL(url);
+      // Only allow http and https
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        throw new ValidationError('URL must use http or https protocol');
+      }
+      return parsed.toString();
+    } catch {
+      throw new ValidationError('Invalid URL format');
+    }
+  }
+
+  static sanitizeObject<T extends Record<string, any>>(
+    obj: T,
+    schema: Record<keyof T, (value: any) => any>
+  ): T {
+    const sanitized = {} as T;
+
+    Object.entries(schema).forEach(([key, sanitizer]) => {
+      if (key in obj) {
+        sanitized[key as keyof T] = sanitizer(obj[key]);
+      }
+    });
+
+    return sanitized;
+  }
+}
+```
+
+### 6.3 Output Validation
+
+```typescript
+// Output Validation (Prevent Injection Attacks)
+class OutputValidator {
+  static validateAndSanitizeHTML(input: string): string {
+    // Remove potentially dangerous HTML tags and attributes
+    const dangerous = /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi;
+    return input.replace(dangerous, '');
+  }
+
+  static validateJSONStructure(data: any, maxDepth: number = 10): void {
+    if (maxDepth <= 0) {
+      throw new ValidationError('JSON structure too deeply nested');
+    }
+
+    if (typeof data === 'object' && data !== null) {
+      if (Array.isArray(data)) {
+        if (data.length > 10000) {
+          throw new ValidationError('Array too large');
+        }
+        data.forEach(item => this.validateJSONStructure(item, maxDepth - 1));
+      } else {
+        const keys = Object.keys(data);
+        if (keys.length > 1000) {
+          throw new ValidationError('Object has too many properties');
+        }
+        keys.forEach(key => {
+          if (key.length > 100) {
+            throw new ValidationError('Property name too long');
+          }
+          this.validateJSONStructure(data[key], maxDepth - 1);
+        });
+      }
+    }
+  }
+}
+```
+
+### 6.4 HTTPS Enforcement
+
+```typescript
+// HTTPS Enforcement
+class SecurityValidator {
+  static validateHTTPS(url: string): void {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'https:') {
+        throw new SecurityError('API endpoints must use HTTPS');
+      }
+    } catch (error) {
+      if (error instanceof SecurityError) {
+        throw error;
+      }
+      throw new SecurityError('Invalid URL format');
+    }
+  }
+
+  static validateCertificate(hostname: string): void {
+    // In Node.js, you can validate certificates
+    // This is a placeholder for certificate validation logic
+    // Use libraries like 'tls' or 'https' for actual validation
+  }
+}
+
+class SecurityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SecurityError';
+  }
+}
+```
+
+---
+
+## Testing Strategies
+
+### 7.1 Mock API Server
+
+**CRITICAL:** Mock external APIs in tests to avoid costs and ensure reliability.
+
+```typescript
+// Mock API Server (using MSW - Mock Service Worker)
+import { setupServer } from 'msw/node';
+import { rest } from 'msw';
+
+const mockServer = setupServer(
+  // Mock successful response
+  rest.get('https://api.example.com/users', (req, res, ctx) => {
+    return res(
+      ctx.status(200),
+      ctx.json({
+        data: [
+          { id: 1, name: 'John Doe', email: 'john@example.com' },
+          { id: 2, name: 'Jane Smith', email: 'jane@example.com' },
+        ],
+        meta: { total: 2 },
+      })
+    );
+  }),
+
+  // Mock error response
+  rest.get('https://api.example.com/users/:id', (req, res, ctx) => {
+    const { id } = req.params;
+    if (id === '999') {
+      return res(
+        ctx.status(404),
+        ctx.json({ error: 'User not found' })
+      );
+    }
+    return res(
+      ctx.status(200),
+      ctx.json({ id: Number(id), name: 'Test User' })
+    );
+  }),
+
+  // Mock rate limit response
+  rest.post('https://api.example.com/users', (req, res, ctx) => {
+    return res(
+      ctx.status(429),
+      ctx.set('X-RateLimit-Remaining', '0'),
+      ctx.set('Retry-After', '60'),
+      ctx.json({ error: 'Rate limit exceeded' })
+    );
+  })
+);
+
+// Setup and teardown
+beforeAll(() => mockServer.listen());
+afterEach(() => mockServer.resetHandlers());
+afterAll(() => mockServer.close());
+```
+
+### 7.2 Integration Test Patterns
+
+```typescript
+// Integration Test Example
+describe('API Integration Tests', () => {
+  let apiClient: HTTPClient;
+  let rateLimiter: RateLimiter;
+
+  beforeEach(() => {
+    apiClient = new FetchHTTPClient('https://api.example.com');
+    rateLimiter = new RateLimiter(60, 1); // 60 requests per minute
+  });
+
+  describe('GET /users', () => {
+    it('should fetch users successfully', async () => {
+      await rateLimiter.acquire();
+      const users = await apiClient.get<User[]>('/users');
+      
+      expect(users).toBeDefined();
+      expect(Array.isArray(users)).toBe(true);
+    });
+
+    it('should handle pagination', async () => {
+      await rateLimiter.acquire();
+      const response = await apiClient.get<PaginatedResponse<User>>('/users', {
+        params: { page: 1, per_page: 10 },
+      });
+
+      expect(response.data).toBeDefined();
+      expect(response.pagination).toBeDefined();
+      expect(response.pagination.page).toBe(1);
+    });
+
+    it('should handle errors gracefully', async () => {
+      await rateLimiter.acquire();
+      
+      await expect(
+        apiClient.get('/users/999')
+      ).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  describe('POST /users', () => {
+    it('should create a user', async () => {
+      await rateLimiter.acquire();
+      
+      const newUser = {
+        name: 'Test User',
+        email: 'test@example.com',
+      };
+
+      const created = await apiClient.post<User>('/users', newUser);
+      
+      expect(created.id).toBeDefined();
+      expect(created.email).toBe(newUser.email);
+    });
+
+    it('should validate required fields', async () => {
+      await rateLimiter.acquire();
+      
+      await expect(
+        apiClient.post('/users', { name: 'Test' }) // Missing email
+      ).rejects.toThrow(ValidationError);
+    });
+  });
+
+  describe('Rate Limiting', () => {
+    it('should respect rate limits', async () => {
+      const limiter = new RateLimiter(2, 1); // 2 requests per second
+      
+      // Make 2 requests quickly
+      await limiter.acquire();
+      await apiClient.get('/users');
+      
+      await limiter.acquire();
+      await apiClient.get('/users');
+
+      // Third request should wait
+      const startTime = Date.now();
+      await limiter.acquire();
+      await apiClient.get('/users');
+      const duration = Date.now() - startTime;
+
+      expect(duration).toBeGreaterThan(900); // Should wait ~1 second
+    });
+  });
+});
+```
+
+### 7.3 Contract Testing
+
+```typescript
+// Contract Testing - Ensure API contract hasn't changed
+describe('API Contract Tests', () => {
+  it('should match expected user schema', async () => {
+    const user = await apiClient.get<User>('/users/1');
+    
+    // Validate structure
+    expect(user).toHaveProperty('id');
+    expect(user).toHaveProperty('name');
+    expect(user).toHaveProperty('email');
+    
+    // Validate types
+    expect(typeof user.id).toBe('number');
+    expect(typeof user.name).toBe('string');
+    expect(typeof user.email).toBe('string');
+    
+    // Validate email format
+    expect(user.email).toMatch(/^[^\s@]+@[^\s@]+\.[^\s@]+$/);
+  });
+
+  it('should return consistent error format', async () => {
+    try {
+      await apiClient.get('/users/999');
+    } catch (error) {
+      expect(error).toBeInstanceOf(APIError);
+      expect(error.statusCode).toBe(404);
+      expect(error.message).toBeDefined();
+    }
+  });
+});
+```
+
+---
+
+## Code Architecture
+
+### 8.1 Service Layer Pattern
+
+**CRITICAL:** Separate API integration code from business logic.
+
+```typescript
+// Service Interface
+interface UserService {
+  getUsers(params?: PaginationParams): Promise<PaginatedResponse<User>>;
+  getUserById(id: number): Promise<User>;
+  createUser(data: CreateUserRequest): Promise<User>;
+  updateUser(id: number, data: UpdateUserRequest): Promise<User>;
+  deleteUser(id: number): Promise<void>;
+}
+
+// Service Implementation
+class UserServiceImpl implements UserService {
+  constructor(
+    private httpClient: HTTPClient,
+    private rateLimiter: RateLimiter,
+    private validator: RequestValidator
+  ) {}
+
+  async getUsers(params?: PaginationParams): Promise<PaginatedResponse<User>> {
+    await this.rateLimiter.acquire();
+
+    const response = await this.httpClient.get<PaginatedResponse<User>>('/users', {
+      params: params || {},
+    });
+
+    return ResponseValidator.parsePaginatedResponse(response);
+  }
+
+  async getUserById(id: number): Promise<User> {
+    await this.rateLimiter.acquire();
+
+    if (!id || id <= 0) {
+      throw new ValidationError('Invalid user ID');
+    }
+
+    try {
+      return await this.httpClient.get<User>(`/users/${id}`);
+    } catch (error) {
+      if (error instanceof APIError && error.statusCode === 404) {
+        throw new NotFoundError(`User with ID ${id}`);
+      }
+      throw error;
+    }
+  }
+
+  async createUser(data: CreateUserRequest): Promise<User> {
+    await this.rateLimiter.acquire();
+
+    // Validate request
+    const validated = validateCreateUserRequest(data);
+
+    // Sanitize input
+    const sanitized = {
+      email: InputSanitizer.sanitizeEmail(validated.email),
+      name: InputSanitizer.sanitizeString(validated.name, 100),
+      age: validated.age,
+      role: validated.role,
+    };
+
+    return await this.httpClient.post<User>('/users', sanitized);
+  }
+
+  async updateUser(id: number, data: UpdateUserRequest): Promise<User> {
+    await this.rateLimiter.acquire();
+
+    if (!id || id <= 0) {
+      throw new ValidationError('Invalid user ID');
+    }
+
+    const sanitized: Partial<UpdateUserRequest> = {};
+    if (data.email) {
+      sanitized.email = InputSanitizer.sanitizeEmail(data.email);
+    }
+    if (data.name) {
+      sanitized.name = InputSanitizer.sanitizeString(data.name, 100);
+    }
+
+    return await this.httpClient.patch<User>(`/users/${id}`, sanitized);
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    await this.rateLimiter.acquire();
+
+    if (!id || id <= 0) {
+      throw new ValidationError('Invalid user ID');
+    }
+
+    await this.httpClient.delete(`/users/${id}`);
+  }
+}
+```
+
+### 8.2 Repository Pattern
+
+```typescript
+// Repository Interface
+interface UserRepository {
+  findById(id: number): Promise<User | null>;
+  findAll(params: PaginationParams): Promise<PaginatedResponse<User>>;
+  create(data: CreateUserRequest): Promise<User>;
+  update(id: number, data: UpdateUserRequest): Promise<User>;
+  delete(id: number): Promise<void>;
+}
+
+// API Repository Implementation
+class APIUserRepository implements UserRepository {
+  constructor(private userService: UserService) {}
+
+  async findById(id: number): Promise<User | null> {
+    try {
+      return await this.userService.getUserById(id);
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async findAll(params: PaginationParams): Promise<PaginatedResponse<User>> {
+    return await this.userService.getUsers(params);
+  }
+
+  async create(data: CreateUserRequest): Promise<User> {
+    return await this.userService.createUser(data);
+  }
+
+  async update(id: number, data: UpdateUserRequest): Promise<User> {
+    return await this.userService.updateUser(id, data);
+  }
+
+  async delete(id: number): Promise<void> {
+    await this.userService.deleteUser(id);
+  }
+}
+```
+
+### 8.3 Factory Pattern for API Clients
+
+```typescript
+// API Client Factory
+class APIClientFactory {
+  static create(
+    apiName: string,
+    config: APIConfig
+  ): HTTPClient {
+    // Validate HTTPS
+    SecurityValidator.validateHTTPS(config.baseUrl);
+
+    // Create authentication
+    const auth = this.createAuth(apiName, config);
+
+    // Create HTTP client
+    const httpClient = new FetchHTTPClient(
+      config.baseUrl,
+      auth.getHeaders(),
+      config.timeout
+    );
+
+    // Wrap with retry logic
+    return new RetryableHTTPClient(httpClient, {
+      maxRetries: config.retryAttempts,
+    });
+  }
+
+  private static createAuth(apiName: string, config: APIConfig): AuthProvider {
+    // Determine auth method based on available credentials
+    if (config.apiKey && config.apiSecret) {
+      return new HMACAuth(config.apiKey, config.apiSecret);
+    } else if (config.apiKey) {
+      return new APIKeyAuth(config.apiKey);
+    } else if (config.oauthConfig) {
+      return new OAuth2Client(
+        config.oauthConfig.clientId,
+        config.oauthConfig.clientSecret,
+        config.oauthConfig.tokenUrl
+      );
+    }
+
+    throw new Error(`No valid authentication method found for ${apiName}`);
+  }
+}
+```
+
+---
+
+## Monitoring and Observability
+
+### 9.1 Metrics Collection
+
+```typescript
+// API Metrics Collector
+class APIMetrics {
+  private static metrics: {
+    requests: number;
+    errors: number;
+    totalLatency: number;
+    rateLimitHits: number;
+  } = {
+    requests: 0,
+    errors: 0,
+    totalLatency: 0,
+    rateLimitHits: 0,
+  };
+
+  static recordRequest(latency: number): void {
+    this.metrics.requests++;
+    this.metrics.totalLatency += latency;
+  }
+
+  static recordError(): void {
+    this.metrics.errors++;
+  }
+
+  static recordRateLimit(): void {
+    this.metrics.rateLimitHits++;
+  }
+
+  static getMetrics(): {
+    totalRequests: number;
+    totalErrors: number;
+    averageLatency: number;
+    errorRate: number;
+    rateLimitHits: number;
+  } {
+    return {
+      totalRequests: this.metrics.requests,
+      totalErrors: this.metrics.errors,
+      averageLatency: this.metrics.requests > 0
+        ? this.metrics.totalLatency / this.metrics.requests
+        : 0,
+      errorRate: this.metrics.requests > 0
+        ? (this.metrics.errors / this.metrics.requests) * 100
+        : 0,
+      rateLimitHits: this.metrics.rateLimitHits,
+    };
+  }
+
+  static reset(): void {
+    this.metrics = {
+      requests: 0,
+      errors: 0,
+      totalLatency: 0,
+      rateLimitHits: 0,
+    };
+  }
+}
+```
+
+### 9.2 Distributed Tracing
+
+```typescript
+// Request Tracing
+class RequestTracer {
+  static startTrace(operation: string): string {
+    const traceId = `trace-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    console.log(`[TRACE START] ${operation}`, {
+      traceId,
+      timestamp: new Date().toISOString(),
+    });
+
+    return traceId;
+  }
+
+  static endTrace(traceId: string, operation: string, success: boolean, duration: number): void {
+    console.log(`[TRACE END] ${operation}`, {
+      traceId,
+      success,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  static addSpan(traceId: string, spanName: string, data: Record<string, any>): void {
+    console.log(`[TRACE SPAN] ${spanName}`, {
+      traceId,
+      ...data,
+      timestamp: new Date().toISOString(),
+    });
+  }
+}
+```
+
+### 9.3 Health Checks
+
+```typescript
+// API Health Check
+class APIHealthCheck {
+  constructor(
+    private httpClient: HTTPClient,
+    private endpoint: string = '/health'
+  ) {}
+
+  async check(): Promise<{
+    healthy: boolean;
+    latency: number;
+    error?: string;
+  }> {
+    const startTime = Date.now();
+    
+    try {
+      await this.httpClient.get(this.endpoint, { timeout: 5000 });
+      const latency = Date.now() - startTime;
+
+      return {
+        healthy: true,
+        latency,
+      };
+    } catch (error) {
+      const latency = Date.now() - startTime;
+      
+      return {
+        healthy: false,
+        latency,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  async checkPeriodically(
+    intervalMs: number,
+    onStatusChange: (healthy: boolean) => void
+  ): Promise<void> {
+    let lastStatus: boolean | null = null;
+
+    setInterval(async () => {
+      const result = await this.check();
+      
+      if (lastStatus !== null && lastStatus !== result.healthy) {
+        onStatusChange(result.healthy);
+      }
+      
+      lastStatus = result.healthy;
+    }, intervalMs);
+  }
+}
+```
+
+---
+
+## Documentation Requirements
+
+### 10.1 API Integration Documentation Template
+
+```markdown
+# [API Name] Integration Documentation
+
+## Overview
+- **Provider:** [Company/Organization]
+- **API Version:** [Version]
+- **Base URL:** [Base URL]
+- **Documentation:** [Link]
+- **Status Page:** [Link]
+
+## Authentication
+- **Method:** [API Key / OAuth 2.0 / JWT / Other]
+- **Setup Instructions:** [Step-by-step]
+- **Key Rotation:** [Process]
+
+## Rate Limits
+- **Requests per minute:** [Number]
+- **Requests per hour:** [Number]
+- **Burst capacity:** [Number]
+- **Handling:** [How rate limits are handled]
+
+## Endpoints
+
+### [Endpoint Name]
+- **Method:** GET/POST/PUT/DELETE
+- **Path:** `/path/to/endpoint`
+- **Description:** [What it does]
+- **Parameters:** [List]
+- **Response:** [Structure]
+- **Errors:** [Possible errors]
+
+## Error Codes
+| Code | Meaning | Handling |
+|------|---------|----------|
+| 400 | Bad Request | Validate input |
+| 401 | Unauthorized | Check credentials |
+| 429 | Rate Limited | Retry with backoff |
+
+## Testing
+- **Test Mode:** [Available?]
+- **Test Credentials:** [How to obtain]
+- **Mock Server:** [Setup instructions]
+
+## Monitoring
+- **Key Metrics:** [What to monitor]
+- **Alerts:** [What to alert on]
+- **Dashboards:** [Where to view]
+
+## Troubleshooting
+- **Common Issues:** [List]
+- **Solutions:** [How to fix]
+```
+
+---
+
+## Common Integration Patterns
+
+### 11.1 Pagination Handling
+
+```typescript
+// Pagination Iterator
+class PaginatedIterator<T> {
+  constructor(
+    private fetchPage: (page: number, perPage: number) => Promise<PaginatedResponse<T>>,
+    private perPage: number = 10
+  ) {}
+
+  async *[Symbol.asyncIterator](): AsyncGenerator<T, void, unknown> {
+    let currentPage = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await this.fetchPage(currentPage, this.perPage);
+      
+      for (const item of response.data) {
+        yield item;
+      }
+
+      hasMore = currentPage < response.pagination.totalPages;
+      currentPage++;
+    }
+  }
+
+  async getAll(): Promise<T[]> {
+    const items: T[] = [];
+    for await (const item of this) {
+      items.push(item);
+    }
+    return items;
+  }
+}
+
+// Usage
+const iterator = new PaginatedIterator(
+  (page, perPage) => userService.getUsers({ page, per_page: perPage })
+);
+
+// Iterate through all pages
+for await (const user of iterator) {
+  console.log(user);
+}
+
+// Or get all at once
+const allUsers = await iterator.getAll();
+```
+
+### 11.2 Webhook Handling
+
+```typescript
+// Webhook Handler
+class WebhookHandler {
+  constructor(
+    private secret: string,
+    private handlers: Map<string, (payload: any) => Promise<void>>
+  ) {}
+
+  async verifySignature(
+    payload: string,
+    signature: string,
+    timestamp: string
+  ): Promise<boolean> {
+    const message = `${timestamp}.${payload}`;
+    const expectedSignature = crypto
+      .createHmac('sha256', this.secret)
+      .update(message)
+      .digest('hex');
+
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
+  }
+
+  async handle(
+    eventType: string,
+    payload: any,
+    signature?: string,
+    timestamp?: string
+  ): Promise<void> {
+    // Verify signature if provided
+    if (signature && timestamp) {
+      const payloadString = JSON.stringify(payload);
+      const isValid = await this.verifySignature(payloadString, signature, timestamp);
+      
+      if (!isValid) {
+        throw new SecurityError('Invalid webhook signature');
+      }
+    }
+
+    // Get handler for event type
+    const handler = this.handlers.get(eventType);
+    if (!handler) {
+      console.warn(`No handler registered for event type: ${eventType}`);
+      return;
+    }
+
+    // Execute handler
+    await handler(payload);
+  }
+}
+
+// Usage
+const webhookHandler = new WebhookHandler(process.env.WEBHOOK_SECRET!, new Map([
+  ['user.created', async (payload) => {
+    console.log('User created:', payload);
+    // Handle user creation
+  }],
+  ['user.updated', async (payload) => {
+    console.log('User updated:', payload);
+    // Handle user update
+  }],
+]));
+
+// In Express route
+app.post('/webhooks', async (req, res) => {
+  const signature = req.headers['x-signature'] as string;
+  const timestamp = req.headers['x-timestamp'] as string;
+  const eventType = req.headers['x-event-type'] as string;
+
+  try {
+    await webhookHandler.handle(eventType, req.body, signature, timestamp);
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('Webhook handling error:', error);
+    res.status(400).json({ error: 'Webhook processing failed' });
+  }
+});
+```
+
+### 11.3 Batch Operations
+
+```typescript
+// Batch Processor
+class BatchProcessor<T, R> {
+  constructor(
+    private processItem: (item: T) => Promise<R>,
+    private batchSize: number = 10,
+    private concurrency: number = 3
+  ) {}
+
+  async processBatch(items: T[]): Promise<R[]> {
+    const results: R[] = [];
+    const batches = this.chunk(items, this.batchSize);
+
+    for (const batch of batches) {
+      const batchResults = await Promise.all(
+        batch.map(item => this.processItem(item))
+      );
+      results.push(...batchResults);
+    }
+
+    return results;
+  }
+
+  async processConcurrent(items: T[]): Promise<R[]> {
+    const results: R[] = [];
+    const chunks = this.chunk(items, this.concurrency);
+
+    for (const chunk of chunks) {
+      const chunkResults = await Promise.all(
+        chunk.map(item => this.processItem(item))
+      );
+      results.push(...chunkResults);
+    }
+
+    return results;
+  }
+
+  private chunk<T>(array: T[], size: number): T[][] {
+    const chunks: T[][] = [];
+    for (let i = 0; i < array.length; i += size) {
+      chunks.push(array.slice(i, i + size));
+    }
+    return chunks;
+  }
+}
+```
+
+---
+
+## Troubleshooting Guide
+
+### 12.1 Common Issues and Solutions
+
+#### Issue: "Authentication Failed"
+
+**Possible Causes:**
+- Invalid credentials
+- Expired tokens
+- Incorrect authentication method
+- Missing required headers
+
+**Solutions:**
+1. Verify credentials are correct and not expired
+2. Check token expiration and refresh if needed
+3. Verify authentication method matches API requirements
+4. Ensure all required headers are included
+
+#### Issue: "Rate Limit Exceeded"
+
+**Possible Causes:**
+- Too many requests in short time
+- Burst capacity exceeded
+- Quota limits reached
+
+**Solutions:**
+1. Implement rate limiting with exponential backoff
+2. Reduce request frequency
+3. Use request queuing
+4. Request quota increase if needed
+
+#### Issue: "Timeout Errors"
+
+**Possible Causes:**
+- Network latency
+- API server overload
+- Request too large
+- Timeout too short
+
+**Solutions:**
+1. Increase timeout values appropriately
+2. Optimize request size
+3. Implement retry logic
+4. Check API status page
+
+#### Issue: "Invalid Response Format"
+
+**Possible Causes:**
+- API contract changed
+- Unexpected error response
+- Malformed JSON
+
+**Solutions:**
+1. Validate response structure
+2. Handle unexpected formats gracefully
+3. Log raw responses for debugging
+4. Check API changelog for breaking changes
+
+---
+
+## Maintenance and Updates
+
+### 13.1 Version Management
+
+```typescript
+// API Version Manager
+class APIVersionManager {
+  private currentVersion: string;
+  private supportedVersions: string[];
+
+  constructor(currentVersion: string, supportedVersions: string[] = []) {
+    this.currentVersion = currentVersion;
+    this.supportedVersions = supportedVersions.length > 0
+      ? supportedVersions
+      : [currentVersion];
+  }
+
+  getVersion(): string {
+    return this.currentVersion;
+  }
+
+  isVersionSupported(version: string): boolean {
+    return this.supportedVersions.includes(version);
+  }
+
+  async checkForUpdates(): Promise<{
+    updateAvailable: boolean;
+    latestVersion?: string;
+    changelog?: string;
+  }> {
+    // Implement version checking logic
+    // This would typically call an API endpoint or check a registry
+    return {
+      updateAvailable: false,
+    };
+  }
+}
+```
+
+### 13.2 Deprecation Handling
+
+```typescript
+// Deprecation Monitor
+class DeprecationMonitor {
+  private deprecationWarnings: Map<string, Date> = new Map();
+
+  checkDeprecation(endpoint: string, deprecationDate: Date): void {
+    const now = new Date();
+    const daysUntilDeprecation = Math.ceil(
+      (deprecationDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    if (daysUntilDeprecation <= 30) {
+      console.warn(
+        `[DEPRECATION WARNING] Endpoint ${endpoint} will be deprecated in ${daysUntilDeprecation} days`
+      );
+      this.deprecationWarnings.set(endpoint, deprecationDate);
+    }
+  }
+
+  getDeprecationWarnings(): Array<{ endpoint: string; deprecationDate: Date }> {
+    return Array.from(this.deprecationWarnings.entries()).map(([endpoint, date]) => ({
+      endpoint,
+      deprecationDate: date,
+    }));
+  }
+}
+```
+
+---
+
+## Quick Reference Checklist
+
+### Before Integration
+- [ ] Read complete API documentation
+- [ ] Understand authentication requirements
+- [ ] Identify rate limits and quotas
+- [ ] Review pricing and cost implications
+- [ ] Check SDK availability
+- [ ] Review API status and reliability
+- [ ] Understand data formats and structures
+
+### During Integration
+- [ ] Set up secure credential management
+- [ ] Implement proper error handling
+- [ ] Add rate limiting
+- [ ] Implement retry logic with backoff
+- [ ] Add request/response validation
+- [ ] Set up logging (without sensitive data)
+- [ ] Create service layer abstraction
+- [ ] Write comprehensive tests
+
+### After Integration
+- [ ] Monitor API usage and costs
+- [ ] Set up health checks
+- [ ] Create monitoring dashboards
+- [ ] Document integration patterns
+- [ ] Set up alerts for errors and rate limits
+- [ ] Plan for version updates
+- [ ] Review and optimize performance
+
+---
+
+## Conclusion
+
+This guide provides a comprehensive framework for integrating any API. Remember:
+
+1. **Security First:** Never compromise on security practices
+2. **Reliability:** Implement proper error handling and retry logic
+3. **Observability:** Monitor everything, log appropriately
+4. **Maintainability:** Write clean, testable, documented code
+5. **Performance:** Respect rate limits, optimize requests
+6. **User Experience:** Handle errors gracefully, provide clear feedback
+
+When in doubt, refer to the API's official documentation and follow their recommended practices. Each API is unique, but these patterns provide a solid foundation for any integration.
+
+---
+
+**Last Updated:** 2024
+**Maintained For:** Universal API integration reference

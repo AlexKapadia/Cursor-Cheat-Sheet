@@ -1,0 +1,1199 @@
+# Structural Swiss Grid Design System
+## Source of Truth for Agency-Level Swiss Style Websites
+
+---
+
+## TABLE OF CONTENTS
+
+1. [Design DNA: The Visible Grid](#design-dna-the-visible-grid)
+2. [CSS Variables & Color System](#css-variables--color-system)
+3. [Typography Scale](#typography-scale)
+4. [Spacing System](#spacing-system)
+5. [Component Architecture](#component-architecture)
+6. [Motion & Interaction Physics](#motion--interaction-physics)
+7. [Grid Implementation Details](#grid-implementation-details)
+8. [Dos and Don'ts](#dos-and-donts)
+9. [Production Code Examples](#production-code-examples)
+
+---
+
+## DESIGN DNA: THE VISIBLE GRID
+
+### Core Philosophy
+
+The grid is not hidden—it is the design. Every element respects the grid. Every border is intentional. Every spacing is mathematical.
+
+**Key Principles:**
+- **Visibility:** Grid lines are visible, not implied
+- **Rigidity:** No arbitrary spacing—only multiples of base units
+- **Clarity:** Content lives in defined boxes with clear boundaries
+- **Function over Form:** Typography serves information hierarchy, not decoration
+
+### Grid Line Implementation
+
+Grid lines are created using **1px solid borders** with `rgba(0,0,0,0.1)` opacity. The critical challenge is preventing "double borders" where adjacent cells create 2px lines.
+
+**Solution: Border Collapse Logic**
+
+```css
+/* Use negative margins to collapse borders */
+.grid-item {
+  border-right: 1px solid rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  margin-right: -1px;
+  margin-bottom: -1px;
+}
+
+/* OR use CSS Grid with gap and overlay borders */
+.grid-container {
+  display: grid;
+  gap: 0;
+}
+
+.grid-item {
+  border-right: 1px solid rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.grid-item:last-child {
+  border-right: none;
+}
+```
+
+**Alternative: Pseudo-Element Approach**
+
+For more control, use `::after` and `::before` pseudo-elements:
+
+```css
+.grid-item::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1px;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.grid-item::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.1);
+}
+```
+
+---
+
+## CSS VARIABLES & COLOR SYSTEM
+
+### Color Palette (Extracted from Reference Sites)
+
+```css
+:root {
+  /* Base Colors */
+  --color-white: #FFFFFF;
+  --color-off-white: #FAFAFA; /* Slight warmth, not pure white */
+  --color-black: #000000;
+  --color-text-primary: #000000;
+  --color-text-secondary: rgba(0, 0, 0, 0.6);
+  --color-text-tertiary: rgba(0, 0, 0, 0.4);
+  
+  /* Grid & Borders */
+  --color-grid-line: rgba(0, 0, 0, 0.1);
+  --color-grid-line-strong: rgba(0, 0, 0, 0.15);
+  --color-grid-line-subtle: rgba(0, 0, 0, 0.05);
+  
+  /* Accent Colors (Kickpush-inspired) */
+  --color-accent-red: #E63946; /* Vibrant, not muted */
+  --color-accent-red-hover: #D62839;
+  
+  /* Backgrounds */
+  --color-bg-primary: var(--color-white);
+  --color-bg-secondary: var(--color-off-white);
+  --color-bg-hover: var(--color-black);
+  
+  /* Interactive States */
+  --color-link: var(--color-text-primary);
+  --color-link-hover: var(--color-white);
+  --color-button-bg: var(--color-black);
+  --color-button-text: var(--color-white);
+  --color-button-hover-bg: var(--color-white);
+  --color-button-hover-text: var(--color-black);
+}
+```
+
+### Dark Mode Support (Optional)
+
+```css
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-white: #000000;
+    --color-off-white: #0A0A0A;
+    --color-black: #FFFFFF;
+    --color-text-primary: #FFFFFF;
+    --color-text-secondary: rgba(255, 255, 255, 0.6);
+    --color-grid-line: rgba(255, 255, 255, 0.1);
+    --color-bg-primary: var(--color-black);
+    --color-bg-secondary: var(--color-off-white);
+  }
+}
+```
+
+---
+
+## TYPOGRAPHY SCALE
+
+### Font Families
+
+**Primary (Headings):**
+- `Manrope` (Google Fonts) - Modern, geometric sans-serif
+- `Helvetica Now Display` (Commercial) - Premium alternative
+- Fallback: `-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+
+**Secondary (Body):**
+- `Inter` (Google Fonts) - Clean, readable
+- Fallback: System sans-serif stack
+
+**Tertiary (Metadata):**
+- `JetBrains Mono` (Google Fonts) - Monospace for dates, codes, metadata
+- `IBM Plex Mono` - Alternative monospace
+- Fallback: `"Courier New", monospace`
+
+### Typography Scale
+
+The scale uses a **massive contrast** between headings and metadata. This is intentional and creates the Swiss Style hierarchy.
+
+```css
+:root {
+  /* Heading Scale */
+  --font-size-h1: clamp(3rem, 8vw, 8rem); /* 48px - 128px */
+  --font-size-h2: clamp(2rem, 5vw, 4rem); /* 32px - 64px */
+  --font-size-h3: clamp(1.5rem, 3vw, 2.5rem); /* 24px - 40px */
+  --font-size-h4: clamp(1.25rem, 2.5vw, 1.75rem); /* 20px - 28px */
+  --font-size-h5: clamp(1rem, 2vw, 1.25rem); /* 16px - 20px */
+  --font-size-h6: clamp(0.875rem, 1.5vw, 1rem); /* 14px - 16px */
+  
+  /* Body Scale */
+  --font-size-body-lg: clamp(1.125rem, 1.5vw, 1.25rem); /* 18px - 20px */
+  --font-size-body: clamp(1rem, 1.25vw, 1.125rem); /* 16px - 18px */
+  --font-size-body-sm: clamp(0.875rem, 1vw, 1rem); /* 14px - 16px */
+  
+  /* Metadata Scale (TINY) */
+  --font-size-meta: clamp(0.625rem, 0.75vw, 0.75rem); /* 10px - 12px */
+  --font-size-meta-sm: clamp(0.5rem, 0.625vw, 0.625rem); /* 8px - 10px */
+  
+  /* Letter Spacing */
+  --letter-spacing-tight: -0.03em; /* For large headings */
+  --letter-spacing-normal: 0;
+  --letter-spacing-wide: 0.05em;
+  --letter-spacing-wider: 0.1em; /* For uppercase metadata */
+  
+  /* Line Height */
+  --line-height-tight: 1.1; /* Headings */
+  --line-height-normal: 1.5; /* Body */
+  --line-height-relaxed: 1.75; /* Long-form content */
+  
+  /* Font Weights */
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+}
+```
+
+### Typography Classes (Tailwind-Compatible)
+
+```css
+/* Headings */
+.heading-1 {
+  font-family: var(--font-heading);
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--letter-spacing-tight);
+  line-height: var(--line-height-tight);
+  color: var(--color-text-primary);
+}
+
+.heading-2 {
+  font-family: var(--font-heading);
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-tight);
+  line-height: var(--line-height-tight);
+}
+
+.heading-3 {
+  font-family: var(--font-heading);
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: var(--letter-spacing-normal);
+  line-height: var(--line-height-tight);
+}
+
+/* Metadata */
+.metadata {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-normal);
+  letter-spacing: var(--letter-spacing-wider);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-normal);
+}
+
+/* Body */
+.body-text {
+  font-family: var(--font-body);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-normal);
+  letter-spacing: var(--letter-spacing-normal);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+}
+```
+
+---
+
+## SPACING SYSTEM
+
+### Mathematical Spacing Scale
+
+**Rule:** Only use multiples of base unit (4px or 5px). No arbitrary values.
+
+```css
+:root {
+  /* Base Unit: 4px (recommended) or 5px */
+  --spacing-base: 4px;
+  
+  /* Spacing Scale */
+  --spacing-1: calc(var(--spacing-base) * 1); /* 4px */
+  --spacing-2: calc(var(--spacing-base) * 2); /* 8px */
+  --spacing-3: calc(var(--spacing-base) * 3); /* 12px */
+  --spacing-4: calc(var(--spacing-base) * 4); /* 16px */
+  --spacing-5: calc(var(--spacing-base) * 5); /* 20px */
+  --spacing-6: calc(var(--spacing-base) * 6); /* 24px */
+  --spacing-8: calc(var(--spacing-base) * 8); /* 32px */
+  --spacing-10: calc(var(--spacing-base) * 10); /* 40px */
+  --spacing-12: calc(var(--spacing-base) * 12); /* 48px */
+  --spacing-16: calc(var(--spacing-base) * 16); /* 64px */
+  --spacing-20: calc(var(--spacing-base) * 20); /* 80px */
+  --spacing-24: calc(var(--spacing-base) * 24); /* 96px */
+  --spacing-32: calc(var(--spacing-base) * 32); /* 128px */
+}
+```
+
+### Tailwind Utility Mapping
+
+```css
+/* Map to Tailwind classes */
+.p-1 { padding: var(--spacing-1); }
+.p-2 { padding: var(--spacing-2); }
+.p-4 { padding: var(--spacing-4); }
+.p-5 { padding: var(--spacing-5); }
+.p-10 { padding: var(--spacing-10); }
+.p-20 { padding: var(--spacing-20); }
+
+/* Same for margin, gap, etc. */
+```
+
+**CRITICAL:** Never use values like `p-7`, `p-13`, `m-9`. Only use multiples of the base unit.
+
+---
+
+## COMPONENT ARCHITECTURE
+
+### 1. The Sticky Sidebar Layout
+
+**Structure:** Left column (brand/nav) is sticky, right column (content) scrolls independently.
+
+```tsx
+// React/Next.js Example
+import { useState, useEffect } from 'react';
+
+export function StickySidebarLayout({ children, sidebar }) {
+  return (
+    <div className="flex min-h-screen">
+      {/* Sticky Sidebar */}
+      <aside className="sticky top-0 h-screen w-64 flex-shrink-0 border-r border-[rgba(0,0,0,0.1)] bg-white z-10">
+        <div className="p-5 h-full flex flex-col">
+          {sidebar}
+        </div>
+      </aside>
+      
+      {/* Scrollable Content */}
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-7xl mx-auto p-5 md:p-10 lg:p-20">
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+}
+```
+
+**Tailwind Classes Breakdown:**
+- `sticky top-0 h-screen`: Makes sidebar stick to top and fill viewport height
+- `w-64`: Fixed width (256px = 16 * 16px)
+- `border-r border-[rgba(0,0,0,0.1)]`: Right border with grid line color
+- `flex-1`: Content takes remaining space
+- `overflow-y-auto`: Enables scrolling on content area
+
+**Mobile Responsive:**
+
+```tsx
+export function ResponsiveStickySidebar({ children, sidebar }) {
+  return (
+    <div className="flex flex-col md:flex-row min-h-screen">
+      {/* Mobile: Static header, Desktop: Sticky sidebar */}
+      <aside className="md:sticky md:top-0 md:h-screen w-full md:w-64 flex-shrink-0 border-b md:border-b-0 md:border-r border-[rgba(0,0,0,0.1)] bg-white z-10">
+        <div className="p-5 md:h-full flex flex-row md:flex-col">
+          {sidebar}
+        </div>
+      </aside>
+      
+      <main className="flex-1 overflow-y-auto">
+        {children}
+      </main>
+    </div>
+  );
+}
+```
+
+---
+
+### 2. The Masonry Grid Component
+
+**Challenge:** Handle different aspect ratios (16:9, 9:16, 1:1) while keeping borders aligned.
+
+```tsx
+import { useState } from 'react';
+
+interface GridItem {
+  id: string;
+  aspectRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
+  image: string;
+  title: string;
+  metadata: string;
+}
+
+export function MasonryGrid({ items }: { items: GridItem[] }) {
+  const getAspectRatioClass = (ratio: string) => {
+    const map = {
+      '16:9': 'aspect-video',
+      '9:16': 'aspect-[9/16]',
+      '1:1': 'aspect-square',
+      '4:3': 'aspect-[4/3]',
+      '3:4': 'aspect-[3/4]',
+    };
+    return map[ratio] || 'aspect-square';
+  };
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-0">
+      {items.map((item, index) => (
+        <div
+          key={item.id}
+          className={`
+            relative
+            border-r border-b border-[rgba(0,0,0,0.1)]
+            ${index % 4 === 3 ? 'md:border-r-0' : ''} /* Remove right border on last column */
+            overflow-hidden
+            group
+            cursor-pointer
+            transition-all duration-[400ms] ease-[cubic-bezier(0.25,1,0.5,1)]
+            hover:bg-black
+          `}
+        >
+          {/* Image Container */}
+          <div className={`${getAspectRatioClass(item.aspectRatio)} relative overflow-hidden`}>
+            <img
+              src={item.image}
+              alt={item.title}
+              className="w-full h-full object-cover transition-transform duration-[400ms] ease-[cubic-bezier(0.25,1,0.5,1)] group-hover:scale-105"
+            />
+          </div>
+          
+          {/* Content Overlay */}
+          <div className="absolute inset-0 p-5 flex flex-col justify-between opacity-0 group-hover:opacity-100 transition-opacity duration-[400ms]">
+            <div className="text-white">
+              <p className="text-[10px] uppercase tracking-wider font-mono text-white/80 mb-2">
+                {item.metadata}
+              </p>
+              <h3 className="text-xl font-semibold">{item.title}</h3>
+            </div>
+          </div>
+          
+          {/* Rest State Content */}
+          <div className="absolute bottom-0 left-0 right-0 p-5 bg-white group-hover:bg-transparent transition-colors duration-[400ms]">
+            <p className="text-[10px] uppercase tracking-wider font-mono text-black/60 group-hover:text-white/80 mb-1">
+              {item.metadata}
+            </p>
+            <h3 className="text-lg font-medium text-black group-hover:text-white transition-colors duration-[400ms]">
+              {item.title}
+            </h3>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+**Key Implementation Details:**
+- Use `gap-0` on grid container to control borders manually
+- Remove right border on last column items using modulo
+- Use `group` and `group-hover:` for coordinated hover states
+- Image scale on hover: `scale-105` (5% zoom)
+- Background color inversion: white → black
+- Text color inversion: black → white
+
+---
+
+### 3. The Marquee Strip Component
+
+**Infinite scrolling text loop using Framer Motion.**
+
+```tsx
+'use client';
+
+import { motion } from 'framer-motion';
+
+interface MarqueeProps {
+  text: string;
+  speed?: number; // Duration in seconds
+  direction?: 'left' | 'right';
+}
+
+export function MarqueeStrip({ 
+  text, 
+  speed = 20, 
+  direction = 'left' 
+}: MarqueeProps) {
+  // Duplicate text for seamless loop
+  const duplicatedText = `${text} • ${text} • ${text} • `;
+
+  return (
+    <div className="overflow-hidden border-y border-[rgba(0,0,0,0.1)] bg-white">
+      <motion.div
+        className="flex whitespace-nowrap"
+        animate={{
+          x: direction === 'left' ? ['0%', '-50%'] : ['-50%', '0%'],
+        }}
+        transition={{
+          duration: speed,
+          repeat: Infinity,
+          ease: 'linear',
+        }}
+      >
+        {/* Render twice for seamless loop */}
+        <span className="inline-block px-5 text-sm uppercase tracking-wider font-mono text-black/60">
+          {duplicatedText}
+        </span>
+        <span className="inline-block px-5 text-sm uppercase tracking-wider font-mono text-black/60">
+          {duplicatedText}
+        </span>
+      </motion.div>
+    </div>
+  );
+}
+```
+
+**Usage:**
+```tsx
+<MarqueeStrip 
+  text="Award-winning design studio • Based in San Francisco • Since 2014" 
+  speed={25}
+  direction="left"
+/>
+```
+
+**Key Details:**
+- `ease: 'linear'`: No acceleration/deceleration—constant speed
+- Duplicate content: Render text twice to create seamless loop
+- `repeat: Infinity`: Never stops
+- Use monospace font for consistent character width
+
+---
+
+### 4. The Magnetic Project Card
+
+**Rest State:** Black text, white background  
+**Hover State:** Black background, white text, image scales 1.05x  
+**Animation:** "Curtain" wipe effect (left-to-right or top-to-bottom)
+
+```tsx
+'use client';
+
+import { useState } from 'react';
+import { motion } from 'framer-motion';
+
+interface ProjectCardProps {
+  title: string;
+  year: string;
+  description: string;
+  image: string;
+  slug: string;
+}
+
+export function MagneticProjectCard({
+  title,
+  year,
+  description,
+  image,
+  slug,
+}: ProjectCardProps) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <motion.a
+      href={`/projects/${slug}`}
+      className="block relative border-r border-b border-[rgba(0,0,0,0.1)] overflow-hidden group"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      whileHover={{ scale: 1.02 }}
+      transition={{ duration: 0.4, ease: [0.25, 1, 0.5, 1] }}
+    >
+      {/* Image */}
+      <div className="aspect-video relative overflow-hidden bg-gray-100">
+        <motion.img
+          src={image}
+          alt={title}
+          className="w-full h-full object-cover"
+          animate={{
+            scale: isHovered ? 1.05 : 1,
+          }}
+          transition={{ duration: 0.4, ease: [0.25, 1, 0.5, 1] }}
+        />
+      </div>
+
+      {/* Content Container */}
+      <div className="p-5 bg-white relative z-10">
+        {/* Metadata */}
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] uppercase tracking-wider font-mono text-black/60">
+            {year}
+          </p>
+          <span className="text-[10px] uppercase tracking-wider font-mono text-black/60">
+            View Project →
+          </span>
+        </div>
+
+        {/* Title */}
+        <h3 className="text-xl font-semibold text-black mb-1">{title}</h3>
+
+        {/* Description */}
+        <p className="text-sm text-black/60">{description}</p>
+      </div>
+
+      {/* Hover Overlay (Curtain Effect) */}
+      <motion.div
+        className="absolute inset-0 bg-black z-20 pointer-events-none"
+        initial={{ x: '-100%' }}
+        animate={{ x: isHovered ? '0%' : '-100%' }}
+        transition={{ duration: 0.4, ease: [0.25, 1, 0.5, 1] }}
+      >
+        <div className="h-full flex flex-col justify-between p-5 text-white">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider font-mono text-white/80 mb-2">
+              {year}
+            </p>
+            <h3 className="text-xl font-semibold mb-1">{title}</h3>
+            <p className="text-sm text-white/80">{description}</p>
+          </div>
+          <span className="text-[10px] uppercase tracking-wider font-mono text-white/80">
+            View Project →
+          </span>
+        </div>
+      </motion.div>
+    </motion.a>
+  );
+}
+```
+
+**Alternative: Top-to-Bottom Curtain**
+
+```tsx
+<motion.div
+  className="absolute inset-0 bg-black z-20 pointer-events-none"
+  initial={{ y: '-100%' }}
+  animate={{ y: isHovered ? '0%' : '-100%' }}
+  transition={{ duration: 0.4, ease: [0.25, 1, 0.5, 1] }}
+>
+  {/* Content */}
+</motion.div>
+```
+
+---
+
+## MOTION & INTERACTION PHYSICS
+
+### Timing Function
+
+**Standard Easing:** `cubic-bezier(0.25, 1, 0.5, 1)` (Quart Out)
+
+This creates a smooth deceleration—fast start, slow end. Perfect for hover states and transitions.
+
+```css
+:root {
+  --easing-standard: cubic-bezier(0.25, 1, 0.5, 1);
+  --duration-fast: 0.2s;
+  --duration-standard: 0.4s;
+  --duration-slow: 0.6s;
+}
+```
+
+### Scroll Physics
+
+**Momentum Scrolling is Mandatory**
+
+Use Lenis for smooth, momentum-based scrolling:
+
+```tsx
+'use client';
+
+import { useEffect } from 'react';
+import Lenis from '@studio-freight/lenis';
+
+export function SmoothScrollProvider({ children }) {
+  useEffect(() => {
+    const lenis = new Lenis({
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      orientation: 'vertical',
+      gestureOrientation: 'vertical',
+      smoothWheel: true,
+      wheelMultiplier: 1,
+      smoothTouch: false,
+      touchMultiplier: 2,
+    });
+
+    function raf(time: number) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+
+    requestAnimationFrame(raf);
+
+    return () => {
+      lenis.destroy();
+    };
+  }, []);
+
+  return <>{children}</>;
+}
+```
+
+**Installation:**
+```bash
+npm install @studio-freight/lenis
+```
+
+### Custom Cursor (Optional but Recommended)
+
+```tsx
+'use client';
+
+import { useEffect, useState } from 'react';
+import { motion, useMotionValue, useSpring } from 'framer-motion';
+
+export function CustomCursor() {
+  const cursorX = useMotionValue(-100);
+  const cursorY = useMotionValue(-100);
+
+  const springConfig = { damping: 25, stiffness: 700 };
+  const cursorXSpring = useSpring(cursorX, springConfig);
+  const cursorYSpring = useSpring(cursorY, springConfig);
+
+  useEffect(() => {
+    const moveCursor = (e: MouseEvent) => {
+      cursorX.set(e.clientX - 16);
+      cursorY.set(e.clientY - 16);
+    };
+
+    window.addEventListener('mousemove', moveCursor);
+    return () => window.removeEventListener('mousemove', moveCursor);
+  }, [cursorX, cursorY]);
+
+  return (
+    <motion.div
+      className="fixed top-0 left-0 w-8 h-8 pointer-events-none z-50 mix-blend-difference"
+      style={{
+        x: cursorXSpring,
+        y: cursorYSpring,
+      }}
+    >
+      <div className="w-full h-full rounded-full bg-white"></div>
+    </motion.div>
+  );
+}
+```
+
+**Snap to Grid Items:**
+
+```tsx
+export function GridSnapCursor() {
+  // ... cursor setup ...
+
+  useEffect(() => {
+    const gridItems = document.querySelectorAll('[data-grid-item]');
+    
+    const handleMouseEnter = (e: MouseEvent) => {
+      // Scale cursor on grid item hover
+      // Add custom logic here
+    };
+
+    gridItems.forEach((item) => {
+      item.addEventListener('mouseenter', handleMouseEnter);
+    });
+
+    return () => {
+      gridItems.forEach((item) => {
+        item.removeEventListener('mouseenter', handleMouseEnter);
+      });
+    };
+  }, []);
+
+  return (
+    <motion.div
+      className="fixed top-0 left-0 w-8 h-8 pointer-events-none z-50"
+      style={{ x: cursorXSpring, y: cursorYSpring }}
+    >
+      <div className="w-full h-full rounded-full border-2 border-black"></div>
+    </motion.div>
+  );
+}
+```
+
+---
+
+## GRID IMPLEMENTATION DETAILS
+
+### Double Border Prevention: The Complete Solution
+
+**Method 1: Negative Margins (Recommended for CSS Grid)**
+
+```css
+.swiss-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 0; /* Critical: no gap */
+}
+
+.swiss-grid-item {
+  border-right: 1px solid rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  margin-right: -1px;
+  margin-bottom: -1px;
+  padding: var(--spacing-5);
+}
+
+/* Remove borders on edges */
+.swiss-grid-item:last-child {
+  border-right: none;
+  margin-right: 0;
+}
+```
+
+**Method 2: Border on Container (Alternative)**
+
+```css
+.swiss-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  border-left: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.swiss-grid-item {
+  border-right: 1px solid rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  padding: var(--spacing-5);
+}
+```
+
+**Method 3: Pseudo-Elements (Most Control)**
+
+```css
+.swiss-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  position: relative;
+}
+
+.swiss-grid-item {
+  position: relative;
+  padding: var(--spacing-5);
+}
+
+.swiss-grid-item::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1px;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.swiss-grid-item::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* Remove pseudo-elements on edges */
+.swiss-grid-item:last-child::after {
+  display: none;
+}
+```
+
+### Responsive Grid Breakpoints
+
+```css
+:root {
+  --grid-cols-mobile: 1;
+  --grid-cols-tablet: 2;
+  --grid-cols-desktop: 3;
+  --grid-cols-wide: 4;
+}
+
+.swiss-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--grid-cols-mobile), 1fr);
+}
+
+@media (min-width: 768px) {
+  .swiss-grid {
+    grid-template-columns: repeat(var(--grid-cols-tablet), 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .swiss-grid {
+    grid-template-columns: repeat(var(--grid-cols-desktop), 1fr);
+  }
+}
+
+@media (min-width: 1280px) {
+  .swiss-grid {
+    grid-template-columns: repeat(var(--grid-cols-wide), 1fr);
+  }
+}
+```
+
+---
+
+## DOS AND DON'TS
+
+### ✅ DO
+
+1. **Use Only Mathematical Spacing**
+   - ✅ `p-4`, `p-5`, `p-10`, `p-20`
+   - ❌ `p-7`, `p-13`, `p-23`
+
+2. **Maintain 1px Grid Lines**
+   - ✅ Use border-collapse logic or negative margins
+   - ❌ Never allow 2px borders from adjacent cells
+
+3. **Massive Typography Contrast**
+   - ✅ H1: 8rem, Metadata: 0.625rem (12.8x difference)
+   - ❌ H1: 2rem, Metadata: 0.875rem (2.3x difference)
+
+4. **Tight Letter Spacing on Headings**
+   - ✅ `letter-spacing: -0.03em` on large headings
+   - ❌ `letter-spacing: 0` or positive values
+
+5. **Monospace for Metadata**
+   - ✅ Use `JetBrains Mono` or `IBM Plex Mono`
+   - ❌ Never use sans-serif for dates/codes
+
+6. **Linear Easing for Marquee**
+   - ✅ `ease: 'linear'` for infinite scrolls
+   - ❌ Never use easing curves on marquees
+
+7. **Quart Out Easing for Interactions**
+   - ✅ `cubic-bezier(0.25, 1, 0.5, 1)` for hovers
+   - ❌ Avoid `ease-in-out` or `ease-out` defaults
+
+8. **Border Radius: Zero**
+   - ✅ `border-radius: 0` everywhere
+   - ❌ No rounded corners, ever
+
+9. **Black and White with One Accent**
+   - ✅ Monochrome + single accent color (red)
+   - ❌ Avoid multiple accent colors
+
+10. **Sticky Sidebar on Desktop**
+    - ✅ Sidebar stays fixed, content scrolls
+    - ❌ Both scrolling together
+
+### ❌ DON'T
+
+1. **Don't Use Rounded Corners**
+   - ❌ `rounded-lg`, `rounded-xl`, `rounded-full`
+   - ✅ Always `rounded-none` or `border-radius: 0`
+
+2. **Don't Use Arbitrary Spacing**
+   - ❌ `p-[13px]`, `m-[7px]`, `gap-[23px]`
+   - ✅ Only multiples of base unit (4px or 5px)
+
+3. **Don't Mix Font Families Inappropriately**
+   - ❌ Sans-serif for metadata
+   - ❌ Serif fonts anywhere
+   - ✅ Sans-serif headings, monospace metadata
+
+4. **Don't Use Drop Shadows**
+   - ❌ `box-shadow`, `drop-shadow`
+   - ✅ Flat design only—no depth illusions
+
+5. **Don't Use Gradients**
+   - ❌ `linear-gradient`, `radial-gradient`
+   - ✅ Solid colors only
+
+6. **Don't Animate Border Radius**
+   - ❌ Transitioning from `rounded-none` to `rounded-lg`
+   - ✅ Keep it flat
+
+7. **Don't Use Multiple Border Widths**
+   - ❌ Mixing `border-2` and `border` (1px)
+   - ✅ Always 1px borders
+
+8. **Don't Break the Grid**
+   - ❌ Items that span partial columns
+   - ❌ Negative margins that break alignment
+   - ✅ All items respect grid boundaries
+
+9. **Don't Use Decorative Elements**
+   - ❌ Icons as decoration, illustrations, patterns
+   - ✅ Content only—no ornamentation
+
+10. **Don't Use Opacity for Text Hierarchy**
+    - ❌ `text-black/40` for important text
+    - ✅ Use size and weight, not opacity reduction
+
+---
+
+## PRODUCTION CODE EXAMPLES
+
+### Complete Page Layout Example
+
+```tsx
+'use client';
+
+import { StickySidebarLayout } from '@/components/layouts/StickySidebarLayout';
+import { MarqueeStrip } from '@/components/MarqueeStrip';
+import { MasonryGrid } from '@/components/MasonryGrid';
+import { CustomCursor } from '@/components/CustomCursor';
+import { SmoothScrollProvider } from '@/components/SmoothScrollProvider';
+
+export default function ProjectsPage() {
+  const projects = [
+    {
+      id: '1',
+      title: 'Project Alpha',
+      year: '2024',
+      description: 'Award-winning design system',
+      image: '/images/project-1.jpg',
+      aspectRatio: '16:9' as const,
+    },
+    // ... more projects
+  ];
+
+  const sidebar = (
+    <div className="flex flex-col h-full">
+      <div className="mb-auto">
+        <h1 className="text-4xl font-bold tracking-tight mb-10">Studio</h1>
+        <nav>
+          <ul className="space-y-2">
+            <li><a href="/work" className="text-sm uppercase tracking-wider font-mono">Work</a></li>
+            <li><a href="/about" className="text-sm uppercase tracking-wider font-mono">About</a></li>
+            <li><a href="/contact" className="text-sm uppercase tracking-wider font-mono">Contact</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div className="mt-auto">
+        <p className="text-[10px] uppercase tracking-wider font-mono text-black/60">
+          © 2024 Studio Name
+        </p>
+      </div>
+    </div>
+  );
+
+  return (
+    <SmoothScrollProvider>
+      <CustomCursor />
+      <StickySidebarLayout sidebar={sidebar}>
+        <MarqueeStrip 
+          text="Award-winning design studio • Since 2014 • Based in San Francisco"
+          speed={25}
+        />
+        
+        <section className="py-20">
+          <h2 className="text-6xl font-bold tracking-tight mb-10">
+            Selected Work
+          </h2>
+          <MasonryGrid items={projects} />
+        </section>
+      </StickySidebarLayout>
+    </SmoothScrollProvider>
+  );
+}
+```
+
+### Global Styles (globals.css)
+
+```css
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* Colors */
+  --color-white: #FFFFFF;
+  --color-off-white: #FAFAFA;
+  --color-black: #000000;
+  --color-text-primary: #000000;
+  --color-text-secondary: rgba(0, 0, 0, 0.6);
+  --color-grid-line: rgba(0, 0, 0, 0.1);
+  --color-accent-red: #E63946;
+
+  /* Typography */
+  --font-heading: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+
+  /* Spacing */
+  --spacing-base: 4px;
+  --spacing-5: calc(var(--spacing-base) * 5); /* 20px */
+  --spacing-10: calc(var(--spacing-base) * 10); /* 40px */
+  --spacing-20: calc(var(--spacing-base) * 20); /* 80px */
+
+  /* Motion */
+  --easing-standard: cubic-bezier(0.25, 1, 0.5, 1);
+  --duration-standard: 0.4s;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: auto; /* Let Lenis handle scrolling */
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  background: var(--color-white);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Remove default link styles */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Typography Utilities */
+.heading-1 {
+  font-family: var(--font-heading);
+  font-size: clamp(3rem, 8vw, 8rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.metadata {
+  font-family: var(--font-mono);
+  font-size: clamp(0.625rem, 0.75vw, 0.75rem);
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+```
+
+### Tailwind Config Extension
+
+```js
+// tailwind.config.js
+module.exports = {
+  theme: {
+    extend: {
+      fontFamily: {
+        heading: ['Manrope', 'sans-serif'],
+        body: ['Inter', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
+      colors: {
+        'grid-line': 'rgba(0, 0, 0, 0.1)',
+        'off-white': '#FAFAFA',
+        'accent-red': '#E63946',
+      },
+      transitionTimingFunction: {
+        'quart-out': 'cubic-bezier(0.25, 1, 0.5, 1)',
+      },
+      transitionDuration: {
+        'standard': '400ms',
+      },
+    },
+  },
+};
+```
+
+---
+
+## FINAL CHECKLIST
+
+Before deploying, verify:
+
+- [ ] All spacing uses multiples of base unit (4px or 5px)
+- [ ] Grid lines are exactly 1px (no double borders)
+- [ ] Typography scale has massive contrast (H1 vs metadata)
+- [ ] All headings use tight letter spacing (-0.03em)
+- [ ] Metadata uses monospace font and uppercase
+- [ ] No border radius anywhere (rounded-none)
+- [ ] Hover states use Quart Out easing
+- [ ] Marquee uses linear easing
+- [ ] Lenis smooth scroll is implemented
+- [ ] Sticky sidebar works on desktop
+- [ ] Mobile responsive (sidebar becomes header)
+- [ ] Custom cursor (if implemented) snaps to grid items
+- [ ] All colors match CSS variables
+- [ ] No drop shadows or gradients
+- [ ] Images scale 1.05x on hover (not more, not less)
+
+---
+
+## CREDITS & REFERENCES
+
+**Primary Reference:**
+- Kickpush.co - Sticky sidebar, project grid, typography scale
+
+**Secondary References:**
+- Build in Amsterdam - Grid logic and navigation patterns
+- Area 17 - Typographic hierarchy and content structure
+
+**Design Philosophy:**
+- Swiss International Style (1950s-1970s)
+- Grid Systems in Graphic Design (Josef Müller-Brockmann)
+- Function over Form
+- Visible Structure
+
+---
+
+**Document Version:** 1.0  
+**Last Updated:** 2024  
+**Maintained By:** Lead Creative Technologist

@@ -1,0 +1,1259 @@
+# Statistical Analysis Engine: Source of Truth
+
+**Version:** 1.0  
+**Last Updated:** 2024  
+**Architecture Pattern:** High-Performance Statistical Computing with Precision Guarantees
+
+---
+
+## ⚠️ CRITICAL ARCHITECTURE (THE "ACCURACY" RULE)
+
+### Floating Point Defence
+
+JavaScript numbers are IEEE 754 double-precision floats. They have precision errors that compound in statistical calculations.
+
+**Mandatory Rules:**
+
+1. **Use Decimal.js for Financial/Precise Calculations:**
+   - Any calculation involving currency, percentages, or high-precision requirements must use `decimal.js`
+   - Never use native JavaScript `Number` for cumulative sums that exceed 10^15
+   - Round intermediate results only at the final step, not during computation
+
+2. **Rounding Strategy Enforcement:**
+   - Define precision requirements upfront (e.g., "4 decimal places for percentages")
+   - Apply rounding only at display/export time, never during intermediate calculations
+   - Use `Math.round()` with explicit precision: `Math.round(value * 10000) / 10000`
+
+3. **Precision Loss Detection:**
+   - Log warnings when numbers exceed safe integer range (`Number.MAX_SAFE_INTEGER`)
+   - Validate that `(a + b) - b === a` for critical calculations
+   - Use `Number.isSafeInteger()` checks before integer operations
+
+### One-Pass Algorithms
+
+**The Performance Rule:** You cannot loop through an array twice to calculate variance. Use Welford's Online Algorithm for Mean, Variance, and Standard Deviation in a single O(n) pass.
+
+**Why This Matters:**
+- Memory efficiency: process streaming data without storing entire dataset
+- Performance: O(n) time complexity, constant space
+- Accuracy: reduces floating-point error accumulation
+
+### Statistical Significance Mandate
+
+**Never show a "change" without calculating if it is statistically significant.**
+
+- **T-Test:** Required for comparing two groups (e.g., A/B tests)
+- **Chi-Square:** Required for categorical comparisons
+- **P-Value Threshold:** Default to α = 0.05, but make it configurable
+- **Confidence Intervals:** Always report 95% CI alongside point estimates
+
+---
+
+## PHASE 1: THE COMPUTE CORE (ALGORITHMS)
+
+### 1. Descriptive Statistics
+
+#### Library Selection
+
+**Primary:** `simple-statistics` (lightweight, 50KB)
+- Use for: mean, median, mode, standard deviation, variance
+- Pros: Fast, tree-shakeable, no dependencies
+- Cons: Limited advanced statistics
+
+**Alternative:** `jstat` (comprehensive, 200KB)
+- Use for: advanced distributions, hypothesis testing, regression
+- Pros: Complete statistical library
+- Cons: Larger bundle size
+
+**Decision Rule:** Start with `simple-statistics`. Import `jstat` only when needed for advanced tests.
+
+#### The Standard Summary Object
+
+Every dataset must generate a standard summary object. This ensures consistency across the application.
+
+```typescript
+interface StatisticalSummary {
+  n: number;                    // Sample size
+  min: number;                  // Minimum value
+  max: number;                  // Maximum value
+  mean: number;                 // Arithmetic mean
+  median: number;               // Median (50th percentile)
+  mode: number | null;          // Mode (most frequent value, null if no mode)
+  variance: number;             // Sample variance (Bessel's correction)
+  std_dev: number;              // Standard deviation
+  skewness: number;             // Skewness coefficient
+  kurtosis: number;             // Kurtosis coefficient
+  q1: number;                   // First quartile (25th percentile)
+  q3: number;                   // Third quartile (75th percentile)
+  iqr: number;                  // Interquartile range (Q3 - Q1)
+}
+
+function generateSummary(data: number[]): StatisticalSummary {
+  if (data.length === 0) {
+    throw new Error("Cannot generate summary for empty dataset");
+  }
+
+  // Optimisation: Calculate min/max/mean during single pass
+  const sorted = [...data].sort((a, b) => a - b);
+  
+  return {
+    n: data.length,
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+    mean: ss.mean(data),
+    median: ss.median(sorted),  // Requires sorting - calculate on demand
+    mode: ss.mode(data),
+    variance: ss.variance(data),
+    std_dev: ss.standardDeviation(data),
+    skewness: ss.sampleSkewness(data),
+    kurtosis: ss.sampleKurtosis(data),
+    q1: ss.quantile(sorted, 0.25),
+    q3: ss.quantile(sorted, 0.75),
+    iqr: ss.quantile(sorted, 0.75) - ss.quantile(sorted, 0.25)
+  };
+}
+```
+
+**Optimisation Strategy:**
+- Calculate `min/max/mean` during data ingestion (single pass)
+- Calculate `median` (requires sorting) only on demand or when needed
+- Cache summary objects to avoid recalculation
+
+### 2. Welford's Online Algorithm (Single-Pass Variance)
+
+**Implementation:** This is the critical one-pass algorithm for calculating mean, variance, and standard deviation.
+
+```typescript
+/**
+ * Welford's Online Algorithm for calculating mean and variance in a single pass.
+ * 
+ * Algorithm: For each new value x:
+ *   n = n + 1
+ *   delta = x - mean
+ *   mean = mean + delta / n
+ *   M2 = M2 + delta * (x - mean)
+ * 
+ * After processing all values:
+ *   variance = M2 / (n - 1)  // Sample variance (Bessel's correction)
+ *   std_dev = sqrt(variance)
+ * 
+ * Time Complexity: O(n)
+ * Space Complexity: O(1)
+ * 
+ * Reference: Welford, B. P. (1962). "Note on a method for calculating corrected sums of squares and products"
+ */
+class WelfordAccumulator {
+  private n: number = 0;
+  private mean: number = 0;
+  private M2: number = 0;  // Sum of squares of differences from mean
+
+  /**
+   * Add a new value to the accumulator
+   */
+  add(value: number): void {
+    this.n++;
+    const delta = value - this.mean;
+    this.mean += delta / this.n;
+    const delta2 = value - this.mean;
+    this.M2 += delta * delta2;
+  }
+
+  /**
+   * Add multiple values at once (optimisation for batch processing)
+   */
+  addBatch(values: number[]): void {
+    for (const value of values) {
+      this.add(value);
+    }
+  }
+
+  /**
+   * Get the current mean
+   */
+  getMean(): number {
+    if (this.n === 0) {
+      throw new Error("No values added to accumulator");
+    }
+    return this.mean;
+  }
+
+  /**
+   * Get the sample variance (using Bessel's correction: n-1)
+   */
+  getVariance(): number {
+    if (this.n < 2) {
+      throw new Error("Need at least 2 values to calculate variance");
+    }
+    return this.M2 / (this.n - 1);
+  }
+
+  /**
+   * Get the population variance (using n, not n-1)
+   */
+  getPopulationVariance(): number {
+    if (this.n < 1) {
+      throw new Error("Need at least 1 value to calculate variance");
+    }
+    return this.M2 / this.n;
+  }
+
+  /**
+   * Get the standard deviation (sample)
+   */
+  getStdDev(): number {
+    return Math.sqrt(this.getVariance());
+  }
+
+  /**
+   * Get the standard deviation (population)
+   */
+  getPopulationStdDev(): number {
+    return Math.sqrt(this.getPopulationVariance());
+  }
+
+  /**
+   * Get the count of values processed
+   */
+  getCount(): number {
+    return this.n;
+  }
+
+  /**
+   * Reset the accumulator
+   */
+  reset(): void {
+    this.n = 0;
+    this.mean = 0;
+    this.M2 = 0;
+  }
+
+  /**
+   * Merge two accumulators (useful for parallel processing)
+   * Based on: "Parallel Algorithms for the Summation of Statistical Data" by Chan et al.
+   */
+  merge(other: WelfordAccumulator): void {
+    if (other.n === 0) {
+      return; // Nothing to merge
+    }
+
+    if (this.n === 0) {
+      this.n = other.n;
+      this.mean = other.mean;
+      this.M2 = other.M2;
+      return;
+    }
+
+    const totalN = this.n + other.n;
+    const delta = other.mean - this.mean;
+    const delta2 = delta * delta;
+
+    this.mean = (this.n * this.mean + other.n * other.mean) / totalN;
+    this.M2 = this.M2 + other.M2 + delta2 * (this.n * other.n) / totalN;
+    this.n = totalN;
+  }
+}
+
+// Usage Example:
+const accumulator = new WelfordAccumulator();
+accumulator.addBatch([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+console.log(`Mean: ${accumulator.getMean()}`);        // 5.5
+console.log(`Variance: ${accumulator.getVariance()}`); // 9.166...
+console.log(`Std Dev: ${accumulator.getStdDev()}`);    // 3.027...
+```
+
+### 3. Inferential Statistics (The "Why")
+
+#### Hypothesis Testing
+
+**T-Test Implementation:**
+
+```typescript
+/**
+ * Independent Samples T-Test
+ * 
+ * Compares means of two independent groups.
+ * 
+ * Assumptions:
+ * - Data are normally distributed (or n > 30 for CLT)
+ * - Groups are independent
+ * - Homogeneity of variance (use Welch's t-test if violated)
+ * 
+ * Returns: { t_statistic, p_value, degrees_of_freedom, confidence_interval }
+ */
+interface TTestResult {
+  tStatistic: number;
+  pValue: number;
+  degreesOfFreedom: number;
+  confidenceInterval: [number, number];
+  meanDifference: number;
+  standardError: number;
+}
+
+function independentTTest(
+  groupA: number[],
+  groupB: number[],
+  alpha: number = 0.05
+): TTestResult {
+  if (groupA.length < 2 || groupB.length < 2) {
+    throw new Error("Each group must have at least 2 observations");
+  }
+
+  const meanA = ss.mean(groupA);
+  const meanB = ss.mean(groupB);
+  const varA = ss.variance(groupA);
+  const varB = ss.variance(groupB);
+  const nA = groupA.length;
+  const nB = groupB.length;
+
+  // Pooled standard error (assumes equal variances)
+  const pooledStdErr = Math.sqrt(
+    ((nA - 1) * varA + (nB - 1) * varB) / (nA + nB - 2) *
+    (1 / nA + 1 / nB)
+  );
+
+  // T-statistic
+  const tStat = (meanA - meanB) / pooledStdErr;
+
+  // Degrees of freedom
+  const df = nA + nB - 2;
+
+  // P-value (two-tailed)
+  const pValue = 2 * (1 - jStat.studentt.cdf(Math.abs(tStat), df));
+
+  // Confidence interval for mean difference
+  const tCritical = jStat.studentt.inv(1 - alpha / 2, df);
+  const meanDiff = meanA - meanB;
+  const marginOfError = tCritical * pooledStdErr;
+
+  return {
+    tStatistic: tStat,
+    pValue: pValue,
+    degreesOfFreedom: df,
+    confidenceInterval: [meanDiff - marginOfError, meanDiff + marginOfError],
+    meanDifference: meanDiff,
+    standardError: pooledStdErr
+  };
+}
+
+/**
+ * Welch's T-Test (unequal variances)
+ * 
+ * Use when variances are not equal between groups.
+ */
+function welchTTest(
+  groupA: number[],
+  groupB: number[],
+  alpha: number = 0.05
+): TTestResult {
+  const meanA = ss.mean(groupA);
+  const meanB = ss.mean(groupB);
+  const varA = ss.variance(groupA);
+  const varB = ss.variance(groupB);
+  const nA = groupA.length;
+  const nB = groupB.length;
+
+  // Welch's standard error
+  const stdErr = Math.sqrt(varA / nA + varB / nB);
+
+  // T-statistic
+  const tStat = (meanA - meanB) / stdErr;
+
+  // Welch-Satterthwaite degrees of freedom
+  const df = Math.pow(varA / nA + varB / nB, 2) /
+    (Math.pow(varA / nA, 2) / (nA - 1) + Math.pow(varB / nB, 2) / (nB - 1));
+
+  // P-value
+  const pValue = 2 * (1 - jStat.studentt.cdf(Math.abs(tStat), df));
+
+  // Confidence interval
+  const tCritical = jStat.studentt.inv(1 - alpha / 2, df);
+  const meanDiff = meanA - meanB;
+  const marginOfError = tCritical * stdErr;
+
+  return {
+    tStatistic: tStat,
+    pValue: pValue,
+    degreesOfFreedom: df,
+    confidenceInterval: [meanDiff - marginOfError, meanDiff + marginOfError],
+    meanDifference: meanDiff,
+    standardError: stdErr
+  };
+}
+```
+
+**ANOVA Implementation:**
+
+```typescript
+/**
+ * One-Way ANOVA
+ * 
+ * Compares means of 3+ groups.
+ * 
+ * Returns: { f_statistic, p_value, degrees_of_freedom_between, degrees_of_freedom_within }
+ */
+interface ANOVAResult {
+  fStatistic: number;
+  pValue: number;
+  dfBetween: number;
+  dfWithin: number;
+  dfTotal: number;
+  meanSquareBetween: number;
+  meanSquareWithin: number;
+}
+
+function oneWayANOVA(groups: number[][]): ANOVAResult {
+  if (groups.length < 3) {
+    throw new Error("ANOVA requires at least 3 groups");
+  }
+
+  const k = groups.length; // Number of groups
+  const n = groups.reduce((sum, group) => sum + group.length, 0); // Total observations
+  const grandMean = groups
+    .flat()
+    .reduce((sum, val) => sum + val, 0) / n;
+
+  // Sum of Squares Between (SSB)
+  let ssBetween = 0;
+  groups.forEach(group => {
+    const groupMean = ss.mean(group);
+    const groupSize = group.length;
+    ssBetween += groupSize * Math.pow(groupMean - grandMean, 2);
+  });
+
+  // Sum of Squares Within (SSW)
+  let ssWithin = 0;
+  groups.forEach(group => {
+    const groupMean = ss.mean(group);
+    group.forEach(value => {
+      ssWithin += Math.pow(value - groupMean, 2);
+    });
+  });
+
+  const dfBetween = k - 1;
+  const dfWithin = n - k;
+  const dfTotal = n - 1;
+
+  const msBetween = ssBetween / dfBetween;
+  const msWithin = ssWithin / dfWithin;
+
+  const fStat = msBetween / msWithin;
+  const pValue = 1 - jStat.centralF.cdf(fStat, dfBetween, dfWithin);
+
+  return {
+    fStatistic: fStat,
+    pValue: pValue,
+    dfBetween: dfBetween,
+    dfWithin: dfWithin,
+    dfTotal: dfTotal,
+    meanSquareBetween: msBetween,
+    meanSquareWithin: msWithin
+  };
+}
+```
+
+#### Regression Analysis
+
+**Linear Regression (OLS):**
+
+```typescript
+/**
+ * Ordinary Least Squares (OLS) Linear Regression
+ * 
+ * Finds the best-fit line: y = mx + c
+ * 
+ * Returns: { slope, intercept, r_squared, standard_error, p_value }
+ */
+interface LinearRegressionResult {
+  slope: number;
+  intercept: number;
+  rSquared: number;
+  standardError: number;
+  pValue: number;
+  equation: string;
+}
+
+function linearRegression(x: number[], y: number[]): LinearRegressionResult {
+  if (x.length !== y.length) {
+    throw new Error("x and y must have the same length");
+  }
+  if (x.length < 2) {
+    throw new Error("Need at least 2 data points for regression");
+  }
+
+  const n = x.length;
+  const meanX = ss.mean(x);
+  const meanY = ss.mean(y);
+
+  // Calculate slope (m) and intercept (c)
+  let numerator = 0;
+  let denominator = 0;
+
+  for (let i = 0; i < n; i++) {
+    const xDiff = x[i] - meanX;
+    const yDiff = y[i] - meanY;
+    numerator += xDiff * yDiff;
+    denominator += xDiff * xDiff;
+  }
+
+  const slope = denominator === 0 ? 0 : numerator / denominator;
+  const intercept = meanY - slope * meanX;
+
+  // Calculate R-squared
+  let ssRes = 0; // Sum of squares of residuals
+  let ssTot = 0; // Total sum of squares
+
+  for (let i = 0; i < n; i++) {
+    const predicted = slope * x[i] + intercept;
+    ssRes += Math.pow(y[i] - predicted, 2);
+    ssTot += Math.pow(y[i] - meanY, 2);
+  }
+
+  const rSquared = ssTot === 0 ? 0 : 1 - (ssRes / ssTot);
+
+  // Standard error of regression
+  const standardError = Math.sqrt(ssRes / (n - 2));
+
+  // T-test for slope significance
+  const slopeStdErr = standardError / Math.sqrt(denominator);
+  const tStat = slope / slopeStdErr;
+  const pValue = 2 * (1 - jStat.studentt.cdf(Math.abs(tStat), n - 2));
+
+  return {
+    slope: slope,
+    intercept: intercept,
+    rSquared: rSquared,
+    standardError: standardError,
+    pValue: pValue,
+    equation: `y = ${slope.toFixed(4)}x + ${intercept.toFixed(4)}`
+  };
+}
+```
+
+---
+
+## PHASE 2: DATABASE LAYER (SQL STATISTICS)
+
+**Principle:** Don't pull 1M rows to the client. Calculate statistics in the database.
+
+### Postgres Statistical Functions
+
+#### Percentiles
+
+```sql
+-- True median using percentile_cont (continuous percentile)
+SELECT 
+  percentile_cont(0.5) WITHIN GROUP (ORDER BY sales_amount) AS median_sales
+FROM transactions
+WHERE transaction_date >= '2024-01-01';
+
+-- Multiple percentiles at once
+SELECT 
+  percentile_cont(ARRAY[0.25, 0.5, 0.75]) WITHIN GROUP (ORDER BY sales_amount) AS quartiles
+FROM transactions;
+
+-- Percentile by group
+SELECT 
+  region,
+  percentile_cont(0.5) WITHIN GROUP (ORDER BY sales_amount) AS median_sales
+FROM transactions
+GROUP BY region;
+```
+
+#### Correlation
+
+```sql
+-- Calculate correlation between two columns
+SELECT 
+  corr(revenue, marketing_spend) AS revenue_marketing_correlation
+FROM monthly_metrics;
+
+-- Correlation by group
+SELECT 
+  product_category,
+  corr(price, units_sold) AS price_demand_correlation
+FROM products
+GROUP BY product_category;
+```
+
+#### Bucketing (Histogram Data)
+
+```sql
+-- Generate histogram buckets using width_bucket
+SELECT 
+  width_bucket(sales_amount, 0, 10000, 10) AS bucket,
+  COUNT(*) AS frequency,
+  AVG(sales_amount) AS avg_sales_in_bucket
+FROM transactions
+GROUP BY bucket
+ORDER BY bucket;
+
+-- Dynamic min/max for bucketing
+WITH stats AS (
+  SELECT 
+    MIN(sales_amount) AS min_val,
+    MAX(sales_amount) AS max_val
+  FROM transactions
+)
+SELECT 
+  width_bucket(
+    t.sales_amount, 
+    s.min_val, 
+    s.max_val, 
+    20  -- 20 bins
+  ) AS bucket,
+  COUNT(*) AS frequency
+FROM transactions t
+CROSS JOIN stats s
+GROUP BY bucket
+ORDER BY bucket;
+```
+
+#### Advanced Aggregations
+
+```sql
+-- Statistical summary in a single query
+SELECT 
+  COUNT(*) AS n,
+  MIN(value) AS min_val,
+  MAX(value) AS max_val,
+  AVG(value) AS mean,
+  percentile_cont(0.5) WITHIN GROUP (ORDER BY value) AS median,
+  stddev_samp(value) AS std_dev,
+  variance(value) AS variance
+FROM measurements
+WHERE timestamp >= NOW() - INTERVAL '7 days';
+```
+
+---
+
+## PHASE 3: VISUALIZATION LOGIC (UNCERTAINTY)
+
+**Principle:** Most charts lie. These charts must be honest about uncertainty.
+
+### 1. Error Bars & Confidence Intervals
+
+**Rule:** If displaying a Mean on a Bar Chart, you MUST render Error Bars representing the 95% Confidence Interval.
+
+**Calculation:**
+```
+CI = Mean ± (1.96 * (StdDev / sqrt(N)))
+```
+
+For small samples (n < 30), use t-distribution:
+```
+CI = Mean ± (t_critical * (StdDev / sqrt(N)))
+```
+
+```typescript
+/**
+ * Calculate 95% Confidence Interval for a mean
+ */
+function calculateConfidenceInterval(
+  mean: number,
+  stdDev: number,
+  n: number,
+  confidenceLevel: number = 0.95
+): { lower: number; upper: number; marginOfError: number } {
+  if (n < 2) {
+    throw new Error("Need at least 2 observations for confidence interval");
+  }
+
+  const alpha = 1 - confidenceLevel;
+  const standardError = stdDev / Math.sqrt(n);
+
+  // Use t-distribution for small samples, normal for large samples
+  let criticalValue: number;
+  if (n < 30) {
+    const df = n - 1;
+    criticalValue = jStat.studentt.inv(1 - alpha / 2, df);
+  } else {
+    // Z-score for normal distribution
+    criticalValue = jStat.normal.inv(1 - alpha / 2, 0, 1);
+  }
+
+  const marginOfError = criticalValue * standardError;
+
+  return {
+    lower: mean - marginOfError,
+    upper: mean + marginOfError,
+    marginOfError: marginOfError
+  };
+}
+
+// Chart.js example with error bars
+const chartData = {
+  labels: ['Group A', 'Group B', 'Group C'],
+  datasets: [{
+    label: 'Mean Value',
+    data: [meanA, meanB, meanC],
+    errorBars: {
+      [meanA]: calculateConfidenceInterval(meanA, stdDevA, nA).marginOfError,
+      [meanB]: calculateConfidenceInterval(meanB, stdDevB, nB).marginOfError,
+      [meanC]: calculateConfidenceInterval(meanC, stdDevC, nC).marginOfError
+    }
+  }]
+};
+```
+
+### 2. Distribution Visualization
+
+#### Box Plots (Five Number Summary)
+
+```typescript
+/**
+ * Generate box plot data (Five Number Summary)
+ * 
+ * Returns: { min, q1, median, q3, max, outliers }
+ */
+interface BoxPlotData {
+  min: number;
+  q1: number;
+  median: number;
+  q3: number;
+  max: number;
+  outliers: number[];
+  iqr: number;
+}
+
+function generateBoxPlotData(data: number[]): BoxPlotData {
+  const sorted = [...data].sort((a, b) => a - b);
+  const q1 = ss.quantile(sorted, 0.25);
+  const q3 = ss.quantile(sorted, 0.75);
+  const median = ss.quantile(sorted, 0.5);
+  const iqr = q3 - q1;
+
+  // Outlier detection: points beyond 1.5 * IQR
+  const lowerFence = q1 - 1.5 * iqr;
+  const upperFence = q3 + 1.5 * iqr;
+
+  const outliers = sorted.filter(
+    value => value < lowerFence || value > upperFence
+  );
+
+  // Whiskers extend to the most extreme non-outlier points
+  const lowerWhisker = sorted.find(val => val >= lowerFence) ?? q1;
+  const upperWhisker = [...sorted].reverse().find(val => val <= upperFence) ?? q3;
+
+  return {
+    min: lowerWhisker,
+    q1: q1,
+    median: median,
+    q3: q3,
+    max: upperWhisker,
+    outliers: outliers,
+    iqr: iqr
+  };
+}
+```
+
+#### Violin Plots (Kernel Density Estimation)
+
+```typescript
+/**
+ * Kernel Density Estimation (KDE) for Violin Plots
+ * 
+ * Uses Gaussian kernel to smooth histogram into a density curve.
+ */
+function kernelDensityEstimation(
+  data: number[],
+  bandwidth?: number
+): { x: number[]; y: number[] } {
+  const n = data.length;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min;
+
+  // Silverman's rule of thumb for bandwidth
+  const stdDev = ss.standardDeviation(data);
+  const optimalBandwidth = bandwidth ?? 
+    1.06 * stdDev * Math.pow(n, -0.2);
+
+  // Generate evaluation points
+  const numPoints = 100;
+  const x = Array.from({ length: numPoints }, (_, i) => 
+    min + (i / (numPoints - 1)) * range
+  );
+
+  // Calculate density at each point
+  const y = x.map(xi => {
+    let sum = 0;
+    for (const value of data) {
+      // Gaussian kernel
+      const u = (xi - value) / optimalBandwidth;
+      sum += Math.exp(-0.5 * u * u) / Math.sqrt(2 * Math.PI);
+    }
+    return sum / (n * optimalBandwidth);
+  });
+
+  return { x, y };
+}
+```
+
+### 3. Histogram Binning (Freedman-Diaconis Rule)
+
+**Critical:** Don't use arbitrary bin counts. Use the Freedman-Diaconis rule to determine optimal bin width.
+
+```typescript
+/**
+ * Freedman-Diaconis Rule for Optimal Histogram Bin Width
+ * 
+ * Formula: bin_width = 2 * IQR / n^(1/3)
+ * 
+ * This rule minimises the integrated mean squared error (IMSE)
+ * and works well for data that may not be normally distributed.
+ * 
+ * Reference: Freedman, D., & Diaconis, P. (1981). 
+ * "On the histogram as a density estimator: L2 theory"
+ */
+function calculateOptimalBins(data: number[]): {
+  binWidth: number;
+  numBins: number;
+  binEdges: number[];
+} {
+  if (data.length < 2) {
+    throw new Error("Need at least 2 data points for binning");
+  }
+
+  const sorted = [...data].sort((a, b) => a - b);
+  const q1 = ss.quantile(sorted, 0.25);
+  const q3 = ss.quantile(sorted, 0.75);
+  const iqr = q3 - q1;
+  const n = data.length;
+
+  // Freedman-Diaconis bin width
+  const binWidth = 2 * iqr / Math.pow(n, 1 / 3);
+
+  // Handle edge case: if IQR is 0 (all values similar), use Sturges' rule
+  if (binWidth === 0 || !isFinite(binWidth)) {
+    const sturgesBins = Math.ceil(Math.log2(n) + 1);
+    const dataRange = sorted[sorted.length - 1] - sorted[0];
+    const adjustedBinWidth = dataRange / sturgesBins;
+    
+    const min = sorted[0];
+    const max = sorted[sorted.length - 1];
+    const numBins = sturgesBins;
+    const binEdges = Array.from({ length: numBins + 1 }, (_, i) => 
+      min + i * adjustedBinWidth
+    );
+
+    return {
+      binWidth: adjustedBinWidth,
+      numBins: numBins,
+      binEdges: binEdges
+    };
+  }
+
+  // Calculate number of bins and edges
+  const min = sorted[0];
+  const max = sorted[sorted.length - 1];
+  const dataRange = max - min;
+  const numBins = Math.ceil(dataRange / binWidth);
+
+  // Generate bin edges
+  const binEdges = Array.from({ length: numBins + 1 }, (_, i) => 
+    min + i * binWidth
+  );
+
+  // Ensure last edge includes maximum value
+  if (binEdges[binEdges.length - 1] < max) {
+    binEdges.push(max);
+  }
+
+  return {
+    binWidth: binWidth,
+    numBins: numBins,
+    binEdges: binEdges
+  };
+}
+
+/**
+ * Generate histogram data using optimal binning
+ */
+function generateHistogram(
+  data: number[],
+  customBins?: number
+): { bins: number[]; frequencies: number[]; binEdges: number[] } {
+  const { binEdges, numBins } = customBins 
+    ? { 
+        binEdges: (() => {
+          const min = Math.min(...data);
+          const max = Math.max(...data);
+          const binWidth = (max - min) / customBins;
+          return Array.from({ length: customBins + 1 }, (_, i) => 
+            min + i * binWidth
+          );
+        })(),
+        numBins: customBins
+      }
+    : calculateOptimalBins(data);
+
+  const frequencies = new Array(numBins).fill(0);
+
+  // Count values in each bin
+  for (const value of data) {
+    // Find which bin this value belongs to
+    let binIndex = 0;
+    for (let i = 0; i < binEdges.length - 1; i++) {
+      if (value >= binEdges[i] && value < binEdges[i + 1]) {
+        binIndex = i;
+        break;
+      }
+      // Handle the last bin (includes the maximum value)
+      if (i === binEdges.length - 2 && value === binEdges[i + 1]) {
+        binIndex = i;
+        break;
+      }
+    }
+    frequencies[binIndex]++;
+  }
+
+  // Calculate bin centers for plotting
+  const bins = binEdges.slice(0, -1).map((edge, i) => 
+    (edge + binEdges[i + 1]) / 2
+  );
+
+  return {
+    bins: bins,
+    frequencies: frequencies,
+    binEdges: binEdges
+  };
+}
+```
+
+---
+
+## PHASE 4: NATURAL LANGUAGE GENERATION (NLG)
+
+**Principle:** Translate Math to English. Avoid jargon.
+
+### The Insight Generator
+
+```typescript
+/**
+ * Generate human-readable insights from statistical results
+ */
+interface StatisticalInsight {
+  summary: string;
+  significance: string;
+  interpretation: string;
+  recommendation?: string;
+}
+
+function generateInsight(
+  statsA: StatisticalSummary,
+  statsB: StatisticalSummary,
+  testResult: TTestResult
+): StatisticalInsight {
+  const meanDiff = testResult.meanDifference;
+  const percentChange = (meanDiff / statsA.mean) * 100;
+
+  // Significance interpretation
+  let significance: string;
+  if (testResult.pValue < 0.001) {
+    significance = "highly significant";
+  } else if (testResult.pValue < 0.01) {
+    significance = "very significant";
+  } else if (testResult.pValue < 0.05) {
+    significance = "significant";
+  } else {
+    significance = "not significant";
+  }
+
+  // Generate summary
+  let summary: string;
+  if (testResult.pValue < 0.05) {
+    summary = `Group B is ${Math.abs(percentChange).toFixed(1)}% ${percentChange > 0 ? 'higher' : 'lower'} than Group A, and this difference is statistically ${significance} (p = ${testResult.pValue.toFixed(4)}).`;
+  } else {
+    summary = `The difference between Group A and Group B (${Math.abs(percentChange).toFixed(1)}%) is not statistically significant (p = ${testResult.pValue.toFixed(4)}).`;
+  }
+
+  // Interpretation
+  let interpretation: string;
+  if (testResult.pValue < 0.05 && Math.abs(percentChange) > 10) {
+    interpretation = `This is both statistically and practically significant. The observed difference is large enough to matter in real-world applications.`;
+  } else if (testResult.pValue < 0.05 && Math.abs(percentChange) <= 10) {
+    interpretation = `While statistically significant, the practical difference is relatively small. Consider whether this difference matters for your use case.`;
+  } else {
+    interpretation = `The observed difference could be due to random variation. There's no strong evidence that the groups are meaningfully different.`;
+  }
+
+  // Recommendation
+  let recommendation: string | undefined;
+  if (testResult.pValue < 0.05 && percentChange > 0) {
+    recommendation = `Consider adopting the approach used in Group B, as it shows a statistically significant improvement.`;
+  } else if (testResult.pValue < 0.05 && percentChange < 0) {
+    recommendation = `Group A performs better. Consider investigating why Group B underperformed.`;
+  } else {
+    recommendation = `Both groups perform similarly. Consider increasing sample size or investigating other factors that might explain differences.`;
+  }
+
+  return {
+    summary: summary,
+    significance: `Statistical significance: ${significance} (p = ${testResult.pValue.toFixed(4)}, 95% CI: [${testResult.confidenceInterval[0].toFixed(2)}, ${testResult.confidenceInterval[1].toFixed(2)}])`,
+    interpretation: interpretation,
+    recommendation: recommendation
+  };
+}
+
+/**
+ * Generate insight for regression results
+ */
+function generateRegressionInsight(
+  regression: LinearRegressionResult
+): StatisticalInsight {
+  const rSquaredPercent = (regression.rSquared * 100).toFixed(1);
+
+  let strength: string;
+  if (regression.rSquared > 0.8) {
+    strength = "strong";
+  } else if (regression.rSquared > 0.5) {
+    strength = "moderate";
+  } else if (regression.rSquared > 0.3) {
+    strength = "weak";
+  } else {
+    strength = "very weak";
+  }
+
+  const direction = regression.slope > 0 ? "positive" : "negative";
+
+  let summary: string;
+  if (regression.pValue < 0.05) {
+    summary = `There is a ${strength} ${direction} relationship (R² = ${rSquaredPercent}%). The relationship is statistically significant (p = ${regression.pValue.toFixed(4)}).`;
+  } else {
+    summary = `The relationship is ${strength} (R² = ${rSquaredPercent}%) but not statistically significant (p = ${regression.pValue.toFixed(4)}).`;
+  }
+
+  let interpretation: string;
+  if (regression.rSquared > 0.8 && regression.pValue < 0.05) {
+    interpretation = `The model explains ${rSquaredPercent}% of the variation. This is a strong, reliable relationship.`;
+  } else if (regression.rSquared > 0.5 && regression.pValue < 0.05) {
+    interpretation = `The model explains ${rSquaredPercent}% of the variation. While significant, other factors also play an important role.`;
+  } else {
+    interpretation = `The relationship is weak or not significant. The model explains only ${rSquaredPercent}% of the variation, suggesting other factors are more important.`;
+  }
+
+  return {
+    summary: summary,
+    significance: `R² = ${rSquaredPercent}%, p = ${regression.pValue.toFixed(4)}`,
+    interpretation: interpretation,
+    recommendation: regression.pValue < 0.05 
+      ? `The relationship is significant. For every unit increase in X, Y changes by ${regression.slope.toFixed(4)} units on average.`
+      : `The relationship is not significant. Consider investigating other variables or checking for non-linear relationships.`
+  };
+}
+```
+
+---
+
+## PHASE 5: PERFORMANCE OPTIMISATION
+
+### Web Workers for Large Datasets
+
+**Rule:** Use Web Workers for calculating stats on arrays larger than 100k items to avoid freezing the main thread.
+
+```typescript
+// worker.ts (Web Worker file)
+self.onmessage = function(e: MessageEvent<{ data: number[]; operation: string }>) {
+  const { data, operation } = e.data;
+
+  try {
+    let result: any;
+
+    switch (operation) {
+      case 'summary':
+        result = generateSummary(data);
+        break;
+      
+      case 'welford':
+        const accumulator = new WelfordAccumulator();
+        accumulator.addBatch(data);
+        result = {
+          mean: accumulator.getMean(),
+          variance: accumulator.getVariance(),
+          stdDev: accumulator.getStdDev(),
+          count: accumulator.getCount()
+        };
+        break;
+      
+      case 'histogram':
+        result = generateHistogram(data);
+        break;
+      
+      case 'regression':
+        // Assume e.data includes both x and y
+        result = linearRegression(e.data.x, e.data.y);
+        break;
+      
+      default:
+        throw new Error(`Unknown operation: ${operation}`);
+    }
+
+    self.postMessage({ success: true, result });
+  } catch (error) {
+    self.postMessage({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+};
+
+// Main thread usage
+class StatisticalWorker {
+  private worker: Worker;
+  private pendingOperations: Map<number, {
+    resolve: (value: any) => void;
+    reject: (error: Error) => void;
+  }> = new Map();
+  private operationId: number = 0;
+
+  constructor() {
+    this.worker = new Worker(new URL('./worker.ts', import.meta.url), {
+      type: 'module'
+    });
+
+    this.worker.onmessage = (e: MessageEvent) => {
+      const { operationId, success, result, error } = e.data;
+      const operation = this.pendingOperations.get(operationId);
+
+      if (!operation) {
+        console.warn(`Received message for unknown operation: ${operationId}`);
+        return;
+      }
+
+      this.pendingOperations.delete(operationId);
+
+      if (success) {
+        operation.resolve(result);
+      } else {
+        operation.reject(new Error(error));
+      }
+    };
+  }
+
+  private async execute<T>(
+    data: any,
+    operation: string
+  ): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const id = this.operationId++;
+      this.pendingOperations.set(id, { resolve, reject });
+
+      this.worker.postMessage({
+        operationId: id,
+        data,
+        operation
+      });
+
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        if (this.pendingOperations.has(id)) {
+          this.pendingOperations.delete(id);
+          reject(new Error('Operation timed out'));
+        }
+      }, 30000);
+    });
+  }
+
+  async calculateSummary(data: number[]): Promise<StatisticalSummary> {
+    if (data.length < 100000) {
+      // Small datasets: calculate synchronously
+      return generateSummary(data);
+    }
+    return this.execute<StatisticalSummary>(data, 'summary');
+  }
+
+  async calculateWelford(data: number[]): Promise<{
+    mean: number;
+    variance: number;
+    stdDev: number;
+    count: number;
+  }> {
+    if (data.length < 100000) {
+      const accumulator = new WelfordAccumulator();
+      accumulator.addBatch(data);
+      return {
+        mean: accumulator.getMean(),
+        variance: accumulator.getVariance(),
+        stdDev: accumulator.getStdDev(),
+        count: accumulator.getCount()
+      };
+    }
+    return this.execute(data, 'welford');
+  }
+
+  async generateHistogram(data: number[]): Promise<{
+    bins: number[];
+    frequencies: number[];
+    binEdges: number[];
+  }> {
+    if (data.length < 100000) {
+      return generateHistogram(data);
+    }
+    return this.execute(data, 'histogram');
+  }
+
+  terminate(): void {
+    this.worker.terminate();
+    this.pendingOperations.clear();
+  }
+}
+
+// Usage
+const statsWorker = new StatisticalWorker();
+
+// Automatically uses worker for large datasets
+const largeDataset = Array.from({ length: 200000 }, () => Math.random() * 100);
+const summary = await statsWorker.calculateSummary(largeDataset);
+console.log(summary);
+```
+
+### Performance Thresholds
+
+```typescript
+const PERFORMANCE_THRESHOLDS = {
+  // Use Web Workers for datasets larger than this
+  WEB_WORKER_THRESHOLD: 100000,
+  
+  // Use streaming/chunked processing for datasets larger than this
+  STREAMING_THRESHOLD: 1000000,
+  
+  // Cache summary objects for datasets smaller than this
+  CACHE_THRESHOLD: 10000,
+  
+  // Use approximate algorithms (e.g., reservoir sampling) for datasets larger than this
+  APPROXIMATION_THRESHOLD: 10000000
+};
+```
+
+---
+
+## IMPLEMENTATION CHECKLIST
+
+Before deploying any statistical feature, verify:
+
+- [ ] **Floating Point Defence:** Using `decimal.js` or explicit rounding strategy
+- [ ] **One-Pass Algorithms:** Using Welford's algorithm for variance calculations
+- [ ] **Statistical Significance:** All comparisons include p-values and confidence intervals
+- [ ] **Error Bars:** All mean visualisations include 95% confidence intervals
+- [ ] **Optimal Binning:** Histograms use Freedman-Diaconis rule (not arbitrary bin counts)
+- [ ] **Web Workers:** Datasets > 100k items processed in Web Workers
+- [ ] **SQL Aggregation:** Statistics calculated in database when possible (don't pull 1M rows)
+- [ ] **Natural Language:** Insights generated in plain English (no jargon)
+- [ ] **Input Validation:** All functions validate inputs and handle edge cases
+- [ ] **Documentation:** All statistical methods include assumptions and limitations
+
+---
+
+## REFERENCES
+
+1. **Welford's Algorithm:** Welford, B. P. (1962). "Note on a method for calculating corrected sums of squares and products". *Technometrics*, 4(3), 419-420.
+
+2. **Freedman-Diaconis Rule:** Freedman, D., & Diaconis, P. (1981). "On the histogram as a density estimator: L2 theory". *Zeitschrift für Wahrscheinlichkeitstheorie und verwandte Gebiete*, 57(4), 453-476.
+
+3. **Welch's T-Test:** Welch, B. L. (1947). "The generalization of 'Student's' problem when several different population variances are involved". *Biometrika*, 34(1/2), 28-35.
+
+4. **Kernel Density Estimation:** Silverman, B. W. (1986). *Density Estimation for Statistics and Data Analysis*. Chapman and Hall.
+
+---
+
+**Remember:** Statistical accuracy is non-negotiable. Precision errors compound, assumptions must be tested, and uncertainty must be communicated. This engine prioritises mathematical correctness over convenience.

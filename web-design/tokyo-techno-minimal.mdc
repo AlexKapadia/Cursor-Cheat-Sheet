@@ -1,0 +1,679 @@
+# Tokyo Techno-Minimal: Source of Truth
+
+> **High-End Japanese Digital Agency Aesthetic**  
+> Reference Sites: hept.tokyo, shiftbrain, garden-eight
+
+---
+
+## 1. Design DNA: "Engineered Zen"
+
+### Core Philosophy
+**Precision.** Every element exists for a reason. No decoration without function. The design should feel like a perfectly calibrated machine—smooth, intentional, and minimal.
+
+### Grid System
+- **Mathematical Alignment:** Whether visible or invisible, all elements must align to a strict grid system.
+- **Baseline Grid:** 8px or 12px baseline grid for vertical rhythm.
+- **Column System:** 12-column or 16-column grid with consistent gutters (24px–48px depending on breakpoint).
+- **Rule:** All measurements must be divisible by 4px or 8px. No arbitrary values.
+
+### Contrast & Color
+- **Stark Contrast:** Black on White (`#000000` on `#FFFFFF`) or White on Black (`#FFFFFF` on `#000000`).
+- **No Greys:** Avoid mid-tones unless absolutely necessary for image overlays or subtle depth.
+- **Accent Colors:** If used, they must be pure and saturated (e.g., `#FF0000`, `#00FF00`, `#0000FF`). Use sparingly.
+- **Image Overlays:** When greys are necessary, use `rgba(0, 0, 0, 0.4)` or `rgba(255, 255, 255, 0.4)` for subtle text overlays.
+
+---
+
+## 2. Typography Strategy: "The Bilingual Stack"
+
+### English Display Typography
+- **Primary Font:** `Helvetica Now Display` (preferred) or `Neue Haas Grotesk`
+- **Weight:** Bold (`700`) for headlines, Regular (`400`) for body
+- **Tracking:** Tight (`-0.03em` to `-0.05em`) for display text
+- **Line Height:** `1.1` to `1.2` for headlines, `1.5` to `1.6` for body
+- **Usage:** Headlines, hero text, navigation labels
+
+### Japanese Typography
+- **Primary Font:** `Noto Sans JP`
+- **Weight:** Regular (`400`) for body, Medium (`500`) for emphasis
+- **Line Height:** `1.8` to `2.0` for readability
+- **Usage:** Body text, descriptions, Japanese content
+
+### Monospace Typography (Metadata)
+- **Fonts:** `Space Mono` or `JetBrains Mono`
+- **Weight:** Regular (`400`)
+- **Usage:** Metadata labels, dates, categories, technical information
+- **Rule:** All metadata labels must be:
+  - Tiny (`10px` font size)
+  - Uppercase
+  - Monospaced
+  - Letter-spacing: `0.05em` to `0.1em`
+
+### Typography Scale
+```
+Display XL:  72px / 80px (line-height)
+Display L:   56px / 64px
+Display M:   40px / 48px
+Display S:   32px / 40px
+Heading L:   24px / 32px
+Heading M:   20px / 28px
+Heading S:   18px / 24px
+Body L:      16px / 24px
+Body M:      14px / 20px
+Body S:      12px / 18px
+Micro:       10px / 14px (metadata only)
+```
+
+---
+
+## 3. Component Requirements (Production Code)
+
+### 3.1 The "WebGL" Image Reveal
+
+**Purpose:** Images don't just appear; they "unroll" or "dissolve" with a sophisticated reveal effect.
+
+**Implementation Options:**
+
+#### Option A: WebGL Shader (Preferred)
+- **Effect:** RGB shift, stretch distortion, or liquid morph
+- **Library:** Three.js + custom shader, or React Three Fiber
+- **Trigger:** On scroll or on viewport entry
+- **Performance:** Use for hero images or key visuals only
+
+#### Option B: Framer Motion Simulation (Fallback)
+- **Effect:** Simulate WebGL distortion using Framer Motion's `useMotionValue` and `useTransform`
+- **Animation:** 
+  - Scale from `0.8` to `1` with `cubic-bezier(0.16, 1, 0.3, 1)`
+  - Opacity from `0` to `1`
+  - Optional: RGB channel offset using CSS filters
+- **Duration:** `800ms` to `1200ms`
+
+**Code Pattern:**
+```tsx
+<motion.img
+  initial={{ scale: 0.8, opacity: 0 }}
+  whileInView={{ scale: 1, opacity: 1 }}
+  transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+  viewport={{ once: true, margin: "-100px" }}
+/>
+```
+
+### 3.2 The "Tokyo" Navigation
+
+**Structure:**
+- **Default State:** Burger menu icon (3 horizontal lines, minimal)
+- **Active State:** Full-screen overlay covering entire viewport
+- **Background:** Solid color (Black or White, matching theme)
+- **Typography:** Massive display typography (72px+)
+- **Layout:** Centered, vertical stack
+
+**Interaction:**
+- **Open Animation:** 
+  - Overlay fades in (`opacity: 0 → 1`, `300ms`)
+  - Menu items slide up from bottom with stagger delay (`0.05s` per item)
+  - Easing: `cubic-bezier(0.16, 1, 0.3, 1)`
+- **Close Animation:** Reverse of open animation
+- **Hover State:** Menu items scale slightly (`scale: 1.05`) or change opacity
+
+**Code Pattern:**
+```tsx
+const menuItems = ["Work", "About", "Contact"];
+const staggerDelay = 0.05;
+
+{menuItems.map((item, index) => (
+  <motion.div
+    initial={{ y: 20, opacity: 0 }}
+    animate={{ y: 0, opacity: 1 }}
+    transition={{ 
+      delay: index * staggerDelay,
+      duration: 0.6,
+      ease: [0.16, 1, 0.3, 1]
+    }}
+  >
+    {item}
+  </motion.div>
+))}
+```
+
+### 3.3 The "Magnetic" Cursor
+
+**Design:**
+- **Shape:** Circle
+- **Default Size:** `20px` diameter
+- **Hover Size:** `30px` diameter (`scale: 1.5`)
+- **Color:** Contrasting color (White on dark backgrounds, Black on light backgrounds)
+- **Behavior:** Smoothly follows mouse, "snaps" to interactive elements
+
+**Implementation:**
+- Use `mousemove` event listener
+- Calculate distance to interactive elements
+- Apply magnetic pull when within threshold (e.g., `100px`)
+- Smooth interpolation using `lerp` function
+- Scale up on hover of links, buttons, or interactive elements
+
+**Code Pattern:**
+```tsx
+const cursorRef = useRef<HTMLDivElement>(null);
+const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
+
+useEffect(() => {
+  const handleMouseMove = (e: MouseEvent) => {
+    setCursorPos({ x: e.clientX, y: e.clientY });
+  };
+  window.addEventListener('mousemove', handleMouseMove);
+  return () => window.removeEventListener('mousemove', handleMouseMove);
+}, []);
+
+<motion.div
+  ref={cursorRef}
+  className="fixed pointer-events-none z-50 w-5 h-5 rounded-full bg-black"
+  animate={{ x: cursorPos.x - 10, y: cursorPos.y - 10 }}
+  transition={{ type: "spring", stiffness: 500, damping: 28 }}
+/>
+```
+
+---
+
+## 4. Motion & Interaction Rules
+
+### 4.1 Scroll Library: Lenis
+
+**Mandatory Integration:** `@studio-freight/lenis`
+
+**Purpose:** Provides that "heavy", luxurious scroll feel—smooth, weighted, and premium.
+
+**Configuration:**
+```tsx
+import Lenis from '@studio-freight/lenis';
+
+const lenis = new Lenis({
+  duration: 1.2,
+  easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+  orientation: 'vertical',
+  gestureOrientation: 'vertical',
+  smoothWheel: true,
+  wheelMultiplier: 1,
+  smoothTouch: false,
+  touchMultiplier: 2,
+  infinite: false,
+});
+
+function raf(time: number) {
+  lenis.raf(time);
+  requestAnimationFrame(raf);
+}
+requestAnimationFrame(raf);
+```
+
+**Integration with React:**
+- Use `useLenis` hook if available, or wrap in `useEffect`
+- Connect to Framer Motion's `useScroll` for scroll-triggered animations
+
+### 4.2 Timing Functions
+
+**Primary Easing:** `cubic-bezier(0.16, 1, 0.3, 1)` (The "Expo" ease)
+
+**Usage:**
+- All transitions and animations
+- Page transitions
+- Component reveals
+- Hover states
+
+**Alternative Easing (for specific cases):**
+- **Ease Out:** `cubic-bezier(0.16, 1, 0.3, 1)` (default)
+- **Ease In:** `cubic-bezier(0.7, 0, 0.84, 0)` (for exits)
+- **Ease In Out:** `cubic-bezier(0.87, 0, 0.13, 1)` (for complex animations)
+
+### 4.3 Page Transitions: "Curtain" Effect
+
+**Effect Description:** A solid color wipes across the screen horizontally or vertically, revealing the new page.
+
+**Implementation:**
+- **Direction:** Left-to-right or top-to-bottom (configurable)
+- **Color:** Match theme (Black or White)
+- **Duration:** `600ms` to `800ms`
+- **Easing:** `cubic-bezier(0.16, 1, 0.3, 1)`
+
+**Code Pattern (Framer Motion):**
+```tsx
+const variants = {
+  initial: { x: '-100%' },
+  animate: { x: 0 },
+  exit: { x: '100%' }
+};
+
+<motion.div
+  variants={variants}
+  initial="initial"
+  animate="animate"
+  exit="exit"
+  transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+  className="fixed inset-0 bg-black z-50"
+/>
+```
+
+### 4.4 Animation Duration Guidelines
+
+- **Micro-interactions:** `150ms` to `300ms` (hover, click)
+- **Component Reveals:** `400ms` to `600ms` (fade in, slide up)
+- **Page Transitions:** `600ms` to `800ms` (curtain effect)
+- **Complex Animations:** `800ms` to `1200ms` (WebGL reveals, complex sequences)
+
+---
+
+## 5. Vertical Rhythm: Handling Mixed Text Directions
+
+### The Challenge
+Japanese text can be written vertically (`writing-mode: vertical-rl`), while English text is horizontal. This creates unique layout challenges.
+
+### Solution: Dual Baseline System
+
+**Horizontal Text (English):**
+- Use standard baseline grid (8px or 12px increments)
+- Line-height: `1.5` to `1.6` for body text
+- Vertical spacing: `24px`, `32px`, `48px`, `64px` (multiples of 8px)
+
+**Vertical Text (Japanese):**
+- `writing-mode: vertical-rl`
+- `text-orientation: upright`
+- Line-height: `1.8` to `2.0` for readability
+- Horizontal spacing: Match vertical spacing values (rotated)
+
+### Implementation
+
+**CSS:**
+```css
+.vertical-text {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  line-height: 2;
+  letter-spacing: 0.05em;
+}
+
+.horizontal-text {
+  writing-mode: horizontal-tb;
+  line-height: 1.6;
+}
+```
+
+**Layout Strategy:**
+- Use CSS Grid or Flexbox to create separate columns/sections
+- Left column: Vertical Japanese text
+- Right column: Horizontal English text
+- Ensure both align to the same baseline grid (rotated for vertical text)
+
+**Tailwind Classes:**
+```css
+.vertical-rl {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+}
+
+.rhythm-8 { margin-bottom: 8px; }
+.rhythm-16 { margin-bottom: 16px; }
+.rhythm-24 { margin-bottom: 24px; }
+.rhythm-32 { margin-bottom: 32px; }
+.rhythm-48 { margin-bottom: 48px; }
+.rhythm-64 { margin-bottom: 64px; }
+```
+
+### Mixed Content Example
+```tsx
+<div className="grid grid-cols-2 gap-24">
+  {/* Japanese Vertical Text */}
+  <div className="vertical-rl text-body-l">
+    これは縦書きのテキストです。
+  </div>
+  
+  {/* English Horizontal Text */}
+  <div className="text-body-l">
+    This is horizontal English text that aligns to the same baseline grid.
+  </div>
+</div>
+```
+
+---
+
+## 6. Micro-Typography: Tailwind Classes
+
+### Purpose
+Metadata labels, dates, categories, and technical information require tiny, monospaced typography that feels precise and data-driven.
+
+### Tailwind Configuration
+
+**Add to `tailwind.config.js`:**
+```js
+module.exports = {
+  theme: {
+    extend: {
+      fontSize: {
+        'micro': ['10px', { lineHeight: '14px', letterSpacing: '0.05em' }],
+      },
+      fontFamily: {
+        'mono': ['Space Mono', 'JetBrains Mono', 'monospace'],
+      },
+    },
+  },
+}
+```
+
+### Utility Classes
+
+**Base Micro Typography:**
+```css
+.text-micro {
+  font-size: 10px;
+  line-height: 14px;
+  letter-spacing: 0.05em;
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+  font-weight: 400;
+}
+```
+
+**Variants:**
+```css
+/* Micro with tighter spacing */
+.text-micro-tight {
+  font-size: 10px;
+  line-height: 14px;
+  letter-spacing: 0.02em;
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+}
+
+/* Micro with looser spacing */
+.text-micro-loose {
+  font-size: 10px;
+  line-height: 14px;
+  letter-spacing: 0.1em;
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+}
+
+/* Micro with medium weight */
+.text-micro-medium {
+  font-size: 10px;
+  line-height: 14px;
+  letter-spacing: 0.05em;
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+```
+
+### Usage Examples
+
+**Metadata Labels:**
+```tsx
+<div className="flex flex-col gap-2">
+  <span className="text-micro text-black">CLIENT</span>
+  <span className="text-body-m">Client Name</span>
+</div>
+
+<div className="flex flex-col gap-2">
+  <span className="text-micro text-black">YEAR</span>
+  <span className="text-body-m">2024</span>
+</div>
+```
+
+**Project Cards:**
+```tsx
+<div className="project-card">
+  <span className="text-micro text-black mb-2">CATEGORY</span>
+  <h2 className="text-display-m mb-4">Project Title</h2>
+  <p className="text-body-m text-gray-600">Description text...</p>
+  <span className="text-micro text-black mt-4">2024</span>
+</div>
+```
+
+---
+
+## 7. The "Loader" Sequence
+
+### Purpose
+Create an elegant pre-loader that sets the tone for the entire experience. The loader should feel premium and intentional.
+
+### Design Specifications
+
+**Visual Elements:**
+- **Percentage Counter:** Large, monospaced numbers (e.g., `72%`)
+- **Typography:** `Space Mono` or `JetBrains Mono`, `48px` to `72px`
+- **Background:** Solid color (Black or White, matching theme)
+- **Animation:** Smooth count-up from `0%` to `100%`
+
+**Reveal Animation:**
+- Once `100%` is reached, fade out loader (`opacity: 1 → 0`, `400ms`)
+- Simultaneously, reveal main content with a subtle fade-in or slide-up
+- Easing: `cubic-bezier(0.16, 1, 0.3, 1)`
+
+**Implementation:**
+```tsx
+const [progress, setProgress] = useState(0);
+const [isLoaded, setIsLoaded] = useState(false);
+
+useEffect(() => {
+  const interval = setInterval(() => {
+    setProgress((prev) => {
+      if (prev >= 100) {
+        clearInterval(interval);
+        setTimeout(() => setIsLoaded(true), 400);
+        return 100;
+      }
+      return prev + 1;
+    });
+  }, 20);
+
+  return () => clearInterval(interval);
+}, []);
+
+{!isLoaded && (
+  <motion.div
+    initial={{ opacity: 1 }}
+    animate={{ opacity: isLoaded ? 0 : 1 }}
+    className="fixed inset-0 bg-black z-50 flex items-center justify-center"
+  >
+    <span className="text-micro-loose text-white text-6xl font-mono">
+      {progress}%
+    </span>
+  </motion.div>
+)}
+```
+
+---
+
+## 8. The "Liquid" Scroll: WebGL Distortion
+
+### Purpose
+When scrolling fast, images should exhibit a "liquid" distortion effect—RGB shift, stretch, or morph—creating a sense of motion and premium feel.
+
+### Implementation
+
+**WebGL Shader Approach (Preferred):**
+- Use Three.js or React Three Fiber
+- Apply distortion shader to image planes
+- Trigger distortion based on scroll velocity
+- Effects: RGB channel separation, stretch, or wave distortion
+
+**Framer Motion Simulation (Fallback):**
+```tsx
+const { scrollYProgress } = useScroll();
+const scale = useTransform(scrollYProgress, [0, 1], [1, 1.1]);
+const rotate = useTransform(scrollYProgress, [0, 1], [0, 2]);
+
+<motion.img
+  style={{ scale, rotate }}
+  className="w-full h-full object-cover"
+  src="/image.jpg"
+/>
+```
+
+**CSS Filter Approach (Simplest):**
+```css
+.liquid-scroll {
+  transition: filter 0.1s ease-out;
+}
+
+.liquid-scroll.scrolling {
+  filter: blur(1px) contrast(1.1);
+}
+```
+
+---
+
+## 9. Layout Patterns
+
+### Hero Section
+- **Full viewport height** (`100vh`)
+- **Centered content** (vertical and horizontal)
+- **Massive typography** (Display XL or Display L)
+- **Minimal elements** (title, subtitle, optional CTA)
+- **White space:** Generous padding (`64px` to `128px`)
+
+### Project Grid
+- **Grid layout:** 2 or 3 columns on desktop, 1 column on mobile
+- **Aspect ratio:** Maintain consistent aspect ratios (e.g., `16:9` or `4:3`)
+- **Hover effect:** Subtle scale (`scale: 1.02`) or overlay fade
+- **Metadata:** Tiny micro-typography labels above or below images
+
+### Content Sections
+- **Max width:** `1200px` to `1440px` on desktop
+- **Padding:** `64px` to `128px` horizontal, `96px` to `192px` vertical
+- **Vertical rhythm:** Consistent spacing using rhythm classes
+
+---
+
+## 10. Responsive Breakpoints
+
+### Breakpoint System
+```css
+/* Mobile First */
+sm: 640px   /* Small tablets */
+md: 768px   /* Tablets */
+lg: 1024px  /* Small laptops */
+xl: 1280px  /* Desktops */
+2xl: 1536px /* Large desktops */
+```
+
+### Typography Scaling
+- **Mobile:** Reduce all font sizes by `20%` to `30%`
+- **Tablet:** Reduce by `10%` to `15%`
+- **Desktop:** Full size as specified
+
+### Spacing Scaling
+- **Mobile:** Reduce padding and margins by `50%`
+- **Tablet:** Reduce by `25%`
+- **Desktop:** Full spacing as specified
+
+---
+
+## 11. Performance Considerations
+
+### Image Optimization
+- Use Next.js Image component or similar
+- Lazy load images below the fold
+- Use WebP format with fallbacks
+- Implement blur placeholders
+
+### Animation Performance
+- Use `transform` and `opacity` for animations (GPU-accelerated)
+- Avoid animating `width`, `height`, `top`, `left`
+- Use `will-change` sparingly and remove after animation
+- Debounce scroll events
+
+### Code Splitting
+- Lazy load heavy components (WebGL, complex animations)
+- Code split routes for page transitions
+- Load fonts asynchronously
+
+---
+
+## 12. Accessibility
+
+### Color Contrast
+- Ensure WCAG AA compliance (4.5:1 for normal text, 3:1 for large text)
+- Test both light and dark themes
+
+### Keyboard Navigation
+- All interactive elements must be keyboard accessible
+- Focus states must be visible and styled
+- Skip links for main content
+
+### Screen Readers
+- Proper semantic HTML
+- ARIA labels where necessary
+- Alt text for all images
+
+---
+
+## 13. Browser Support
+
+### Target Browsers
+- Chrome (latest 2 versions)
+- Firefox (latest 2 versions)
+- Safari (latest 2 versions)
+- Edge (latest 2 versions)
+
+### Progressive Enhancement
+- Core functionality works without JavaScript
+- Enhancements (animations, WebGL) are progressive
+- Graceful degradation for older browsers
+
+---
+
+## 14. File Structure Recommendation
+
+```
+src/
+  components/
+    loader/
+      Loader.tsx
+    navigation/
+      Navigation.tsx
+      MenuOverlay.tsx
+    cursor/
+      MagneticCursor.tsx
+    images/
+      WebGLImageReveal.tsx
+  styles/
+    globals.css
+    micro-typography.css
+  hooks/
+    useLenis.ts
+    useMagneticCursor.ts
+  utils/
+    animations.ts
+```
+
+---
+
+## 15. Quick Reference: Key Values
+
+### Typography
+- **Display Font:** Helvetica Now Display / Neue Haas Grotesk
+- **Body Font:** Noto Sans JP
+- **Mono Font:** Space Mono / JetBrains Mono
+- **Micro Size:** `10px` / `14px` line-height
+
+### Spacing
+- **Base Unit:** `8px`
+- **Common Values:** `8px`, `16px`, `24px`, `32px`, `48px`, `64px`, `96px`, `128px`
+
+### Colors
+- **Primary:** `#000000` (Black) / `#FFFFFF` (White)
+- **No Greys:** Use only for image overlays
+
+### Timing
+- **Primary Easing:** `cubic-bezier(0.16, 1, 0.3, 1)`
+- **Micro:** `150ms` - `300ms`
+- **Standard:** `400ms` - `600ms`
+- **Complex:** `800ms` - `1200ms`
+
+### Libraries
+- **Scroll:** `@studio-freight/lenis`
+- **Animation:** `framer-motion`
+- **WebGL (Optional):** `three.js` / `@react-three/fiber`
+
+---
+
+**End of Document**
