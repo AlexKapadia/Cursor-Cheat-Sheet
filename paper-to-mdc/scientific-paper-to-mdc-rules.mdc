@@ -1,0 +1,1736 @@
+# Scientific Paper to MDC Conversion Rules
+
+## CRITICAL PROTOCOL: COMPREHENSIVE EXTRACTION MANDATE
+
+> **⚠️ ABSOLUTE REQUIREMENT:** This document is not optional. Every scientific paper MUST be processed with complete thoroughness. The resulting MDC must be so comprehensive that a developer could implement the technique WITHOUT reading the original paper. Incomplete MDCs are unacceptable and must be redone.
+
+---
+
+## Table of Contents
+
+1. [Phase 1: Complete Paper Reading Protocol](#phase-1-complete-paper-reading-protocol)
+2. [Phase 2: Comprehensive Content Extraction](#phase-2-comprehensive-content-extraction)
+3. [Phase 3: MDC Structure Template](#phase-3-mdc-structure-template)
+4. [Phase 4: Detailed Section Extraction Rules](#phase-4-detailed-section-extraction-rules)
+5. [Phase 5: Code and Algorithm Extraction](#phase-5-code-and-algorithm-extraction)
+6. [Phase 6: Mathematical Content Extraction](#phase-6-mathematical-content-extraction)
+7. [Phase 7: File Placement and Organization](#phase-7-file-placement-and-organization)
+8. [Phase 8: Base MDC Creation](#phase-8-base-mdc-creation)
+9. [Phase 9: README Generation](#phase-9-readme-generation)
+10. [Phase 10: Related MDC Updates](#phase-10-related-mdc-updates)
+11. [Quality Assurance and Verification](#quality-assurance-and-verification)
+12. [Common Pitfalls and Solutions](#common-pitfalls-and-solutions)
+
+---
+
+## Phase 1: Complete Paper Reading Protocol
+
+### MANDATORY Multi-Pass Reading Strategy
+
+You MUST perform **FOUR complete passes** through the entire paper. This is non-negotiable. Each pass serves a specific purpose and must be completed in full before proceeding.
+
+#### Pass 1: Full Paper Structure Scan and Mapping
+
+**Duration:** Read the entire paper from start to finish without stopping.
+
+**Objective:** Understand the complete structure, organization, and flow of the paper.
+
+**Actions Required:**
+
+1. **Read Every Single Page:**
+   - Do not skip any pages, including:
+     - Title page
+     - Abstract
+     - Introduction
+     - All numbered sections
+     - All subsections
+     - Figures and their captions
+     - Tables and their captions
+     - Algorithms and pseudocode
+     - Code listings
+     - Appendices
+     - References
+     - Acknowledgments
+     - Any supplementary material
+
+2. **Create a Complete Section Map:**
+   - Document every major section with its page number
+   - Document every subsection with its page number
+   - Note the hierarchy (Section 1, 1.1, 1.1.1, etc.)
+   - Identify all figures and their locations
+   - Identify all tables and their locations
+   - Identify all algorithms and their locations
+   - Identify all code blocks and their locations
+   - Note any appendices or supplementary materials
+
+3. **Identify Paper Type and Structure:**
+   - Is it a research paper? System paper? Survey? Tutorial?
+   - What is the primary contribution?
+   - What is the problem being solved?
+   - What is the proposed solution?
+   - What is the evaluation methodology?
+
+4. **Note Key Terminology:**
+   - List all technical terms introduced
+   - List all acronyms and their definitions
+   - Note any domain-specific vocabulary
+   - Identify any new concepts or techniques named
+
+5. **Identify Content Types:**
+   - Mark where mathematical content appears
+   - Mark where code examples appear
+   - Mark where algorithms appear
+   - Mark where diagrams/figures appear
+   - Mark where tables appear
+   - Mark where experimental results appear
+
+**Verification Checklist for Pass 1:**
+- [ ] Every page has been viewed
+- [ ] Complete section map created with page numbers
+- [ ] All figures identified and located
+- [ ] All tables identified and located
+- [ ] All algorithms identified and located
+- [ ] All code blocks identified and located
+- [ ] Paper type and contribution understood
+- [ ] Key terminology list created
+- [ ] Content type map created
+
+**CRITICAL:** If you cannot check off ALL items, you MUST re-read the paper until you can.
+
+#### Pass 2: Section-by-Section Detailed Extraction
+
+**Duration:** Go through each section systematically, extracting all content.
+
+**Objective:** Extract every piece of technical content, concept, definition, and detail.
+
+**Actions Required for EACH Section:**
+
+1. **For the Abstract:**
+   - Extract the complete abstract verbatim
+   - Identify the problem statement
+   - Identify the proposed solution
+   - Identify the main contributions
+   - Note any key results or findings mentioned
+   - Extract any quantitative claims (e.g., "X% improvement")
+
+2. **For the Introduction:**
+   - Extract the complete motivation
+   - Extract the problem definition
+   - Extract the scope and objectives
+   - Extract any background context
+   - Note any assumptions stated
+   - Extract any limitations mentioned upfront
+   - Identify related work mentioned (for later cross-reference)
+
+3. **For Related Work / Background:**
+   - Extract summaries of each related work mentioned
+   - Note how this paper differs from or builds upon previous work
+   - Extract any comparisons made
+   - Note any techniques adopted from other papers
+   - Identify gaps this paper addresses
+
+4. **For Methodology / Approach:**
+   - Extract the complete methodology description
+   - Extract all algorithm descriptions
+   - Extract all pseudocode (convert to readable format)
+   - Extract all design decisions and their rationale
+   - Extract all architectural choices
+   - Extract all data structure choices
+   - Extract all parameter settings
+   - Extract all configuration details
+   - Note any implementation considerations
+   - Extract any optimization techniques
+   - Extract any heuristics used
+
+5. **For Implementation Details:**
+   - Extract ALL code examples (even partial ones)
+   - Extract all code snippets
+   - Extract all function signatures
+   - Extract all class definitions
+   - Extract all data structure definitions
+   - Extract all API designs
+   - Extract all interface specifications
+   - Extract all configuration examples
+   - Extract all setup instructions
+   - Extract all dependency requirements
+   - Extract all build instructions
+   - Extract all runtime requirements
+
+6. **For Algorithms:**
+   - Extract complete algorithm descriptions
+   - Extract all pseudocode
+   - Extract all step-by-step procedures
+   - Extract all algorithmic choices and their rationale
+   - Extract all complexity analyses (time, space)
+   - Extract all correctness proofs or arguments
+   - Extract all optimization strategies
+   - Extract all edge case handling
+   - Extract all termination conditions
+   - Extract all initialization procedures
+
+7. **For Experimental Setup:**
+   - Extract all dataset descriptions
+   - Extract all experimental configurations
+   - Extract all hyperparameter settings
+   - Extract all hardware specifications
+   - Extract all software versions
+   - Extract all evaluation metrics used
+   - Extract all baseline methods compared
+   - Extract all experimental protocols
+
+8. **For Results / Evaluation:**
+   - Extract ALL numerical results
+   - Extract all performance metrics
+   - Extract all comparisons with baselines
+   - Extract all statistical significance tests
+   - Extract all error bars and confidence intervals
+   - Extract all qualitative observations
+   - Extract all failure cases or limitations discovered
+   - Extract all ablation study results
+   - Extract all sensitivity analysis results
+
+9. **For Discussion / Analysis:**
+   - Extract all insights and observations
+   - Extract all explanations of results
+   - Extract all failure case analyses
+   - Extract all limitations discussed
+   - Extract all future work suggestions
+   - Extract all recommendations
+
+10. **For Conclusion:**
+    - Extract complete conclusion
+    - Extract summary of contributions
+    - Extract future directions
+    - Extract any final recommendations
+
+11. **For Figures:**
+    - Provide detailed description of each figure
+    - Extract all text from figure captions
+    - Describe what the figure shows
+    - Explain relationships shown in figures
+    - Note any annotations or labels
+    - Describe data flow if applicable
+    - Explain any visualizations
+
+12. **For Tables:**
+    - Extract complete table data
+    - Extract all headers
+    - Extract all row labels
+    - Extract all cell values
+    - Note any units
+    - Note any formatting (bold, italics)
+    - Extract table captions
+
+13. **For Appendices:**
+    - Extract ALL appendix content
+    - Extract supplementary algorithms
+    - Extract additional experimental results
+    - Extract detailed proofs
+    - Extract additional code listings
+    - Extract any supplementary material
+
+**Verification Checklist for Pass 2:**
+- [ ] Abstract completely extracted
+- [ ] Introduction completely extracted
+- [ ] Related work completely extracted
+- [ ] Methodology completely extracted
+- [ ] All algorithms extracted
+- [ ] All code examples extracted
+- [ ] All implementation details extracted
+- [ ] All experimental setup extracted
+- [ ] All results extracted
+- [ ] All figures described
+- [ ] All tables extracted
+- [ ] All appendices extracted
+- [ ] No section left incomplete
+
+**CRITICAL:** Every section must have extracted content. If a section appears empty, you MUST re-read it and extract content.
+
+#### Pass 3: Cross-Reference Validation and Completeness Check
+
+**Duration:** Systematically verify that nothing was missed.
+
+**Objective:** Ensure 100% completeness and identify relationships between sections.
+
+**Actions Required:**
+
+1. **Code Example Verification:**
+   - Cross-reference all code examples mentioned in text with actual code blocks
+   - Verify every code reference has been extracted
+   - Check that all code snippets are complete
+   - Verify language identification for each code block
+   - Ensure all code comments are included
+
+2. **Algorithm Verification:**
+   - Verify all algorithms mentioned in text are extracted
+   - Check that all pseudocode is complete
+   - Verify all algorithmic steps are captured
+   - Ensure all complexity analyses are included
+   - Check that all edge cases are documented
+
+3. **Formula Verification:**
+   - Verify all mathematical formulas are extracted
+   - Check that all equations are in LaTeX format
+   - Verify all variable definitions are included
+   - Ensure all equation numbers are preserved
+   - Check that all mathematical notation is correct
+
+4. **Figure Verification:**
+   - Verify all figures are described
+   - Check that all figure captions are extracted
+   - Ensure all figure references in text are accounted for
+   - Verify all annotations are described
+
+5. **Table Verification:**
+   - Verify all tables are extracted
+   - Check that all table data is complete
+   - Ensure all table captions are included
+   - Verify all table references in text are accounted for
+
+6. **Performance Metrics Verification:**
+   - Verify all numerical results are extracted
+   - Check that all performance metrics are included
+   - Ensure all comparisons are documented
+   - Verify all statistical tests are included
+
+7. **Terminology Verification:**
+   - Verify all technical terms are defined
+   - Check that all acronyms are expanded
+   - Ensure all new concepts are explained
+   - Verify all domain-specific terms are clarified
+
+8. **Cross-Section Relationships:**
+   - Identify how sections relate to each other
+   - Note dependencies between sections
+   - Identify where concepts are introduced vs. used
+   - Map the flow of information
+
+9. **Completeness Audit:**
+   - Go through the section map from Pass 1
+   - Verify every section has been processed
+   - Check that no pages were skipped
+   - Verify all appendices are processed
+   - Check that all supplementary material is included
+
+**Verification Checklist for Pass 3:**
+- [ ] All code examples verified and extracted
+- [ ] All algorithms verified and extracted
+- [ ] All formulas verified and extracted
+- [ ] All figures verified and described
+- [ ] All tables verified and extracted
+- [ ] All performance metrics verified and extracted
+- [ ] All terminology verified and defined
+- [ ] All cross-references verified
+- [ ] Section map completely processed
+- [ ] No gaps or missing content identified
+
+**CRITICAL:** If ANY item is unchecked, you MUST go back and complete it before proceeding.
+
+#### Pass 4: Deep Technical Understanding and Context Building
+
+**Duration:** Read the paper again with focus on understanding and context.
+
+**Objective:** Build deep understanding to create a comprehensive, actionable MDC.
+
+**Actions Required:**
+
+1. **Understand the Problem:**
+   - What problem is being solved?
+   - Why is this problem important?
+   - What are the challenges?
+   - What are the constraints?
+
+2. **Understand the Solution:**
+   - How does the solution work?
+   - What are the key innovations?
+   - What are the design principles?
+   - What are the trade-offs?
+
+3. **Understand the Implementation:**
+   - How would you implement this?
+   - What are the key components?
+   - What are the dependencies?
+   - What are the implementation challenges?
+
+4. **Understand the Evaluation:**
+   - How was it evaluated?
+   - What metrics were used?
+   - What were the key findings?
+   - What are the limitations?
+
+5. **Build Context for MDC:**
+   - What would a developer need to know?
+   - What are the critical implementation details?
+   - What are the common pitfalls?
+   - What are the best practices?
+   - What are the gotchas?
+
+6. **Identify Actionable Content:**
+   - What can be directly implemented?
+   - What code can be reused?
+   - What patterns can be applied?
+   - What techniques can be adopted?
+
+**Verification Checklist for Pass 4:**
+- [ ] Problem fully understood
+- [ ] Solution fully understood
+- [ ] Implementation approach understood
+- [ ] Evaluation methodology understood
+- [ ] Context built for comprehensive MDC
+- [ ] Actionable content identified
+
+**CRITICAL:** You must have deep understanding before creating the MDC. If understanding is incomplete, re-read relevant sections.
+
+---
+
+## Phase 2: Comprehensive Content Extraction
+
+### Extraction Principles
+
+1. **Extract Everything:** When in doubt, extract it. It's better to have too much than too little.
+2. **Preserve Accuracy:** Extract verbatim when possible. Don't summarize unless necessary.
+3. **Maintain Context:** Always include context for extracted content.
+4. **Document Sources:** Note where each piece of content came from (section, page, figure number).
+5. **Preserve Relationships:** Maintain connections between related content.
+
+### Content Categories to Extract
+
+#### 1. Metadata
+- **Title:** Exact title from paper
+- **Authors:** All authors with affiliations if available
+- **Year:** Publication year
+- **Venue:** Conference or journal name
+- **DOI/URL:** If available
+- **Keywords:** If provided
+- **Abstract:** Complete abstract
+
+#### 2. Problem Statement
+- **Problem Definition:** What problem is being solved?
+- **Motivation:** Why is this problem important?
+- **Challenges:** What are the main challenges?
+- **Scope:** What is in scope and out of scope?
+- **Assumptions:** What assumptions are made?
+
+#### 3. Related Work
+- **Previous Approaches:** What approaches exist?
+- **Comparisons:** How does this compare to previous work?
+- **Gaps:** What gaps does this paper fill?
+- **Adopted Techniques:** What techniques are adopted from other work?
+
+#### 4. Methodology
+- **High-Level Approach:** Overall methodology
+- **Detailed Steps:** Step-by-step procedure
+- **Design Decisions:** All design choices and rationale
+- **Architecture:** System or algorithm architecture
+- **Data Structures:** All data structures used
+- **Algorithms:** All algorithms with complete descriptions
+- **Parameters:** All parameters and their meanings
+- **Configuration:** All configuration options
+
+#### 5. Implementation Details
+- **Code Examples:** Every single code block
+- **Function Signatures:** All function/method signatures
+- **Class Definitions:** All class/type definitions
+- **Data Structure Definitions:** All data structure definitions
+- **API Specifications:** All API designs
+- **Interface Definitions:** All interface specifications
+- **Configuration Examples:** All configuration examples
+- **Setup Instructions:** All setup and installation steps
+- **Dependencies:** All dependencies and versions
+- **Build Instructions:** All build and compilation steps
+- **Runtime Requirements:** All runtime requirements
+
+#### 6. Algorithms
+- **Complete Descriptions:** Full algorithm descriptions
+- **Pseudocode:** All pseudocode (convert to readable format)
+- **Step-by-Step Procedures:** All procedural steps
+- **Complexity Analysis:** Time and space complexity
+- **Correctness Arguments:** Any correctness proofs or arguments
+- **Optimization Strategies:** All optimization techniques
+- **Edge Case Handling:** How edge cases are handled
+- **Termination Conditions:** All termination criteria
+- **Initialization:** All initialization procedures
+
+#### 7. Mathematical Content
+- **All Formulas:** Every mathematical formula
+- **All Equations:** Every equation
+- **Variable Definitions:** All variable definitions
+- **Notation:** All mathematical notation explained
+- **Proofs:** All proofs or proof sketches
+- **Theorems:** All theorems and lemmas
+- **Corollaries:** All corollaries
+- **Mathematical Properties:** All mathematical properties used
+
+#### 8. Experimental Setup
+- **Datasets:** All datasets used with descriptions
+- **Hardware:** All hardware specifications
+- **Software:** All software versions and tools
+- **Hyperparameters:** All hyperparameter settings
+- **Configuration:** All experimental configurations
+- **Evaluation Metrics:** All metrics used
+- **Baselines:** All baseline methods
+- **Protocols:** All experimental protocols
+
+#### 9. Results
+- **All Numerical Results:** Every number, percentage, metric
+- **Performance Metrics:** All performance measurements
+- **Comparisons:** All comparisons with baselines
+- **Statistical Tests:** All statistical significance tests
+- **Error Bars:** All error bars and confidence intervals
+- **Qualitative Observations:** All qualitative findings
+- **Failure Cases:** All failure cases or limitations
+- **Ablation Studies:** All ablation study results
+- **Sensitivity Analysis:** All sensitivity analysis results
+
+#### 10. Figures
+- **Complete Descriptions:** Detailed description of each figure
+- **Captions:** All figure captions
+- **Annotations:** All annotations and labels
+- **Relationships:** All relationships shown
+- **Data Flow:** All data flow descriptions
+- **Visualizations:** Description of all visualizations
+
+#### 11. Tables
+- **Complete Data:** All table data
+- **Headers:** All column headers
+- **Row Labels:** All row labels
+- **Cell Values:** All cell values
+- **Units:** All units
+- **Formatting:** All formatting notes
+- **Captions:** All table captions
+
+#### 12. Best Practices
+- **Recommendations:** All recommendations
+- **Guidelines:** All guidelines
+- **Tips:** All tips and tricks
+- **Warnings:** All warnings
+- **Common Pitfalls:** All pitfalls mentioned
+- **Optimization Tips:** All optimization suggestions
+
+#### 13. Limitations
+- **Stated Limitations:** All limitations mentioned
+- **Assumptions:** All assumptions
+- **Constraints:** All constraints
+- **Scope Limitations:** All scope limitations
+- **Future Work:** All future work suggestions
+
+#### 14. Applications
+- **Use Cases:** All use cases mentioned
+- **Application Domains:** All application domains
+- **Scenarios:** All application scenarios
+- **Examples:** All application examples
+
+---
+
+## Phase 3: MDC Structure Template
+
+### Complete MDC Template
+
+Every MDC MUST follow this structure. All sections must be populated. If a section doesn't apply, note "N/A" with explanation.
+
+```markdown
+---
+alwaysApply: false
+---
+
+# [Paper Title - Key Technique/Concept]
+
+## Paper Metadata
+- **Title:** [Exact title from paper]
+- **Authors:** [All authors, comma-separated]
+- **Year:** [Publication year]
+- **Venue:** [Conference/Journal name if available]
+- **DOI/URL:** [If available]
+- **Keywords:** [If provided]
+- **Source Paper:** [Full citation if available]
+
+## Abstract / Summary
+[Complete abstract from paper, verbatim]
+
+## Problem Statement
+### Problem Definition
+[What problem is being solved?]
+
+### Motivation
+[Why is this problem important?]
+
+### Challenges
+[What are the main challenges?]
+
+### Scope
+[What is in scope and out of scope?]
+
+### Assumptions
+[What assumptions are made?]
+
+## Key Concepts and Techniques
+[Comprehensive list of all key concepts, one per line with brief explanation]
+
+## Related Work and Background
+### Previous Approaches
+[Summary of related approaches]
+
+### How This Differs
+[How this paper differs from previous work]
+
+### Adopted Techniques
+[Techniques adopted from other work]
+
+## Methodology and Approach
+### High-Level Overview
+[Overall approach and methodology]
+
+### Detailed Methodology
+[Complete step-by-step methodology]
+
+### Design Principles
+[All design principles and their rationale]
+
+### Architecture
+[System or algorithm architecture]
+
+### Data Structures
+[All data structures used with descriptions]
+
+## Algorithms
+### Algorithm 1: [Name]
+**Description:**
+[Complete algorithm description]
+
+**Pseudocode:**
+```
+[Complete pseudocode, properly formatted]
+```
+
+**Complexity Analysis:**
+- **Time Complexity:** [Analysis]
+- **Space Complexity:** [Analysis]
+
+**Correctness:**
+[Correctness arguments or proofs]
+
+**Optimization Strategies:**
+[All optimization techniques used]
+
+**Edge Cases:**
+[How edge cases are handled]
+
+**Initialization:**
+[Initialization procedures]
+
+[Repeat for all algorithms]
+
+## Implementation Patterns
+### Architecture Patterns
+[All architectural patterns used]
+
+### Design Patterns
+[All design patterns used]
+
+### Data Organization
+[How data is organized]
+
+### Component Structure
+[Component organization]
+
+## Code Examples and Snippets
+### Code Example 1: [Description]
+**Context:** [Where this code appears and what it does]
+
+**Language:** [Programming language]
+
+```[language]
+[Complete code example]
+```
+
+**Explanation:**
+[Explanation of what the code does]
+
+**Key Points:**
+[Important points about this code]
+
+[Repeat for ALL code examples]
+
+## Mathematical Foundations
+### Notation
+[All mathematical notation explained]
+
+### Core Formulas
+$$
+[Formula 1 with explanation]
+$$
+
+$$
+[Formula 2 with explanation]
+$$
+
+[All formulas with explanations]
+
+### Theorems and Proofs
+**Theorem 1: [Name]**
+[Statement and proof]
+
+[All theorems and proofs]
+
+### Variable Definitions
+[All variables defined with their meanings]
+
+## Experimental Setup
+### Datasets
+[All datasets with descriptions]
+
+### Hardware Configuration
+[Hardware specifications]
+
+### Software Environment
+[Software versions and tools]
+
+### Hyperparameters
+[All hyperparameter settings]
+
+### Evaluation Metrics
+[All metrics used]
+
+### Baseline Methods
+[All baseline methods compared]
+
+### Experimental Protocol
+[Complete experimental protocol]
+
+## Results and Evaluation
+### Quantitative Results
+[All numerical results in organized format]
+
+### Performance Metrics
+[All performance measurements]
+
+### Comparisons
+[All comparisons with baselines]
+
+### Statistical Analysis
+[All statistical tests and significance]
+
+### Ablation Studies
+[All ablation study results]
+
+### Sensitivity Analysis
+[All sensitivity analysis results]
+
+### Failure Cases
+[All failure cases and limitations discovered]
+
+## Best Practices and Recommendations
+### Implementation Best Practices
+[All implementation recommendations]
+
+### Optimization Tips
+[All optimization suggestions]
+
+### Common Pitfalls to Avoid
+[All pitfalls mentioned]
+
+### Guidelines
+[All guidelines provided]
+
+### Warnings
+[All warnings]
+
+## Limitations and Assumptions
+### Stated Limitations
+[All limitations mentioned]
+
+### Assumptions
+[All assumptions]
+
+### Constraints
+[All constraints]
+
+### Scope Limitations
+[All scope limitations]
+
+## Related Techniques and References
+### Related Techniques
+[Other techniques mentioned and how they relate]
+
+### Key References
+[Important references for further reading]
+
+### Cross-References
+[References to other sections or papers]
+
+## Practical Applications
+### Use Cases
+[All use cases mentioned]
+
+### Application Domains
+[All application domains]
+
+### Application Scenarios
+[All application scenarios]
+
+### Real-World Examples
+[All real-world examples]
+
+## Implementation Checklist
+### Prerequisites
+- [ ] [Prerequisite 1]
+- [ ] [Prerequisite 2]
+
+### Setup Steps
+1. [Step 1]
+2. [Step 2]
+
+### Implementation Steps
+1. [Step 1]
+2. [Step 2]
+
+### Testing Steps
+1. [Step 1]
+2. [Step 2]
+
+## Figures and Visualizations
+### Figure 1: [Title]
+**Description:** [Detailed description]
+
+**Caption:** [Figure caption]
+
+**Key Elements:**
+- [Element 1]
+- [Element 2]
+
+**Relationships:** [Relationships shown]
+
+[Repeat for all figures]
+
+## Tables
+### Table 1: [Title]
+**Caption:** [Table caption]
+
+| Header 1 | Header 2 | Header 3 |
+|----------|----------|----------|
+| Value 1  | Value 2  | Value 3  |
+
+[All tables with complete data]
+
+## Appendices and Supplementary Material
+### Appendix A: [Title]
+[All appendix content]
+
+[All appendices]
+
+## References
+[Key references from the paper for further reading]
+```
+
+---
+
+## Phase 4: Detailed Section Extraction Rules
+
+### Abstract Extraction Rules
+
+1. **Extract Verbatim:** Copy the abstract exactly as it appears
+2. **Identify Components:**
+   - Problem statement
+   - Proposed solution
+   - Main contributions
+   - Key results
+   - Quantitative claims
+3. **Note Keywords:** Extract all important keywords
+4. **Preserve Formatting:** Maintain original formatting
+
+### Introduction Extraction Rules
+
+1. **Extract Complete Motivation:**
+   - Why is this problem important?
+   - What is the current state?
+   - What are the gaps?
+
+2. **Extract Problem Definition:**
+   - What exactly is the problem?
+   - How is it formalized?
+   - What are the inputs and outputs?
+
+3. **Extract Objectives:**
+   - What are the goals?
+   - What are the success criteria?
+
+4. **Extract Scope:**
+   - What is included?
+   - What is excluded?
+
+5. **Extract Assumptions:**
+   - What assumptions are made?
+   - What constraints exist?
+
+### Methodology Extraction Rules
+
+1. **Extract Complete Methodology:**
+   - Every step must be documented
+   - All decision points must be explained
+   - All alternatives considered must be noted
+
+2. **Extract Design Decisions:**
+   - What was chosen?
+   - Why was it chosen?
+   - What alternatives were considered?
+
+3. **Extract Architecture:**
+   - Complete system architecture
+   - All components and their roles
+   - All interfaces between components
+   - All data flows
+
+4. **Extract Data Structures:**
+   - Every data structure used
+   - Purpose of each data structure
+   - Operations supported
+   - Complexity of operations
+
+5. **Extract Parameters:**
+   - Every parameter
+   - Meaning of each parameter
+   - Default values
+   - Tuning guidelines
+
+### Algorithm Extraction Rules
+
+1. **Extract Complete Algorithm Description:**
+   - High-level description
+   - Detailed step-by-step procedure
+   - All algorithmic choices
+
+2. **Extract Pseudocode:**
+   - Convert to readable, well-formatted pseudocode
+   - Include all steps
+   - Include all conditions
+   - Include all loops
+   - Include all return values
+
+3. **Extract Complexity Analysis:**
+   - Time complexity (best, average, worst case)
+   - Space complexity
+   - Any complexity proofs or arguments
+
+4. **Extract Correctness:**
+   - Any correctness proofs
+   - Correctness arguments
+   - Invariants maintained
+
+5. **Extract Optimization Strategies:**
+   - All optimization techniques
+   - When to use each
+   - Trade-offs involved
+
+6. **Extract Edge Case Handling:**
+   - How edge cases are handled
+   - What edge cases are considered
+   - Special handling for edge cases
+
+### Code Extraction Rules
+
+1. **Extract EVERY Code Block:**
+   - No code block should be skipped
+   - Even partial code should be extracted
+   - Code in figures should be extracted
+   - Code in appendices should be extracted
+
+2. **Identify Language:**
+   - Determine programming language
+   - Note if pseudocode
+   - Note if language-agnostic
+
+3. **Preserve Formatting:**
+   - Maintain indentation
+   - Maintain spacing
+   - Preserve comments
+
+4. **Extract Context:**
+   - Where does this code appear?
+   - What does it do?
+   - How is it used?
+
+5. **Extract Dependencies:**
+   - What does this code depend on?
+   - What libraries are used?
+   - What functions are called?
+
+6. **Extract Function Signatures:**
+   - All function/method signatures
+   - Parameter types
+   - Return types
+   - Exceptions thrown
+
+7. **Extract Class Definitions:**
+   - All class/type definitions
+   - All methods
+   - All properties
+   - All relationships
+
+### Mathematical Content Extraction Rules
+
+1. **Extract ALL Formulas:**
+   - Every formula must be extracted
+   - Formulas in text must be extracted
+   - Formulas in figures must be extracted
+   - Formulas in appendices must be extracted
+
+2. **Convert to LaTeX:**
+   - All formulas must be in LaTeX format
+   - Use `$$` for block equations
+   - Use `$` for inline equations
+   - Preserve all notation
+
+3. **Extract Variable Definitions:**
+   - Every variable must be defined
+   - Include type information
+   - Include domain information
+   - Include units if applicable
+
+4. **Extract Notation:**
+   - All mathematical notation must be explained
+   - All symbols must be defined
+   - All conventions must be noted
+
+5. **Extract Proofs:**
+   - All proofs must be extracted
+   - Proof sketches must be extracted
+   - Intuition behind proofs must be included
+
+6. **Extract Theorems:**
+   - All theorems must be extracted
+   - All lemmas must be extracted
+   - All corollaries must be extracted
+
+### Experimental Setup Extraction Rules
+
+1. **Extract Complete Setup:**
+   - Every detail of the experimental setup
+   - All configurations
+   - All settings
+
+2. **Extract Datasets:**
+   - Dataset names
+   - Dataset descriptions
+   - Dataset sizes
+   - Dataset characteristics
+   - Dataset sources
+
+3. **Extract Hardware:**
+   - CPU specifications
+   - GPU specifications
+   - Memory specifications
+   - Storage specifications
+   - Any other hardware details
+
+4. **Extract Software:**
+   - Operating system
+   - Programming language versions
+   - Library versions
+   - Framework versions
+   - Tool versions
+
+5. **Extract Hyperparameters:**
+   - Every hyperparameter
+   - Value of each hyperparameter
+   - How hyperparameters were chosen
+   - Hyperparameter tuning process
+
+6. **Extract Evaluation Metrics:**
+   - Every metric used
+   - Definition of each metric
+   - How each metric is calculated
+
+### Results Extraction Rules
+
+1. **Extract ALL Numbers:**
+   - Every numerical result
+   - Every percentage
+   - Every metric value
+   - Every comparison value
+
+2. **Extract Performance Metrics:**
+   - All performance measurements
+   - All speed measurements
+   - All accuracy measurements
+   - All efficiency measurements
+
+3. **Extract Comparisons:**
+   - All comparisons with baselines
+   - All relative improvements
+   - All statistical significance
+
+4. **Extract Qualitative Observations:**
+   - All qualitative findings
+   - All observations
+   - All insights
+
+5. **Extract Failure Cases:**
+   - All failure cases
+   - All limitations discovered
+   - All error cases
+
+### Figure Extraction Rules
+
+1. **Describe Completely:**
+   - What does the figure show?
+   - What are the key elements?
+   - What relationships are shown?
+
+2. **Extract Caption:**
+   - Complete figure caption
+   - All annotations
+   - All labels
+
+3. **Describe Visualizations:**
+   - What type of visualization?
+   - What data is shown?
+   - What patterns are visible?
+
+4. **Describe Data Flow:**
+   - If applicable, describe data flow
+   - Describe processes shown
+   - Describe transformations
+
+### Table Extraction Rules
+
+1. **Extract Complete Data:**
+   - All headers
+   - All row labels
+   - All cell values
+   - All formatting
+
+2. **Extract Caption:**
+   - Complete table caption
+   - All notes
+   - All footnotes
+
+3. **Note Units:**
+   - All units used
+   - All scales
+   - All formats
+
+---
+
+## Phase 5: Code and Algorithm Extraction
+
+### Code Block Identification
+
+1. **Identify All Code Blocks:**
+   - Code in main text
+   - Code in figures
+   - Code in appendices
+   - Code in supplementary material
+   - Pseudocode (convert to readable format)
+
+2. **Language Detection:**
+   - Python: Look for `def`, `import`, `class`, indentation
+   - JavaScript: Look for `function`, `const`, `let`, `=>`
+   - Java: Look for `public class`, `public static void`
+   - C/C++: Look for `#include`, `int main`
+   - Pseudocode: Look for algorithmic structures
+
+3. **Context Extraction:**
+   - What section is the code in?
+   - What does the surrounding text say?
+   - What is the code supposed to do?
+
+### Code Formatting Rules
+
+1. **Preserve Original Formatting:**
+   - Maintain indentation
+   - Maintain spacing
+   - Preserve comments
+
+2. **Add Language Tags:**
+   - Every code block must have a language tag
+   - Use correct language identifier
+   - Use "text" or "pseudocode" if language unclear
+
+3. **Add Explanations:**
+   - What does this code do?
+   - What are the key points?
+   - What should developers know?
+
+### Algorithm Formatting Rules
+
+1. **Convert Pseudocode:**
+   - Make it readable
+   - Use consistent formatting
+   - Use clear variable names
+   - Add comments for clarity
+
+2. **Include All Steps:**
+   - Every step must be included
+   - All conditions must be included
+   - All loops must be included
+   - All return values must be included
+
+3. **Add Complexity Information:**
+   - Time complexity
+   - Space complexity
+   - Any complexity analysis
+
+---
+
+## Phase 6: Mathematical Content Extraction
+
+### Formula Extraction Rules
+
+1. **Find ALL Formulas:**
+   - Formulas in text (inline and displayed)
+   - Formulas in figures
+   - Formulas in tables
+   - Formulas in appendices
+
+2. **Convert to LaTeX:**
+   - Use proper LaTeX syntax
+   - Use `$$` for block equations
+   - Use `$` for inline equations
+   - Preserve all notation
+
+3. **Add Explanations:**
+   - What does the formula represent?
+   - What are the variables?
+   - What are the units?
+
+### Variable Definition Rules
+
+1. **Extract All Variables:**
+   - Every variable used in formulas
+   - Every variable used in algorithms
+   - Every variable used in code
+
+2. **Define Each Variable:**
+   - What does it represent?
+   - What is its type?
+   - What is its domain?
+   - What are its units?
+
+3. **Organize Variables:**
+   - Group related variables
+   - List in order of appearance
+   - Cross-reference with formulas
+
+### Notation Rules
+
+1. **Extract All Notation:**
+   - All mathematical symbols
+   - All operators
+   - All special notation
+
+2. **Explain All Notation:**
+   - What does each symbol mean?
+   - What are the conventions?
+   - Are there any special cases?
+
+---
+
+## Phase 7: File Placement and Organization
+
+### Topic Analysis Process
+
+1. **Analyze Paper Content:**
+   - Read title
+   - Read abstract
+   - Read introduction
+   - Read methodology
+   - Identify primary focus
+
+2. **Identify Keywords:**
+   - Extract all relevant keywords
+   - Identify primary domain
+   - Identify secondary domains
+
+3. **Score Folders:**
+   - Score each folder based on keyword matches
+   - Consider primary focus
+   - Consider secondary focuses
+
+4. **Select Folder:**
+   - Choose folder with highest score
+   - If tie, consider primary contribution
+   - Default to `ai/` if unclear
+
+### Folder Mapping Rules
+
+**`ai/`** - Use for:
+- Machine learning techniques
+- AI algorithms and models
+- Neural network architectures
+- Natural language processing
+- Computer vision
+- Reinforcement learning
+- Deep learning
+- Classification and regression
+- Model training
+- AI integration patterns
+
+**`engines/`** - Use for:
+- System architectures
+- Engine designs (game, rendering, etc.)
+- Core system components
+- Framework architectures
+- Platform architectures
+- System design patterns
+
+**`backend/`** - Use for:
+- Backend patterns and architectures
+- Database design techniques
+- API design patterns
+- Server-side architectures
+- Data processing pipelines
+- Authentication/authorization
+- Microservices
+- Distributed systems
+- ETL processes
+
+**`development-tools/`** - Use for:
+- Development methodologies
+- Code organization techniques
+- Testing strategies
+- Debugging techniques
+- Build and deployment patterns
+- Development workflows
+- Code review processes
+- Version control strategies
+
+**`science-maths/`** - Use for:
+- Mathematical algorithms
+- Computational methods
+- Statistical techniques
+- Numerical methods
+- Scientific computing
+- Data analysis methods
+- Optimization algorithms
+- Linear algebra
+- Calculus
+- Geometry
+
+**`apis-integration/`** - Use for:
+- API integration patterns
+- Third-party service integration
+- API design principles
+- Integration architectures
+- Service communication patterns
+- Webhook patterns
+- SDK design
+
+**`web-design/`** - Use for:
+- Frontend techniques
+- UI/UX patterns
+- Web design methodologies
+- Client-side architectures
+- User interface patterns
+- Frontend frameworks
+- React, Vue, Angular patterns
+- CSS techniques
+- JavaScript patterns
+
+### Folder Structure Rules
+
+1. **Create Dedicated Folder:**
+   - Each MDC gets its own folder
+   - Folder name based on paper title
+   - Use lowercase, hyphens, max 50 chars
+
+2. **Folder Contents:**
+   - `[paper-name].mdc` - The main MDC file
+   - `README.md` - Explanation and usage guide
+
+3. **Naming Convention:**
+   - Convert title to lowercase
+   - Replace spaces with hyphens
+   - Remove special characters
+   - Limit to 50 characters
+   - Remove trailing hyphens
+
+---
+
+## Phase 8: Base MDC Creation
+
+### MDC Generation Process
+
+1. **Create Folder:**
+   - Create folder in appropriate category
+   - Use generated folder name
+
+2. **Create MDC File:**
+   - Create MDC file in folder
+   - Use generated filename
+
+3. **Populate Content:**
+   - Follow MDC template exactly
+   - Fill in all sections
+   - Use extracted content
+   - Maintain accuracy
+
+4. **Format Content:**
+   - Use proper markdown
+   - Format code blocks correctly
+   - Format formulas in LaTeX
+   - Use proper headings
+
+5. **Verify Completeness:**
+   - Check all sections populated
+   - Verify all content extracted
+   - Ensure nothing missing
+
+### Content Population Rules
+
+1. **Use Extracted Content:**
+   - Use content from extraction passes
+   - Maintain accuracy
+   - Preserve technical details
+
+2. **Organize Logically:**
+   - Follow template structure
+   - Group related content
+   - Maintain flow
+
+3. **Add Explanations:**
+   - Explain complex concepts
+   - Provide context
+   - Add implementation notes
+
+4. **Format Properly:**
+   - Use markdown correctly
+   - Format code with language tags
+   - Format formulas in LaTeX
+   - Use proper lists and tables
+
+---
+
+## Phase 9: README Generation
+
+### README Content Requirements
+
+Every README MUST include:
+
+1. **What It Is:**
+   - Clear description of the MDC
+   - What paper it's from
+   - What technique it covers
+   - Purpose of the MDC
+
+2. **How It Works:**
+   - Explanation of extraction process
+   - What content is included
+   - How content is organized
+   - What makes it comprehensive
+
+3. **How to Use When Building:**
+   - Method 1: Reference in Cursor Chat
+   - Method 2: Open in Cursor
+   - Method 3: Add to Cursor Rules
+   - Method 4: Use specific sections
+   - Examples for each method
+
+4. **Key Concepts:**
+   - List of key concepts from paper
+   - Brief explanations
+
+5. **Quick Start:**
+   - Steps to get started
+   - How to begin using the MDC
+
+6. **Contents:**
+   - What's in the MDC
+   - What sections are included
+
+7. **Related Resources:**
+   - Link to original paper
+   - Related MDCs
+   - Additional resources
+
+---
+
+## Phase 10: Related MDC Updates
+
+### Identifying Related MDCs
+
+1. **Search for Related Content:**
+   - Search by keywords
+   - Search by concepts
+   - Search by techniques
+
+2. **Analyze Relationships:**
+   - How are they related?
+   - What do they have in common?
+   - How do they differ?
+
+3. **Determine Updates Needed:**
+   - What should be added?
+   - What should be cross-referenced?
+   - What should be enhanced?
+
+### Updating Related MDCs
+
+1. **Add Cross-References:**
+   - Add "See Also" section
+   - Link to new MDC
+   - Explain relationship
+
+2. **Add New Content:**
+   - Add new techniques if relevant
+   - Add new patterns if applicable
+   - Add new code examples if useful
+
+3. **Enhance Existing Content:**
+   - Update with new insights
+   - Add additional examples
+   - Expand explanations
+
+4. **Maintain Consistency:**
+   - Use same style
+   - Use same format
+   - Maintain quality
+
+---
+
+## Quality Assurance and Verification
+
+### Pre-Creation Checklist
+
+Before creating the MDC, verify:
+
+- [ ] All four reading passes completed
+- [ ] Complete section map created
+- [ ] All content extracted
+- [ ] All code examples extracted
+- [ ] All algorithms extracted
+- [ ] All formulas extracted
+- [ ] All figures described
+- [ ] All tables extracted
+- [ ] All results extracted
+- [ ] Deep understanding achieved
+
+### Post-Creation Checklist
+
+After creating the MDC, verify:
+
+- [ ] All template sections populated
+- [ ] All content accurate
+- [ ] All code properly formatted
+- [ ] All formulas in LaTeX
+- [ ] All markdown correct
+- [ ] Folder structure correct
+- [ ] README complete
+- [ ] Related MDCs identified
+- [ ] Cross-references added
+
+### Completeness Verification
+
+1. **Content Completeness:**
+   - Every section of paper represented
+   - Every code example included
+   - Every algorithm included
+   - Every formula included
+   - Every result included
+
+2. **Technical Completeness:**
+   - All implementation details
+   - All configuration options
+   - All parameters explained
+   - All dependencies listed
+
+3. **Usability Completeness:**
+   - Can developer implement without paper?
+   - Are all steps clear?
+   - Are all examples complete?
+   - Are all concepts explained?
+
+### Accuracy Verification
+
+1. **Content Accuracy:**
+   - All content matches paper
+   - No misinterpretations
+   - No omissions
+   - No additions
+
+2. **Technical Accuracy:**
+   - Code examples correct
+   - Formulas correct
+   - Algorithms correct
+   - Results correct
+
+3. **Formatting Accuracy:**
+   - Markdown correct
+   - Code formatting correct
+   - LaTeX correct
+   - Tables correct
+
+---
+
+## Common Pitfalls and Solutions
+
+### Pitfall 1: Incomplete Reading
+
+**Problem:** Skipping sections or not reading thoroughly.
+
+**Solution:**
+- Follow the four-pass reading protocol strictly
+- Use the section map to track progress
+- Verify every section is processed
+
+### Pitfall 2: Missing Code Examples
+
+**Problem:** Not extracting all code blocks.
+
+**Solution:**
+- Search for code in all sections
+- Check figures for code
+- Check appendices for code
+- Verify every code reference
+
+### Pitfall 3: Incomplete Algorithm Extraction
+
+**Problem:** Not extracting complete algorithms.
+
+**Solution:**
+- Extract all pseudocode
+- Extract all steps
+- Extract all conditions
+- Extract all complexity analyses
+
+### Pitfall 4: Missing Formulas
+
+**Problem:** Not extracting all mathematical content.
+
+**Solution:**
+- Search for formulas in all sections
+- Check figures for formulas
+- Check appendices for formulas
+- Convert all to LaTeX
+
+### Pitfall 5: Incomplete Results
+
+**Problem:** Not extracting all numerical results.
+
+**Solution:**
+- Extract every number
+- Extract all metrics
+- Extract all comparisons
+- Extract all statistical tests
+
+### Pitfall 6: Poor Organization
+
+**Problem:** Content not well organized.
+
+**Solution:**
+- Follow the template strictly
+- Group related content
+- Maintain logical flow
+- Use proper headings
+
+### Pitfall 7: Missing Context
+
+**Problem:** Content without context.
+
+**Solution:**
+- Always include context
+- Explain where content comes from
+- Explain what content means
+- Add implementation notes
+
+### Pitfall 8: Inaccurate Extraction
+
+**Problem:** Misinterpreting or misrepresenting content.
+
+**Solution:**
+- Extract verbatim when possible
+- Verify against original
+- Don't add interpretations
+- Note any uncertainties
+
+---
+
+## Final Reminders
+
+### The Golden Rules
+
+1. **Completeness Over Speed:** It's better to take longer and be complete than to rush and miss content.
+
+2. **Accuracy Over Convenience:** Always verify accuracy, even if it's inconvenient.
+
+3. **Detail Over Summary:** Extract details, not summaries. The MDC should be comprehensive.
+
+4. **Understanding Over Extraction:** Don't just extract—understand. Understanding leads to better MDCs.
+
+5. **Quality Over Quantity:** One excellent, comprehensive MDC is better than multiple incomplete ones.
+
+### Success Criteria
+
+An MDC is successful if:
+
+- A developer can implement the technique without reading the original paper
+- All code examples are complete and runnable (or clearly marked as pseudocode)
+- All algorithms are fully described
+- All formulas are correct and in LaTeX
+- All results are accurately represented
+- All concepts are clearly explained
+- The MDC is well-organized and easy to navigate
+- The README clearly explains how to use the MDC
+
+### Remember
+
+You are creating a "Source of Truth" document. It must be:
+- **Complete:** Nothing important is missing
+- **Accurate:** Everything is correct
+- **Comprehensive:** Everything is detailed
+- **Actionable:** Developers can use it to build
+- **Reliable:** It can be trusted as the definitive reference
+
+**There are no shortcuts. There are no acceptable compromises. The MDC must be incredibly comprehensive and detailed.**
+
+---
+
+## Appendix: Extraction Checklist
+
+Use this checklist for every paper:
+
+### Reading Passes
+- [ ] Pass 1: Complete structure scan completed
+- [ ] Pass 2: Section-by-section extraction completed
+- [ ] Pass 3: Cross-reference validation completed
+- [ ] Pass 4: Deep understanding achieved
+
+### Content Extraction
+- [ ] Metadata extracted
+- [ ] Abstract extracted
+- [ ] Introduction extracted
+- [ ] Related work extracted
+- [ ] Methodology extracted
+- [ ] All algorithms extracted
+- [ ] All code examples extracted
+- [ ] All formulas extracted
+- [ ] All figures described
+- [ ] All tables extracted
+- [ ] Experimental setup extracted
+- [ ] All results extracted
+- [ ] Discussion extracted
+- [ ] Conclusion extracted
+- [ ] All appendices extracted
+
+### MDC Creation
+- [ ] Folder created
+- [ ] MDC file created
+- [ ] All sections populated
+- [ ] Code properly formatted
+- [ ] Formulas in LaTeX
+- [ ] Markdown correct
+- [ ] README created
+- [ ] Related MDCs identified
+- [ ] Cross-references added
+
+### Quality Assurance
+- [ ] Completeness verified
+- [ ] Accuracy verified
+- [ ] Formatting verified
+- [ ] Organization verified
+- [ ] Usability verified
+
+---
+
+**END OF RULES**
+
+Remember: These rules exist to ensure the creation of incredibly comprehensive, detailed MDCs that serve as complete references for implementing techniques from scientific papers. Follow them strictly, and the result will be a valuable resource for developers.

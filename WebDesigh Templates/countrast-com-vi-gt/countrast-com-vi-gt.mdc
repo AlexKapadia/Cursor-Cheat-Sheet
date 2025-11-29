@@ -1,0 +1,927 @@
+---
+alwaysApply: false
+---
+
+# Data-Driven Minimalist - Website Design System
+
+## Website Metadata
+- **Source URL:** https://countrast.com/vi/gt
+- **Design Style:** Data-Driven Minimalist
+- **Primary Framework:** React (Vite)
+- **CSS Framework:** Tailwind CSS
+- **Analysis Date:** 2025-01-29
+- **Pages Analyzed:** 1 (Country Comparison Page)
+- **Total Components:** 15+ (Header, Country Selector, Comparison Cards, Data Visualizations, Unit Toggle, Country List)
+
+## Design Overview
+
+Countrast presents a clean, data-focused design system optimized for comparing country statistics. The design emphasizes clarity and readability with a minimal color palette dominated by warm stone tones and neutral grays. The typography system uses a monospace font (Reddit Mono) for data and a sans-serif font (Rubik) for UI elements, creating a clear visual hierarchy between data and interface elements. The layout is grid-based with responsive breakpoints, allowing the comparison interface to adapt seamlessly from mobile to desktop. Interactive elements use subtle transitions and hover states to provide clear feedback without distracting from the data visualization.
+
+## Design System Fundamentals
+
+### Color Palette
+
+**Primary Colors:**
+- Primary: Not explicitly defined (uses neutral/stone palette)
+- Secondary: Not explicitly defined
+- Accent: Not explicitly defined
+
+**Neutral Colors:**
+- Background: `#f4f3ec` (stone-100) - Main page background
+- Surface: `#e5e5e5` (neutral-200) - Secondary surfaces
+- Text Primary: `#050505` (zinc-950) - Main text color
+- Text Secondary: `#71717a` (zinc-500) - Secondary text
+- Text Tertiary: `#a19a91` (stone-500) - Tertiary text
+- Text Muted: `#a19d91` (stone-400) - Muted text
+- Text Light: `#c4c4c2` (stone-300) - Light text
+- Border: `#d1d1d1` (neutral-300) - Primary borders
+- Border Secondary: `#b0b0b0` (zinc-400) - Secondary borders
+- Border Divider: `#c4c4c2` (stone-300) - Dividers
+- Border Divider Dark: `#a19d91` (stone-400) - Dark dividers
+
+**Semantic Colors:**
+- Success: Not explicitly defined
+- Error: Not explicitly defined
+- Warning: Not explicitly defined
+- Info: Not explicitly defined
+
+**Gradients:**
+- No gradients detected in the design system
+
+### Typography System
+
+**Font Families:**
+- Primary: `Rubik, sans-serif` (usage: UI elements, labels, interface text)
+- Monospace: `Reddit Mono, monospace` (usage: data values, numbers, code-like content)
+
+**Type Scale:**
+```css
+/* Desktop */
+--font-size-12: 0.75rem;  /* 12px */
+--font-size-14: 0.875rem; /* 14px */
+--font-size-16: 1rem;     /* 16px - Base */
+--font-size-18: 1.125rem;  /* 18px */
+--font-size-20: 1.25rem;  /* 20px */
+--font-size-28: 1.75rem;  /* 28px - Tablet+ */
+--font-size-40: 2.5rem;   /* 40px - Desktop XL+ */
+
+/* Mobile Base */
+font-size: 16px;
+```
+
+**Line Heights:**
+```css
+--line-height-none: 1;
+--line-height-120: 1.2;
+--line-height-130: 1.3;  /* Tablet+ */
+```
+
+**Font Weights:**
+- Normal: 400 (Regular)
+- Medium: 500
+
+**Letter Spacing:**
+```css
+--letter-spacing-tight: -0.02em; /* -tracking-2 */
+```
+
+**Text Alignment:**
+- Left (default)
+- Center
+- Right
+
+**Text Transform:**
+- Uppercase (for labels)
+
+**Text Decoration:**
+- Underline with dashed style
+- Decoration thickness: 1px
+- Underline offset: 2px (mobile), 4px (tablet+)
+
+### Spacing System
+
+```css
+--spacing-0: 0;
+--spacing-0-5: 0.125rem;  /* 2px */
+--spacing-1: 0.25rem;     /* 4px */
+--spacing-2: 0.5rem;      /* 8px */
+--spacing-3: 0.75rem;     /* 12px */
+--spacing-4: 1rem;        /* 16px */
+--spacing-5: 1.25rem;     /* 20px */
+--spacing-6: 1.5rem;      /* 24px */
+--spacing-7: 1.75rem;     /* 28px */
+--spacing-8: 2rem;        /* 32px */
+--spacing-12: 3rem;       /* 48px */
+--spacing-18: 18px;       /* Custom */
+--spacing-30: 30px;       /* Custom */
+--spacing-54: 54px;       /* Custom - Tablet+ */
+```
+
+**Spacing Scale:** Uses Tailwind's standard spacing scale (0.25rem increments) with some custom pixel values for specific use cases.
+
+### Border Radius System
+
+```css
+--radius-full: 9999px;  /* Fully rounded (circles, pills) */
+```
+
+**Note:** The design uses minimal border radius, primarily for fully rounded elements like radio buttons and circular icons.
+
+### Shadow System
+
+```css
+/* No shadows detected in the design system */
+/* The design emphasizes flat, minimal aesthetics */
+```
+
+## Layout Systems
+
+### Grid System
+
+```css
+/* Main Container */
+.container {
+  width: 100%;
+  max-width: 640px;   /* Mobile */
+  max-width: 768px;   /* Tablet */
+  max-width: 1024px;  /* Desktop */
+  max-width: 1280px;  /* Large Desktop */
+  max-width: 1536px;  /* XL Desktop */
+  margin: 0 auto;
+}
+
+/* Grid Layout */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));  /* Mobile: 2 columns */
+  gap: 0.125rem;  /* 2px gap */
+}
+
+/* Tablet+ Grid */
+@media (min-width: 768px) {
+  .grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));  /* 12-column grid */
+    gap: 0;  /* No gap on tablet+ */
+  }
+}
+```
+
+### Breakpoints
+
+```css
+/* Mobile (default) */
+/* Base styles apply from 0px */
+
+/* Tablet */
+@media (min-width: 768px) {
+  /* Tablet-specific styles */
+}
+
+/* Desktop */
+@media (min-width: 1280px) {
+  /* Desktop XL-specific styles */
+}
+```
+
+**Breakpoint Values:**
+- Mobile: 0px - 767px
+- Tablet: 768px+
+- Desktop: 1280px+
+
+## Component Library
+
+### Buttons
+
+**Country Selection Button:**
+```css
+.country-button {
+  /* Base styles */
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;  /* py-2 px-3 */
+  font-family: Rubik, sans-serif;
+  font-size: 0.875rem;  /* text-14 */
+  font-weight: 400;
+  color: rgb(5 5 5);  /* text-zinc-950 */
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.country-button:hover {
+  /* Hover state - subtle background change */
+  background-color: rgba(41, 37, 36, 0.05);  /* bg-stone-800/5 */
+}
+
+.country-button:focus {
+  /* Focus state */
+  outline: auto;
+}
+```
+
+**Data Value Button:**
+```css
+.data-button {
+  /* Base styles */
+  display: inline-block;
+  font-family: Reddit Mono, monospace;
+  font-size: 1rem;  /* text-16 */
+  font-weight: 400;
+  color: rgb(5 5 5);  /* text-zinc-950 */
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;  /* 4px on tablet+ */
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.data-button:hover {
+  /* Hover state */
+  /* Subtle interaction feedback */
+}
+```
+
+**Unit Toggle Button:**
+```css
+.unit-toggle {
+  /* Radio button wrapper */
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.375rem 0.625rem;  /* py-1.5 px-2.5 */
+  font-family: Rubik, sans-serif;
+  font-size: 0.875rem;  /* text-14 */
+  color: rgb(5 5 5);  /* text-zinc-950 */
+  cursor: pointer;
+}
+
+.unit-toggle input[type="radio"] {
+  /* Radio button styling */
+  /* Custom styling applied */
+}
+```
+
+### Cards
+
+**Country Comparison Card:**
+```css
+.comparison-card {
+  /* Base styles */
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));  /* Mobile: 2 columns */
+  gap: 0.125rem;  /* gap-0.5 */
+  padding: 1.25rem;  /* py-5 */
+  background-color: rgb(244 243 236);  /* bg-stone-100 */
+}
+
+@media (min-width: 768px) {
+  .comparison-card {
+    grid-template-columns: repeat(12, minmax(0, 1fr));  /* 12-column grid */
+    gap: 0;
+    padding: 2rem 1.25rem;  /* py-8 px-5 */
+  }
+}
+```
+
+**Data Metric Card:**
+```css
+.metric-card {
+  /* Base styles */
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;  /* gap-1 */
+  padding: 0.75rem;  /* p-3 */
+}
+
+.metric-card-icon {
+  width: 1.5rem;  /* size-6 */
+  height: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .metric-card-icon {
+    width: 2.25rem;  /* size-9 */
+    height: 2.25rem;
+  }
+}
+```
+
+### Forms
+
+**Radio Button Group:**
+```css
+.radio-group {
+  /* Base styles */
+  display: flex;
+  gap: 0.25rem;  /* gap-1 */
+  align-items: center;
+}
+
+.radio-label {
+  /* Base styles */
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.375rem 0.625rem;  /* py-1.5 px-2.5 */
+  font-family: Rubik, sans-serif;
+  font-size: 0.875rem;  /* text-14 */
+  color: rgb(5 5 5);  /* text-zinc-950 */
+  cursor: pointer;
+}
+
+.radio-label input[type="radio"] {
+  /* Radio input styling */
+  /* Custom styling */
+}
+
+.radio-label:has(input:checked) {
+  /* Selected state */
+  /* Visual indication of selection */
+}
+```
+
+**Input Fields:**
+```css
+/* No traditional input fields detected */
+/* The interface uses buttons and radio buttons for interaction */
+```
+
+### Navigation
+
+**Main Navigation (Header):**
+```css
+.header {
+  /* Base styles */
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 0.75rem;  /* py-5 px-3 */
+  border-bottom: 1px solid rgb(209 209 209);  /* border-b border-neutral-300 */
+  background-color: rgb(244 243 236);  /* bg-stone-100 */
+}
+
+.header-logo {
+  /* Logo link */
+  display: inline-block;
+  height: 1.5rem;  /* h-6 */
+}
+
+.header-actions {
+  /* Right side actions */
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;  /* gap-3 */
+}
+
+@media (min-width: 768px) {
+  .header {
+    padding: 1.25rem 1rem;  /* py-5 px-4 */
+  }
+}
+```
+
+**Country List Navigation:**
+```css
+.country-list {
+  /* Base styles */
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: calc(50vh - 40px);  /* h-[calc(50vh-40px)] */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1rem;  /* p-4 */
+}
+
+.country-list-item {
+  /* Individual country button */
+  /* See Button styles above */
+  padding: 0.5rem 0.75rem;  /* py-2 px-3 */
+  border-bottom: 1px solid rgb(196 196 194);  /* divide-stone-300 */
+}
+
+.country-list-item:last-child {
+  border-bottom: none;
+}
+```
+
+### Modals/Dialogs
+
+```css
+/* No modals/dialogs detected in the current page */
+```
+
+### Loading Indicators
+
+```css
+.loading-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 600px;
+  width: 600px;
+  font-size: 14px;
+  font-family: Rubik, sans-serif;
+}
+```
+
+## Animations and Transitions
+
+### CSS Transitions
+
+```css
+/* Standard Transition */
+.transition {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 0.15s;
+}
+
+/* All Properties Transition */
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 0.15s;
+}
+
+/* Extended Duration */
+.duration-300 {
+  transition-duration: 0.3s;
+}
+```
+
+### CSS Animations
+
+```css
+/* No custom keyframe animations detected */
+/* The design uses CSS transitions for interactions */
+```
+
+### Scroll Animations
+
+```css
+/* No scroll-triggered animations detected */
+```
+
+### Page Transitions
+
+```css
+/* No page transition animations detected */
+/* The app appears to be a single-page application */
+```
+
+## Page Layouts
+
+### Country Comparison Page Layout
+
+**Layout Structure:**
+```css
+.page-container {
+  min-height: 100vh;  /* min-h-screen */
+  min-height: 100svh; /* min-h-svh */
+  background-color: rgb(244 243 236);  /* bg-stone-100 */
+  font-family: Reddit Mono, monospace;
+  font-size: 16px;
+  line-height: 1;
+  color: rgb(5 5 5);  /* text-zinc-950 */
+  letter-spacing: -0.02em;  /* -tracking-2 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.page-header {
+  /* Header section */
+  position: relative;
+  border-bottom: 1px solid rgb(209 209 209);
+}
+
+.page-main {
+  /* Main content area */
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));  /* Mobile: 2 columns */
+  gap: 0.125rem;
+}
+
+@media (min-width: 768px) {
+  .page-main {
+    grid-template-columns: repeat(12, minmax(0, 1fr));  /* 12-column grid */
+    gap: 0;
+  }
+}
+
+.country-section {
+  /* Individual country comparison section */
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));  /* Mobile */
+  gap: 0.125rem;
+  padding: 1.25rem 0.75rem;  /* py-5 px-3 */
+}
+
+@media (min-width: 768px) {
+  .country-section {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 0;
+    padding: 2rem 1.25rem;  /* py-8 px-5 */
+  }
+}
+```
+
+**Components Used:**
+- Header with logo and unit toggle
+- Country selector buttons
+- Comparison cards with data visualizations
+- Metric cards with icons and values
+- Country list navigation
+
+**Responsive Behavior:**
+- Mobile: 2-column grid layout, stacked components
+- Tablet: 12-column grid layout, side-by-side country comparisons
+- Desktop: Same as tablet with increased padding and font sizes
+
+## User Flows and Navigation
+
+### Primary User Flows
+
+1. **Country Selection Flow:**
+   - Step 1: User views country list (scrollable list of all countries)
+   - Step 2: User clicks a country button
+   - Step 3: Page updates to show selected country comparison
+   - Step 4: Comparison data displays side-by-side with previously selected country
+
+2. **Unit Toggle Flow:**
+   - Step 1: User views unit toggle in header (metric/imperial)
+   - Step 2: User clicks radio button to switch units
+   - Step 3: All displayed values update to selected unit system
+   - Step 4: Selection persists during session
+
+3. **Country Comparison Flow:**
+   - Step 1: User selects first country (default: United States Virgin Islands)
+   - Step 2: User selects second country (default: Guatemala)
+   - Step 3: Comparison displays side-by-side with key metrics
+   - Step 4: User can swap countries or select new ones
+
+### Navigation Structure
+
+- **Main Navigation**: Header with logo link (home) and unit toggle
+- **Country Navigation**: Scrollable list of all countries (alphabetical)
+- **No Footer Navigation**: Footer not present on this page
+
+### Link Patterns
+
+- **Logo Link**: Links to homepage (/)
+- **Country Buttons**: Trigger country selection (no navigation)
+- **Data Value Buttons**: Interactive data points (functionality not fully determined)
+
+## Responsive Design Patterns
+
+### Mobile (< 768px)
+
+**Layout Changes:**
+- 2-column grid layout for country sections
+- Stacked country comparison cards
+- Full-width country list
+- Compact header with logo and unit toggle
+- Smaller font sizes (12px, 14px, 16px, 18px, 20px)
+- Reduced padding (py-5 px-3)
+
+**Component Variations:**
+- Smaller icons (1.5rem / 24px)
+- Tighter spacing between elements
+- Country list takes full viewport height (calc(50vh - 40px))
+
+**Navigation Patterns:**
+- Country list scrollable within viewport
+- Unit toggle visible in header
+
+### Tablet (768px - 1279px)
+
+**Layout Changes:**
+- 12-column grid layout
+- Side-by-side country comparisons
+- Increased padding (py-8 px-5)
+- Larger font sizes (28px for headings)
+
+**Component Variations:**
+- Larger icons (2.25rem / 36px)
+- Increased spacing (gap-7 = 1.75rem)
+- Max-width constraints (600px for content areas)
+
+**Navigation Patterns:**
+- Country list maintains scrollable behavior
+- Improved spacing in header
+
+### Desktop (> 1280px)
+
+**Layout Changes:**
+- Same 12-column grid as tablet
+- Increased horizontal padding (px-12 = 3rem)
+- Largest heading size (40px / text-40)
+
+**Component Variations:**
+- Maximum content width maintained
+- Enhanced spacing throughout
+
+## Loading States and Indicators
+
+### Page Load
+
+**Initial Render:**
+- Minimal loading state
+- Content appears progressively as data loads
+- Loading placeholder for data visualizations (600x600px)
+
+### Content Loading
+
+**Data Fetching:**
+- API calls to `/api/countries` and `/api/countries/{code}/attributes`
+- Loading states handled by React components
+- No visible skeleton screens detected
+
+### Form Submission
+
+**No Form Submissions:**
+- Interface uses button clicks and radio selections
+- No traditional form submission patterns
+
+## Interactive Behaviors
+
+### Hover Effects
+
+**Country Button Hover:**
+```css
+.country-button:hover {
+  background-color: rgba(41, 37, 36, 0.05);  /* bg-stone-800/5 */
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+```
+
+**Data Button Hover:**
+```css
+.data-button:hover {
+  /* Underline decoration provides visual feedback */
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+```
+
+### Click Interactions
+
+**Button Click Feedback:**
+- Subtle background color change on country buttons
+- Radio button selection state change
+- Immediate visual feedback with transitions
+
+### Scroll Behaviors
+
+**Country List Scrolling:**
+- Vertical scrolling within constrained height
+- Smooth scroll behavior
+- No scroll-triggered animations
+
+### Form Interactions
+
+**Radio Button Selection:**
+- Immediate state change
+- Visual indication of selected option
+- Unit conversion updates all displayed values
+
+## Implementation Guidelines
+
+### CSS Architecture
+
+**Framework:** Tailwind CSS with custom configuration
+**Naming Convention:** Utility-first classes (Tailwind standard)
+**Organization:** Single compiled CSS file with utility classes
+
+### Component Structure
+
+**Framework:** React (Vue.js detected via v-cloak directive)
+**Component Pattern:** Functional components with composition
+**State Management:** React state hooks (inferred from behavior)
+
+### Animation Performance
+
+**Best Practices:**
+- Use CSS transitions for simple state changes
+- Keep transition durations short (0.15s - 0.3s)
+- Use transform and opacity for performance
+- Avoid layout-triggering properties in animations
+
+### Accessibility Considerations
+
+**Focus States:**
+- Default browser focus outlines
+- Keyboard navigation supported
+- Radio buttons accessible via keyboard
+
+**ARIA Patterns:**
+- Semantic HTML elements (header, main, section)
+- Proper label associations for form elements
+- Screen reader friendly structure
+
+## Design Tokens
+
+```css
+:root {
+  /* Colors - Stone Palette */
+  --color-stone-100: rgb(244 243 236);
+  --color-stone-300: rgb(196 196 194);
+  --color-stone-400: rgb(161 155 145);
+  --color-stone-500: rgb(161 158 145);
+  --color-stone-800: rgb(41 37 36);
+  
+  /* Colors - Zinc Palette */
+  --color-zinc-400: rgb(176 176 176);
+  --color-zinc-500: rgb(113 113 122);
+  --color-zinc-950: rgb(5 5 5);
+  
+  /* Colors - Neutral Palette */
+  --color-neutral-200: rgb(229 229 229);
+  --color-neutral-300: rgb(209 209 209);
+  
+  /* Typography */
+  --font-family-primary: Rubik, sans-serif;
+  --font-family-mono: Reddit Mono, monospace;
+  --font-size-base: 16px;
+  --font-size-12: 0.75rem;
+  --font-size-14: 0.875rem;
+  --font-size-16: 1rem;
+  --font-size-18: 1.125rem;
+  --font-size-20: 1.25rem;
+  --font-size-28: 1.75rem;
+  --font-size-40: 2.5rem;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --line-height-none: 1;
+  --line-height-120: 1.2;
+  --line-height-130: 1.3;
+  --letter-spacing-tight: -0.02em;
+  
+  /* Spacing */
+  --spacing-unit: 0.25rem;  /* 4px base unit */
+  --spacing-0: 0;
+  --spacing-0-5: 0.125rem;
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-5: 1.25rem;
+  --spacing-6: 1.5rem;
+  --spacing-7: 1.75rem;
+  --spacing-8: 2rem;
+  --spacing-12: 3rem;
+  
+  /* Borders */
+  --border-width: 1px;
+  --border-radius-full: 9999px;
+  --border-color-neutral: rgb(209 209 209);
+  --border-color-zinc: rgb(176 176 176);
+  
+  /* Transitions */
+  --transition-duration: 0.15s;
+  --transition-duration-300: 0.3s;
+  --transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* Breakpoints */
+  --breakpoint-tablet: 768px;
+  --breakpoint-desktop: 1280px;
+}
+```
+
+## Page-Specific Designs
+
+### Country Comparison Page (/vi/gt)
+
+**Layout Structure:**
+```
+┌─────────────────────────────────────┐
+│ Header (Logo + Unit Toggle)        │
+├─────────────────────────────────────┤
+│                                     │
+│  ┌─────────────┬─────────────┐     │
+│  │ Country 1   │ Country 2   │     │
+│  │ Section     │ Section     │     │
+│  │             │             │     │
+│  │ - Map       │ - Map       │     │
+│  │ - Name      │ - Name      │     │
+│  │ - Metrics   │ - Metrics   │     │
+│  └─────────────┴─────────────┘     │
+│                                     │
+│  Country List (Scrollable)          │
+│                                     │
+└─────────────────────────────────────┘
+```
+
+**Components Used:**
+- Header: Logo link, unit toggle radio group
+- Country Comparison Sections: Two side-by-side sections (mobile: stacked)
+- Data Visualization: SVG-based maps/graphics
+- Metric Cards: Icon + value + label pattern
+- Country List: Scrollable list of all countries
+
+**Responsive Behavior:**
+- Mobile: Stacked layout, 2-column grid for metrics
+- Tablet+: Side-by-side comparison, 12-column grid system
+- Country list adapts height based on viewport
+
+## Motion Graphics and Advanced Animations
+
+### No Advanced Animations
+
+The design system uses minimal animations:
+- CSS transitions for hover states (0.15s duration)
+- No keyframe animations
+- No scroll-triggered effects
+- No page transitions
+- Focus on data clarity over motion
+
+## Design Patterns and Best Practices
+
+### Layout Patterns
+
+**Grid-Based Layout:**
+- Mobile: 2-column grid for metrics
+- Tablet+: 12-column grid for flexible layouts
+- Consistent gap system (0.125rem on mobile, 0 on tablet+)
+
+**Container Pattern:**
+- Max-width constraints at breakpoints
+- Centered with auto margins
+- Responsive padding
+
+### Component Patterns
+
+**Data Display Pattern:**
+- Icon + Value + Label structure
+- Monospace font for data values
+- Sans-serif font for labels
+- Clear visual hierarchy
+
+**Button Pattern:**
+- Minimal styling (transparent background)
+- Hover state with subtle background
+- Underline decoration for data buttons
+- Consistent padding and spacing
+
+### Animation Patterns
+
+**Subtle Transitions:**
+- Short duration (0.15s)
+- Smooth easing (cubic-bezier)
+- Property-specific transitions
+- No distracting animations
+
+## Implementation Checklist
+
+### Setup
+- [x] Set up CSS variables/tokens
+- [x] Configure typography system
+- [x] Set up color palette
+- [x] Configure spacing system
+
+### Components
+- [x] Implement button variants
+- [x] Implement card components
+- [x] Implement form elements (radio buttons)
+- [x] Implement navigation
+- [x] Implement data visualization containers
+- [x] Implement country list
+
+### Responsive Design
+- [x] Implement mobile layouts
+- [x] Implement tablet layouts
+- [x] Implement desktop layouts
+- [x] Test at all breakpoints
+
+### Animations
+- [x] Implement CSS transitions
+- [ ] Implement CSS animations (N/A - not used)
+- [ ] Implement scroll animations (N/A - not used)
+- [ ] Implement page transitions (N/A - SPA)
+
+## Notes and Observations
+
+1. **Minimalist Design Philosophy:** The design prioritizes data clarity over decorative elements. No shadows, gradients, or complex animations.
+
+2. **Typography Contrast:** The use of monospace (Reddit Mono) for data and sans-serif (Rubik) for UI creates a clear visual distinction between data and interface.
+
+3. **Warm Neutral Palette:** The stone color palette provides a warm, approachable feel while maintaining excellent readability.
+
+4. **Responsive Grid System:** The transition from 2-column to 12-column grid allows for flexible layouts while maintaining consistency.
+
+5. **Data-First Approach:** All design decisions support the primary goal of comparing country statistics clearly and efficiently.
+
+6. **Accessibility:** Semantic HTML structure and proper labeling support screen readers and keyboard navigation.
+
+7. **Performance:** Minimal CSS and simple transitions ensure fast page loads and smooth interactions.
+
+8. **Unit System:** The metric/imperial toggle is prominently placed in the header, indicating its importance to the user experience.
+
+9. **Country Selection:** The scrollable country list provides quick access to all available countries without pagination.
+
+10. **Visual Hierarchy:** Clear separation between countries, metrics, and labels through spacing, typography, and layout structure.

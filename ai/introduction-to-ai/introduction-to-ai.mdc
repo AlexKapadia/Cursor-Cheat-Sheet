@@ -1,0 +1,762 @@
+---
+alwaysApply: false
+---
+
+# Introduction to AI
+
+## Paper Metadata
+- **Title:** Introduction to AI (Chapter 1)
+- **Source Book:** Artificial Intelligence, Machine Learning, and Deep Learning
+- **Author:** Oswald Campesato
+- **Year:** 2020
+- **Publisher:** Mercury Learning and Information
+- **ISBN:** 978-1-68392-467-8
+- **Chapter:** 1
+
+## Abstract / Summary
+
+This chapter provides a gentle introduction to AI, primarily as a broad overview of this diverse topic. Unlike the other chapters in this book, this introductory chapter is "light" in terms of technical content. However, it's easy to read and also worth skimming through its contents. Machine learning and deep learning are briefly introduced toward the end of this chapter, both of which are discussed in more detail in subsequent chapters.
+
+Keep in mind that many AI-focused books tend to discuss AI from the perspective of computer science and a discussion of traditional algorithms and data structures. By contrast, this book treats AI as an "umbrella" for machine learning and deep learning, and therefore it's discussed in a cursory manner as a precursor to the other chapters.
+
+The first part of this chapter starts with a discussion regarding the term artificial intelligence, various potential ways to determine the presence of intelligence, as well as the difference between Strong AI and Weak AI. You will also learn about the Turing Test, which is a well-known test for intelligence.
+
+The second part of this chapter discusses some AI uses-cases and the early approaches to neural computing, evolutionary computation, NLP, and bioinformatics.
+
+The third part of this chapter introduces you to major subfields of AI, which include natural language processing (with NLU and NLG), machine learning, deep learning, reinforcement learning, and deep reinforcement learning.
+
+## Problem Statement
+
+### Problem Definition
+
+This chapter addresses the fundamental question: What is Artificial Intelligence? It explores:
+- The definition and nature of intelligence
+- How to determine if something (or someone) is intelligent
+- The distinction between Strong AI and Weak AI
+- Historical approaches to AI and their evolution
+- Major subfields and applications of AI
+
+### Motivation
+
+Understanding AI is crucial because:
+- AI systems are becoming increasingly prevalent in daily life
+- AI techniques are being applied across diverse domains
+- There are philosophical and practical questions about machine intelligence
+- AI serves as the foundation for machine learning and deep learning
+
+### Challenges
+
+Key challenges in AI include:
+- Defining intelligence in operational terms
+- Distinguishing between different approaches to AI (strong vs weak)
+- Understanding the evolution from rule-based systems to data-driven approaches
+- Balancing performance with biological plausibility
+- Addressing ethical concerns and biases in AI systems
+
+### Scope
+
+This chapter covers:
+- Definitions and concepts of AI
+- The Turing Test and its variations
+- Historical AI approaches (heuristics, expert systems, neural computing)
+- Major AI subfields (ML, DL, NLP, RL)
+- Applications of AI (games, robotics, bioinformatics)
+
+The chapter does NOT include:
+- Detailed technical implementations
+- Code examples (these are in companion files)
+- Deep mathematical foundations (covered in later chapters)
+
+## Key Concepts and Techniques
+
+1. **Artificial Intelligence (AI):** The science of making machines do things that would require intelligence if done by man
+2. **Strong AI:** Approach that requires AI systems to use the same methodologies as humans (biological plausibility)
+3. **Weak AI:** Approach that focuses on performance regardless of how the task is accomplished
+4. **Turing Test:** A test for machine intelligence where a computer must deceive an interrogator into thinking it's human
+5. **Heuristics:** Rules of thumb for solving problems that often work but don't guarantee solutions
+6. **Genetic Algorithms:** Heuristics that mimic natural selection to solve optimization problems
+7. **Knowledge Representation:** Methods for storing and organizing knowledge in AI systems
+8. **Expert Systems:** Rule-based systems that encode domain expertise (if-condition-then-action rules)
+9. **Neural Computing:** Computing inspired by biological neural networks
+10. **Evolutionary Computation:** AI branch where solutions adapt like organisms in nature
+11. **Natural Language Processing (NLP):** AI subfield for understanding and processing human language
+12. **Machine Learning (ML):** AI subset that learns from data rather than explicit rules
+13. **Deep Learning (DL):** ML subset using deep neural networks
+14. **Reinforcement Learning (RL):** ML approach using trial-and-error to maximize rewards
+15. **Deep Reinforcement Learning (DRL):** Combining deep learning with reinforcement learning
+
+## Related Work and Background
+
+### Previous Approaches
+
+**Traditional AI (20th Century):**
+- Based on collections of rules
+- Led to expert systems in the 1980s
+- Used LISP programming language (created by John McCarthy in 1956)
+- Primarily rule-based systems with conditional logic
+- Limitations: Requires thousands of rules even for simple objects
+
+**Early AI Systems:**
+- DENDRAL: Chemical compound identification system (Stanford, 1960s)
+- MYCIN: Medical diagnosis system for infectious diseases (Stanford, 1984)
+- PROSPECTOR: Mineral exploration system (Stanford, 1970s)
+- XCON: VAX computer configuration system (10,000 rules)
+- SHRDLU: Blocks World robot system (Terry Winograd, 1972)
+- ELIZA: Early chatbot (Joseph Weizenbaum, MIT)
+
+### How This Differs
+
+This chapter provides a broad, accessible introduction rather than:
+- Deep technical details
+- Mathematical foundations
+- Implementation specifics
+- Algorithm descriptions
+
+It serves as a foundation for understanding subsequent chapters on machine learning and deep learning.
+
+## Methodology and Approach
+
+### High-Level Overview
+
+This chapter takes a historical and conceptual approach to AI:
+1. **Definitional Phase:** Explores what AI and intelligence mean
+2. **Historical Phase:** Reviews early AI approaches and systems
+3. **Taxonomic Phase:** Introduces major AI subfields
+4. **Application Phase:** Discusses real-world AI applications
+
+### Design Principles
+
+- **Accessibility:** Written for readers new to AI
+- **Breadth over Depth:** Covers many topics at an introductory level
+- **Historical Context:** Provides background on AI evolution
+- **Practical Orientation:** Connects concepts to real applications
+
+## Detailed Content
+
+### What Is Artificial Intelligence?
+
+The literal meaning of the word artificial is synthetic, which often has a negative connotation of being an inferior substitute. However, artificial objects (e.g., flowers) can closely approximate their counterparts, and sometimes they can be advantageous when they do not have any maintenance requirements.
+
+By contrast, a definition for intelligence is more elusive. R. Sternberg provides the following useful definition: "Intelligence is the cognitive ability of an individual to learn from experience, to reason well, to remember important information, and to cope with the demands of daily living."
+
+**Key Questions:**
+- How do you decide if someone (something?) is intelligent?
+- Are animals intelligent?
+- If animals are intelligent, how do you measure their intelligence?
+- Can inanimate objects, such as computers, possess intelligence?
+
+**Intelligence Assessment:**
+- We assess intelligence through interaction: asking questions and observing answers
+- Animal intelligence is assessed through behavior observation
+- Examples: Clever Hans (horse), dolphins (tool use, self-awareness), ant colonies (collective intelligence)
+
+**Machine Intelligence:**
+The declared goal of artificial Intelligence is to create computer software and/or hardware systems that exhibit thinking comparable to that of humans, in other words, to display characteristics usually associated with human intelligence.
+
+**Thinking vs Intelligence:**
+- Thinking: The facility to reason, analyze, evaluate, and formulate ideas and concepts
+- Intelligence: Perhaps akin to efficient and effective thinking
+- Not every being capable of thinking is intelligent
+
+**Raphael's Definition:** Artificial intelligence is the science of making machines do things that would require intelligence if done by man.
+
+### Strong AI versus Weak AI
+
+**Weak AI Approach (MIT):**
+- Views any system that exhibits intelligent behavior as an example of AI
+- Focuses on whether a program performs correctly
+- Not concerned with whether the artifact performs its task in the same way humans do
+- Results primarily concerned with satisfactory performance
+- Measures success based on performance alone
+- Maintains that the raison d'être of AI research is to solve difficult problems regardless of how they are actually solved
+
+**Strong AI Approach (Carnegie-Mellon University - Biological Plausibility):**
+- When an artifact exhibits intelligent behavior, its performance should be based upon the same methodologies used by humans
+- Example: For a hearing system, would simulate cochlea, hearing canal, eardrum, etc.
+- Concerned with the structure of the systems they build
+- Maintains that by possessing heuristics, algorithms, and knowledge, computers can possess a sense of consciousness and intelligence
+- Examples in popular culture: I, Robot, Blade Runner
+
+### The Turing Test
+
+Alan Turing sought to answer the question of intelligence in operational terms. He wanted to separate functionality (what something does) from implementation (how something is built).
+
+**Definition of the Turing Test:**
+
+Turing proposed two imitation games. In the first game:
+- An interrogator is in a room with a curtain
+- On the other side is a person
+- The interrogator must determine whether it is a man or a woman
+- The man may lie, but the woman is always truthful
+- Communication is via computer (not voice)
+- If the man successfully deceives the interrogator, he wins
+
+**An Interrogator Test (Second Game):**
+- More appropriate to the study of AI
+- An interrogator is in a room with a curtain
+- A computer or a person is behind the curtain
+- The machine plays the role of the male (may lie)
+- The person is consistently truthful
+- The interrogator asks questions to determine if communicating with a person or machine
+- If the computer successfully deceives the interrogator, it passes the Turing Test and is considered intelligent
+
+**Modern Updates:**
+- New variations of the Turing test have been developed
+- Tests for androids and humanoid robots
+- Links provided in the chapter for current research
+
+### Heuristics
+
+**Definition:**
+A heuristic is essentially a "rule of thumb" for solving a problem. It is a set of guidelines that often works to solve a problem. Contrast with an algorithm, which is a prescribed set of rules to solve a problem and whose output is entirely predictable.
+
+**Characteristics:**
+- Technique for finding an approximate solution
+- Used when other methods are too time-consuming or too complex
+- Favorable outcome is likely but not guaranteed
+- Especially popular in the early days of AI
+
+**Examples:**
+- Driving directions: Proceed in the direction with more streetlights at a fork
+- Recovering a dropped contact lens
+- Finding parking spaces
+
+**AI Applications:**
+- Medical diagnosis
+- Expert systems
+- Problem-solving in complex domains
+
+**When to Use:**
+- AI problems are large and computationally complex
+- Cannot be solved via straightforward algorithms
+- Domains embody large amount of human expertise
+- Better solved using AI than traditional computer science approaches
+
+### Genetic Algorithms
+
+**Definition:**
+A genetic algorithm is a heuristic that "mimics" the process of natural selection, which involves selecting the fittest individuals for reproduction to sire the offspring of the subsequent generation.
+
+**Key Concepts:**
+- Based on Darwin's theory of evolution
+- Natural selection in nature: thousands or millions of years
+- Evolution in computers: much faster than natural selection
+- Part of evolutionary computation branch of AI
+- Proposed solutions adapt like animal creatures adapt to their environments
+
+**Genetic Operators:**
+- Natural selection
+- Reproduction
+- Mutation
+- Recombination
+
+**Evolutionary Computation:**
+- Branch of AI where proposed solutions to a problem adapt
+- Not solely concerned with optimization problems
+- Rodney Brooks' approach: Intelligence emerges through interaction of an agent with its environment
+- Multiple layers: higher layers rely upon lower layers
+- Example: Obstacle avoidance built upon locomotion layer
+
+### Knowledge Representation
+
+**Importance:**
+The issue of representation becomes important when we consider AI-related problems. AI systems that acquire and store knowledge need the ability to identify and represent that knowledge. The choice of a representation is intrinsic to the nature of problem solving and understanding.
+
+**George Polya's Insight:**
+A good representation choice is almost as important as the algorithm or solution plan devised for a particular problem. Good and natural representations facilitate fast and comprehensible solutions.
+
+**Example: Missionaries and Cannibals Problem**
+- Goal: Transfer three missionaries and three cannibals across a river
+- Constraints: Boat holds max 2 people; cannibals can never outnumber missionaries on any bank
+- Solution path visible by selecting appropriate representation
+
+**Approaches:**
+1. **Logic-based Solutions:** Used for knowledge representation and problem-solving
+   - Example: Terry Winograd's Blocks World (1972)
+   - Production rules and production systems for expert systems
+
+2. **Semantic Networks:** Graphical representation of knowledge
+   - Precede object-oriented languages
+   - Use inheritance (objects inherit properties from superclasses)
+   - Examples: SNePS (Semantic Net Processing System), Roger Schank's work
+   - State-space representations: display all possible states of a system
+
+### AI and Games
+
+**Historical Significance:**
+Since the middle of the twentieth century, significant progress in computer science and programming techniques was acquired through training computers to play and master complex board games.
+
+**Games Benefiting from AI:**
+- Chess
+- Checkers
+- Go
+- Othello
+- Backgammon
+- Poker
+- Bridge
+
+**Key Milestones:**
+
+**Checkers:**
+- 1959: Arthur Samuel's program based on 50 heuristics
+- 1989: Jonathan Schaeffer's Chinook program
+- 1992: Chinook vs World Champion Marion Tinsley (4 losses, 34 draws)
+- 1994: Match tied when Tinsley forfeited due to health
+
+**Chess:**
+- 1959: First real chess program (Newell, Simon, Shaw) - Shannon-Turing Paradigm
+- 1970s: Reached Expert level (top 1% of players)
+- 1983: Ken Thompson's Belle - first Master level program
+- Carnegie-Mellon: Hitech (first Senior Master, 2400+), Deep Thought (beat Grandmasters)
+- 1996: Deep Blue vs Garry Kasparov (Kasparov won)
+- 1997: Deeper Blue vs Kasparov (Kasparov lost)
+
+**The Success of AlphaZero:**
+- Google's AI program using self-play
+- Successor to AlphaGo (defeated world's best Go player in 2016)
+- AlphaZero easily defeated AlphaGo
+- After learning chess rules, trained itself in one day
+- Became top chess player in the world
+- Can defeat any human or computer program
+- Developed its own counterintuitive strategy
+- 100% self-taught
+- Question: Does AlphaZero qualify as intelligent?
+
+### Expert Systems
+
+**Characteristics:**
+- One of AI's great successes
+- Separation of knowledge base from inference engine
+- More than the sum of any or all of their experts
+- Relationship of knowledge to search techniques, reasoning, and uncertainty
+
+**Famous Systems:**
+
+**DENDRAL (Stanford, 1960s):**
+- Identify unknown chemical compounds from mass spectrographs
+- Goal: Chemical analysis of Martian soil
+- First system to illustrate feasibility of encoding domain-expert knowledge
+
+**MYCIN (Stanford, 1984):**
+- Investigate infectious blood diseases
+- Over 400 rules
+- Established design pattern for subsequent knowledge-based systems
+- Used for training dialogue for Stanford hospital residents
+
+**PROSPECTOR (Stanford, 1970s):**
+- Mineral exploration
+- Early example of inference networks
+
+**Other 1970s Systems:**
+- XCON: Configure electrical circuit boards on VAX computers (10,000 rules)
+- GUIDON: Tutoring system (offshoot of Mycin)
+- TEIRESIAS: Knowledge acquisition tool for Mycin
+- HEARSAY I and II: Speech understanding using Blackboard Architecture
+- AM (Artificial Mathematician): Doug Lenat's system
+- Dempster-Schafer Theory: Reasoning under uncertainty
+- Zadeh's fuzzy logic
+
+**Modern Applications:**
+- Thousands of expert systems since 1980s
+- Areas: configuration, diagnosis, instruction, monitoring, planning, prognosis, remedy, control
+- Embedded in medical equipment, automobiles (traction control)
+- Expert system shells: Emycin, OPS, EXSYS, CLIPS
+- Behind-the-scenes: online shopping carts, etc.
+
+### Neural Computing
+
+**Early Research:**
+- McCulloch and Pitts: Early research to understand animal nervous systems
+- Model of artificial neural networks (ANN) - lacked learning mechanism
+
+**Perceptron:**
+- Frank Rosenblatt: Perceptron Learning Rule
+- Single-layered network (all neurons directly connected to inputs)
+- Minsky and Papert: Certain problems cannot be solved by single-layer perceptrons (e.g., XOR function)
+- Federal funding severely curtailed after this proclamation
+
+**1980s Revival:**
+- Hopfield: Asynchronous network model (Hopfield networks)
+- Used energy function to approximate solutions to NP-complete problems
+- Mid-1980s: Discovery of back propagation (backprop)
+- Learning algorithm for multilayered networks
+
+**Applications:**
+- Predict Dow Jones averages
+- Optical character recognition (OCR)
+- Control systems: ALVINN (Carnegie Mellon) - highway sensing and steering for Navlab vehicle
+- Future: Autonomous vehicles
+
+### Evolutionary Computation
+
+**Genetic Algorithms:**
+- Part of evolutionary computation
+- Use probability and parallelism to solve combinatorial/optimization problems
+- Developed by John Holland
+
+**Rodney Brooks' Approach:**
+- Former director of MIT Computer Science and AI Laboratory
+- Goal: Human-level Artificial Intelligence (holy grail of AI research)
+- Renounces symbol-based approach (heuristics and representational paradigms)
+- Intelligent systems designed in multiple layers
+- Higher layers rely upon lower layers
+- Example: Obstacle avoidance built upon locomotion layer
+- Intelligence emerges through interaction of an agent with its environment
+- Famous for insectlike robots embodying this philosophy
+- Community of autonomous robots interact with environment and each other
+
+### Natural Language Processing
+
+**Early Systems:**
+
+**ELIZA (Joseph Weizenbaum, MIT):**
+- Imitated role of psychiatrist (Carl Rogers School)
+- Back propagation application for English text pronunciation (95% accuracy)
+- Problems: Inconsistencies in English pronunciation (rough, through, pizza, fizzy)
+- Pattern matching to feign human-like interaction
+- Weizenbaum disturbed by public interest despite knowing it was just a program
+- Kenneth Colby continued with DOCTOR program
+
+**SHRDLU (Terry Winograd):**
+- Named after most frequently used letters in English (ETAOIN SHRDLU)
+- Robot arm in Blocks World
+- Could understand English commands and respond appropriately
+- Example: Knew to remove green block before lifting red block
+- Used context-free grammar for parsing
+
+**HEARSAY:**
+- Ambitious speech recognition program
+- Blackboard architecture
+- Independent knowledge sources (agents) for phonetics, phrases, etc.
+- Used syntax and semantics to prune improbable word combinations
+
+**HWIM (Hear What I Mean):**
+- Augmented transition networks for spoken language
+- Vocabulary: 1,000 words (travel budget management)
+- Too ambitious in scope, didn't perform as well as HEARSAY II
+
+**Parsing:**
+- Integral part of natural language programs
+- Context-free grammars provide syntactic structure
+- Semantics must also be considered
+- Parse trees: Show relationship between words in sentences
+- Subject-predicate breakdown, noun phrases, prepositional phrases
+
+**Common Sense Knowledge Problem:**
+- Late 1980s: Greatest stumbling block for NLP progress
+- Programs criticized as microworlds (lacked general real-world knowledge)
+- Example: Program might know about restaurant ordering but not whether waiters are alive or wear clothing
+- Douglas Lenat (MCC, Austin, Texas): Building largest repository of common-sense knowledge (25+ years)
+
+**Statistical NLP:**
+- Charniak: Context-free grammars augmented with probabilities
+- Probabilities from Penn Treebank (1+ million words, manually parsed, mostly Wall Street Journal)
+- Successfully parsed sentences from New York Times front page
+
+**Modern NLP:**
+- Deep-learning architectures: RNNs, LSTMs, bidirectional LSTMs (Chapter 5)
+- Transformers: Developed by Google in 2017
+- BERT: Based on transformers and attention, powerful open-source system
+- Deep Reinforcement Learning (Chapter 6)
+
+**MIT Robots:**
+- Cog, Kismet, Paro: Feign human emotions, evoke emotional responses
+- Turkle's research: Relationships with children and nursing home residents
+- Need to redefine "relationship" to include encounters with relational artifacts
+- Confidence that such relationships won't replace human bonds
+
+### Bioinformatics
+
+**Definition:**
+Bioinformatics is the nascent discipline that concerns the application of the algorithms and techniques of computer science to molecular biology. It is mainly concerned with the management and analysis of biological data.
+
+**Applications:**
+- Structural genomics: Specify structure for each observed protein
+- Automated discovery and data mining
+- Case-based reasoning for protein structure discovery
+- Analysis of microarray data (most rapidly growing area)
+
+**Challenges:**
+- Microbiologists overwhelmed with variety and quantity of data
+- Must comprehend molecular sequence, structure, and data from huge databases
+- AI techniques from knowledge representation and machine learning prove beneficial
+
+### Major Parts of AI
+
+**Subfields:**
+- ML (Machine Learning)
+- DL (Deep Learning)
+- NLP (Natural Language Processing)
+- RL (Reinforcement Learning)
+- DRL (Deep Reinforcement Learning)
+
+**Traditional AI (20th Century):**
+- Based on collections of rules
+- Led to expert systems in 1980s
+- Used LISP (created by John McCarthy, 1956)
+- Primarily rule-based systems with conditional logic
+- Limitations: Requires thousands of rules even for simple objects (chair, table, apple)
+
+### Machine Learning
+
+**Overview:**
+- Subset of AI
+- Relies primarily on data to optimize and "learn" how to perform tasks
+- Accompanied by new or improved algorithms: linear regression, k-NN, decision trees, random forests, SVMs
+- Exception: Linear regression (others are classifiers)
+
+**Data Types:**
+- Supervised learning: Lots of labeled data
+- Semi-supervised learning: Lots of partially labeled data
+- Unsupervised learning: Lots of data, clustering
+- Reinforcement learning: Trial, feedback, and improvement
+
+**Andrew Ng Quote:** "99% of all machine learning is supervised."
+
+**Algorithm Types:**
+- Classifiers: For images, spam, fraud, etc.
+- Regression: Stock price, housing price, etc.
+- Clustering: Unsupervised classifiers
+
+### Deep Learning
+
+**Overview:**
+- Important subfield of machine learning
+- Roots in middle of 20th century
+- Deep-learning architectures rely on perceptron as basis of neural networks
+- Often involves large or massive datasets
+- Involves heuristics and empirical results
+- Can surpass humans for some image classification
+
+**Key Differences from ML:**
+- Machine learning: MLPs (multilayer perceptrons)
+- Deep learning: Deep neural networks with new algorithms and architectures
+- Examples: Convolutional neural networks, RNNs, LSTMs
+
+### Reinforcement Learning
+
+**Overview:**
+- Subset of machine learning
+- Involves trial-and-error to maximize reward for an agent
+- Deep reinforcement learning: Combines deep learning with reinforcement learning
+- Agent in RL replaced with neural network
+
+**Applications:**
+- Games (Go, Chess, etc.)
+- Robotics
+- NLP
+
+**Examples:**
+- Alpha Go: Hybrid RL
+- Alpha Zero: Complete RL
+- Often involve Greedy algorithms
+- Deep RL: Combines Deep Learning and RL
+
+### Robotics
+
+**Applications:**
+Robots have entered personal and professional lives in many ways:
+- Surgery (assisting surgeons)
+- Radiology (detecting cancer)
+- Drug mismanagement
+- Comparative theories of religion
+- Law/real estate/military/science
+- Comedy (including stand-up)
+- Music (conducting orchestras)
+- Restaurants (gourmet meals)
+- Coordinated dancing teams
+- Many other fields
+
+**Advantages:**
+- Robot truck drivers: Only cost is machinery upkeep
+- Not distracted like humans
+- Don't engage in activities that contribute to accidents
+- Don't require salaries or time off
+
+**Reality Check:**
+Despite surprising achievements, Star Trek's character Data is still just a dream.
+
+### NLP Applications
+
+**NLP Tasks Solved with ML:**
+- Translating between languages
+- Finding meaningful information from text
+- Summarizing documents
+- Detecting hate speech
+
+**Issues to Resolve:**
+- Occupational bias: AI system inferred white males = doctors, white females = housewives
+- Gender bias: Wikipedia (2018) - 18% biographies are women, 84-90% editors are male
+- Data bias vs algorithmic bias
+- AI and ethics: Unemployment, robot rights, etc.
+
+## Code Examples and Snippets
+
+### Code Samples Mentioned
+
+The companion disc contains the following files:
+- `RubiksCube.py`: Solution for Rubik's Cube (Python 2.x)
+- `Board.java`: Solution to Red Donkey problem
+- `Search.java`: Solution to Red Donkey problem
+
+**Note:** Code-specific samples are not discussed in detail in this chapter. The companion files contain Java-based code for solving the Red Donkey problem and Python-based code for solving Rubik's Cube.
+
+**Installation Requirements:**
+- Java Runtime Environment (JRE): http://www.oracle.com/technetwork/java/javase/downloads/index.html
+- Java SDK: https://www.java.com/en/
+- Python: http://www.python.org/getit/
+
+## Mathematical Foundations
+
+### Formulas Mentioned
+
+**Sequence Generation:**
+- Sequence 1, 3, 6, 10, 15, 21: Gap increases by one each time (next: 28)
+- Sequence 2, 4, 8: Could be $2^n$ (next: 16) or $2^n + (n-1)(n-2)(n-3)$ (next: 22)
+
+**Note:** This chapter is light on mathematical content. Mathematical foundations are covered in subsequent chapters on machine learning and deep learning.
+
+## Best Practices and Recommendations
+
+### Understanding AI
+
+1. **Start with Definitions:** Understand what AI and intelligence mean before diving into techniques
+2. **Historical Context:** Appreciate the evolution from rule-based to data-driven approaches
+3. **Multiple Perspectives:** Consider both strong AI and weak AI viewpoints
+4. **Practical Applications:** Connect concepts to real-world applications
+
+### When to Use AI
+
+**Good for AI:**
+- Medical diagnosis
+- Complex problem-solving
+- Domains with large amounts of human expertise
+- Problems requiring heuristics
+
+**Better for Traditional CS:**
+- Simple decision-making
+- Exact computations
+- Shopping with barcode scanning
+- ATMs
+
+### Ethical Considerations
+
+- Be aware of biases (occupational, gender, data, algorithmic)
+- Consider ethical implications (unemployment, robot rights)
+- Understand limitations of current AI systems
+- Recognize that AI systems may not have common sense knowledge
+
+## Limitations and Assumptions
+
+### Stated Limitations
+
+1. **This Chapter is "Light" on Technical Content:** Unlike other chapters, this is an overview
+2. **No Code Examples in Chapter:** Code samples are in companion files
+3. **Limited Mathematical Content:** Mathematical foundations covered in later chapters
+4. **Traditional AI Limitations:** Requires thousands of rules even for simple objects
+5. **Common Sense Knowledge:** Major challenge for NLP systems
+6. **Bias Issues:** Occupational, gender, data, and algorithmic biases exist
+
+### Assumptions
+
+- Reader is new to AI concepts
+- Focus is on understanding rather than implementation
+- Subsequent chapters will provide technical details
+- AI serves as umbrella for machine learning and deep learning
+
+## Related Techniques and References
+
+### Related Chapters
+
+- **Chapter 2:** Introduction to Machine Learning (detailed ML concepts)
+- **Chapter 3:** Classifiers in Machine Learning
+- **Chapter 4:** Deep Learning Introduction
+- **Chapter 5:** Deep Learning: RNNs and LSTMs (NLP architectures)
+- **Chapter 6:** NLP and Reinforcement Learning
+
+### Key References
+
+**Historical Systems:**
+- DENDRAL, MYCIN, PROSPECTOR, XCON, SHRDLU, ELIZA, HEARSAY
+
+**Key Researchers:**
+- Alan Turing (Turing Test)
+- John McCarthy (LISP, first AI meeting 1956)
+- Frank Rosenblatt (Perceptron)
+- Minsky and Papert (Perceptron limitations)
+- Hopfield (Hopfield networks)
+- Terry Winograd (SHRDLU, Blocks World)
+- Joseph Weizenbaum (ELIZA)
+- Rodney Brooks (Evolutionary computation, MIT)
+- Douglas Lenat (Common sense knowledge, AM system)
+
+**Links Provided:**
+- Genetic algorithms: https://en.wikipedia.org/wiki/Genetic_algorithm
+- Missionaries and Cannibals: https://en.wikipedia.org/wiki/Missionaries_and_cannibals_problem
+- New Turing test: https://futurism.com/the-byte/scientists-invented-new-turing-test
+- Android Turing test: https://theconversation.com/our-turing-test-for-androids-will-judge-how-lifelike-humanoid-robots-can-be-120696
+- AI accountability: https://www.forbes.com/sites/charlestowersclark/2018/09/19/can-we-make-artificial-intelligence-accountable
+- Ethical issues: https://www.weforum.org/agenda/2016/10/top-10-ethical-issues-in-artificial-intelligence/
+
+## Practical Applications
+
+### Use Cases
+
+1. **Games:** Chess, checkers, Go, Othello, backgammon, poker, bridge
+2. **Medical Diagnosis:** Expert systems for disease diagnosis
+3. **Robotics:** Surgery, radiology, drug management, various professional fields
+4. **Natural Language Processing:** Translation, information extraction, summarization, hate speech detection
+5. **Bioinformatics:** Protein structure analysis, microarray data analysis
+6. **Expert Systems:** Configuration, diagnosis, instruction, monitoring, planning, prognosis, remedy, control
+7. **Neural Networks:** Stock prediction, OCR, control systems, autonomous vehicles
+
+### Application Domains
+
+- Healthcare
+- Finance
+- Transportation
+- Entertainment
+- Research (bioinformatics)
+- Manufacturing
+- Customer service
+- Security
+
+## Implementation Checklist
+
+### Prerequisites
+
+- [ ] Basic understanding of computer science concepts
+- [ ] Familiarity with problem-solving approaches
+- [ ] Interest in AI and its applications
+
+### Learning Steps
+
+1. [ ] Read and understand definitions of AI and intelligence
+2. [ ] Understand the difference between Strong AI and Weak AI
+3. [ ] Learn about the Turing Test
+4. [ ] Study historical AI approaches (heuristics, expert systems, neural computing)
+5. [ ] Understand major AI subfields (ML, DL, NLP, RL)
+6. [ ] Explore real-world AI applications
+7. [ ] Consider ethical implications
+
+### Next Steps
+
+- [ ] Proceed to Chapter 2: Introduction to Machine Learning
+- [ ] Review companion code files if interested in implementations
+- [ ] Explore links provided for additional resources
+- [ ] Consider ethical questions raised in the chapter
+
+## Summary
+
+In this chapter, you learned about:
+- AI definitions and the nature of intelligence
+- Strong AI versus Weak AI approaches
+- The Turing Test for machine intelligence
+- Heuristics and their usefulness in algorithms
+- Genetic algorithms and evolutionary computation
+- Knowledge representation approaches
+- How AI was applied to games and expert systems
+- Early approaches to neural computing, evolutionary computation, NLP, and bioinformatics
+- Major subfields of AI: natural language processing, machine learning, deep learning, reinforcement learning, and deep reinforcement learning
+
+This chapter provides the foundation for understanding the more technical chapters that follow, which delve into machine learning, deep learning, and their applications.

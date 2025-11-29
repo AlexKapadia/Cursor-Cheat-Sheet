@@ -1,0 +1,1482 @@
+---
+alwaysApply: false
+---
+
+# Oracular Programming - A Modular Foundation for Building LLM-Enabled Software
+
+## Paper Metadata
+- **Title:** Oracular Programming: A Modular Foundation for Building LLM-Enabled Software
+- **Authors:** Jonathan Laurent (Carnegie Mellon University, USA and Karlsruhe Institute of Technology, Germany), André Platzer (Karlsruhe Institute of Technology, Germany)
+- **Year:** Not specified in provided content
+- **Venue:** Not specified in provided content
+- **DOI/URL:** Not available in provided content
+- **Keywords:** LLM, Programming Paradigm, Modular Programming, Search, Nondeterministic Programming
+- **Source Paper:** Jonathan Laurent and André Platzer. Oracular Programming: A Modular Foundation for Building LLM-Enabled Software.
+
+## Abstract / Summary
+
+Large Language Models can solve a wide range of tasks from just a few examples, but they remain difficult to steer and lack a capability essential for building reliable software at scale: the modular composition of computations under enforceable contracts. As a result, they are typically embedded in larger software pipelines that use domain-specific knowledge to decompose tasks and improve reliability through validation and search. Yet the complexity of writing, tuning, and maintaining such pipelines has so far limited their sophistication. We propose oracular programming: a foundational paradigm for integrating traditional, explicit computations with inductive oracles such as LLMs. It rests on two directing principles: the full separation of core and search logic, and the treatment of few-shot examples as grounded and evolvable program components. Within this paradigm, experts express high-level problem-solving strategies as programs with unresolved choice points. These choice points are resolved at runtime by LLMs, which generalize from user-provided examples of correct and incorrect decisions. An oracular program is composed of three orthogonal components: a strategy that consists in a nondeterministic program with choice points that can be reified into a search tree, a policy that specifies how to navigate this tree with the help of LLM oracles, and a set of demonstrations that describe successful and unsuccessful tree navigation scenarios across diverse problem instances. Each component is expressed in a dedicated programming language and can be independently improved or substituted. We address the key programming language design challenges of modularly composing oracular programs and enforcing consistency between their components as they evolve.
+
+## Problem Statement
+
+### Problem Definition
+
+The problem addressed is how to build reliable, maintainable, and scalable software systems that integrate Large Language Models (LLMs) as computational components. Specifically:
+
+1. **Steering Difficulty:** LLMs are difficult to steer precisely
+2. **Lack of Modularity:** LLMs lack the capability for modular composition of computations under enforceable contracts
+3. **Pipeline Complexity:** Existing LLM-enabled software pipelines are complex to write, tune, and maintain
+4. **Search Logic Intertwining:** Search logic (how to explore solution spaces) is often intertwined with core problem-solving logic
+5. **Example Management:** Few-shot examples are crucial but difficult to maintain and keep synchronized with program logic
+6. **Refactoring Challenges:** The inherent opacity and unpredictability of LLMs demand frequent iteration, but existing approaches make fearless refactoring difficult
+
+### Motivation
+
+The importance of this problem is evidenced by:
+
+- **Widespread LLM Adoption:** LLMs are being embedded in larger software pipelines across many domains
+- **Reliability Needs:** Building reliable software at scale requires modular composition and enforceable contracts
+- **Cost Considerations:** LLM prompting is expensive, so retries and backtracking incur significant costs
+- **Maintenance Burden:** The complexity of existing pipelines limits their sophistication and maintainability
+- **Example Dependency:** Few-shot prompting often works best, but examples are time-consuming to write and must be kept synchronized
+
+### Challenges
+
+1. **Reliability vs. Cost:** LLMs offer powerful but inherently unreliable programming primitives, making search and validation essential, but retries are expensive
+2. **Logic Separation:** Core logic (problem decomposition) and search logic (exploration strategies) are often conflated
+3. **Example Synchronization:** Few-shot examples need to be kept synchronized with program changes
+4. **Modularity:** Existing frameworks don't properly support modular composition of LLM-enabled computations
+5. **Search Algorithm Diversity:** Different search algorithms exploit different tree structures, requiring extensibility
+6. **Consistency Enforcement:** Ensuring consistency between strategies, policies, and demonstrations as they evolve
+
+### Scope
+
+The paper addresses:
+
+- **Programming Paradigm:** A new paradigm for integrating LLMs with traditional programs
+- **Language Design:** Programming language design for oracular programs
+- **Modularity:** Separation of concerns between strategies, policies, and demonstrations
+- **Extensibility:** Support for diverse search algorithms and prompting techniques
+- **Composition:** Modular composition of oracular programs
+- **Consistency:** Enforcement of consistency between program components
+
+### Assumptions
+
+- LLMs are available as computational oracles
+- Users can provide examples of correct and incorrect decisions
+- Domain-specific knowledge can be expressed as problem-solving strategies
+- Validation contracts can be specified
+- Search spaces can be represented as trees
+
+## Key Concepts and Techniques
+
+1. **Oracular Programming:** A foundational paradigm for integrating traditional, explicit computations with inductive oracles (LLMs)
+2. **Strategy:** A nondeterministic program with choice points that can be reified into a search tree
+3. **Policy:** Specifies how to navigate the search tree with the help of LLM oracles
+4. **Demonstrations:** Describe successful and unsuccessful tree navigation scenarios across diverse problem instances
+5. **Choice Points:** Unresolved decision points in a strategy that are resolved at runtime by LLMs
+6. **Search Tree Reification:** Converting a nondeterministic program into an explicit search tree structure
+7. **Nondeterministic Programming:** Programs that contain unresolved choices
+8. **Core Logic Separation:** Separating problem decomposition logic from search exploration logic
+9. **Few-Shot Examples as Program Components:** Treating examples as grounded, evolvable program components
+10. **Opaque Space:** A concept that unifies strategies and queries from a policy's perspective
+11. **Search Stream Protocol:** Enables arbitrary search algorithms to communicate in a resource-aware manner
+12. **Extensible Effect System:** Makes it easy to define new tree types for different search algorithms
+13. **Modular Composition:** Composing heterogeneous strategies producing different types of trees
+14. **Local Refinement:** Refining any LLM query into a dedicated sub-strategy without impacting parent strategy
+15. **Resource-Aware Communication:** Search algorithms communicate while respecting resource limits (e.g., LLM inference budget)
+16. **Validation Contracts:** Enforceable contracts that validate LLM outputs
+17. **Tree Navigation:** Policies navigate strategy-defined trees in pursuit of solutions
+18. **Prompting Policies:** Standard building blocks for constructing policies
+19. **Search Algorithms:** Methods for exploring search trees (depth-first, Monte Carlo Tree Search, etc.)
+20. **Stream Transformers:** Transform search streams in the policy language
+21. **Tree Transformers:** Transform search trees in the policy language
+
+## Related Work and Background
+
+### Previous Approaches
+
+#### Traditional LLM Integration
+- **Direct API Calls:** LLMs embedded as straightforward function calls
+- **Pipeline Architectures:** Domain-specific knowledge used to decompose tasks
+- **Validation and Search:** Intermediate feedback and search used to improve reliability
+- **Intertwined Logic:** Search logic often mixed with core problem-solving logic
+
+#### Nondeterministic Programming
+- **Traditional Formulations:** Existing nondeterministic programming languages
+- **Limited Extensibility:** Not designed for the diversity of search algorithms needed for LLM integration
+- **Limited Modularity:** Don't support the modular composition requirements of LLM-enabled software
+
+### How This Differs
+
+This work differs from previous approaches by:
+
+1. **Complete Separation:** Full separation of core logic (strategies) and search logic (policies)
+2. **Examples as Components:** Few-shot examples treated as grounded, evolvable program components
+3. **Modular Design:** Three orthogonal components (strategy, policy, demonstrations) that can be independently improved
+4. **Extensibility:** Extensible effect system for defining new tree types
+5. **Composition Support:** Support for composing heterogeneous strategies
+6. **Local Refinement:** Any query can be locally refined into a sub-strategy
+7. **Resource Awareness:** Built-in support for resource limits and budget management
+8. **Consistency Enforcement:** Mechanisms for enforcing consistency as components evolve
+
+### Adopted Techniques
+
+The work adopts and extends:
+
+- **Nondeterministic Programming:** From programming language theory
+- **Search Algorithms:** Various search strategies (depth-first, MCTS, etc.)
+- **Few-Shot Prompting:** From LLM research
+- **Effect Systems:** From programming language design
+- **Stream Processing:** For resource-aware communication
+- **Tree Structures:** For representing search spaces
+
+## Methodology and Approach
+
+### High-Level Overview
+
+Oracular programming is a paradigm where:
+
+1. **Experts express strategies** as nondeterministic programs with choice points
+2. **Choice points are resolved** at runtime by LLMs
+3. **LLMs generalize** from user-provided examples of correct and incorrect decisions
+4. **Three orthogonal components** work together:
+   - **Strategy:** Nondeterministic program with choice points
+   - **Policy:** How to navigate the search tree using LLMs
+   - **Demonstrations:** Examples of successful and unsuccessful navigation
+
+### Detailed Methodology
+
+#### Component 1: Strategy Language
+
+**Purpose:** Express high-level problem-solving strategies as nondeterministic programs.
+
+**Key Features:**
+- Nondeterministic programs with choice points
+- Can be reified into search trees
+- Choice points induce branching nodes
+- Contract violations yield failure leaves
+- Extensible effect system for defining new tree types
+- Support for heterogeneous strategies
+
+**Design Requirements:**
+1. **Extensibility:** Easy to define new tree types for different search algorithms
+2. **Modularity:** 
+   - Heterogeneous strategies can be composed
+   - Corresponding policies remain independent
+   - Any LLM query can be locally refined into a sub-strategy
+
+**Key Innovation - Opaque Space:**
+- Unifies strategies and queries from a policy's perspective
+- Enables modular composition
+
+**Key Innovation - Search Stream Protocol:**
+- Enables arbitrary search algorithms to communicate
+- Resource-aware manner
+- Supports diverse search strategies
+
+#### Component 2: Policy Language
+
+**Purpose:** Define functions that navigate strategy-defined trees in pursuit of solutions.
+
+**Key Features:**
+- Layered language design
+- Standard building blocks:
+  - Prompting policies
+  - Search algorithms
+  - Stream transformers
+  - Tree transformers
+- New primitives can be defined using search-stream combinators
+- Resource limit enforcement (e.g., LLM inference budget)
+
+**Design Principles:**
+1. **Layered Design:** Policies typically assembled from standard building blocks
+2. **Extensibility:** New primitives easily defined
+3. **Resource Awareness:** Proper enforcement of resource limits
+
+#### Component 3: Demonstrations
+
+**Purpose:** Describe successful and unsuccessful tree navigation scenarios.
+
+**Key Features:**
+- Grounded program components
+- Evolvable (can be updated as program evolves)
+- Describe diverse problem instances
+- Include both successful and unsuccessful scenarios
+- Keep synchronized with strategies and policies
+
+### Design Principles
+
+1. **Separation of Concerns:** Complete separation of core logic and search logic
+2. **Modularity:** Three orthogonal components that can be independently improved
+3. **Extensibility:** Easy to add new search algorithms and tree types
+4. **Composition:** Support for composing heterogeneous strategies
+5. **Local Refinement:** Queries can be refined locally without global impact
+6. **Resource Awareness:** Built-in support for managing computational resources
+7. **Consistency:** Mechanisms for enforcing consistency as components evolve
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Oracular Program                       │
+├─────────────────────────────────────────────────────────┤
+│                                                           │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────┐ │
+│  │   Strategy   │    │    Policy    │    │    Demos  │ │
+│  │  (Nondet.    │    │  (Navigation │    │ (Examples)│ │
+│  │   Program)   │───▶│   Logic)    │◀───│           │ │
+│  └──────────────┘    └──────────────┘    └──────────┘ │
+│         │                    │                         │
+│         │                    │                         │
+│         ▼                    ▼                         │
+│  ┌──────────────┐    ┌──────────────┐                │
+│  │ Search Tree  │    │  LLM Oracle   │                │
+│  │ (Reified)    │    │  (Runtime)    │                │
+│  └──────────────┘    └──────────────┘                │
+│                                                           │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Data Structures
+
+#### Search Tree
+- **Structure:** Tree where choice points induce branching nodes
+- **Leaves:** Failure leaves for contract violations, success leaves for solutions
+- **Annotations:** Can be annotated with metadata for specific search algorithms
+- **Types:** Different tree types for different search strategies
+
+#### Strategy Representation
+- **Format:** Nondeterministic program with choice points
+- **Choice Points:** Marked locations where LLM decisions are needed
+- **Contracts:** Validation conditions attached to choice points
+
+#### Policy Representation
+- **Format:** Functions that manipulate search trees
+- **Components:** Prompting policies, search algorithms, transformers
+- **Resource Tracking:** Tracks resource usage (e.g., API calls, tokens)
+
+#### Demonstration Representation
+- **Format:** Examples of tree navigation scenarios
+- **Content:** Successful paths, unsuccessful paths, problem instances
+- **Metadata:** Links to specific strategies and policies
+
+## Algorithms
+
+### Algorithm 1: Strategy Reification
+
+**Description:**
+Converts a nondeterministic program with choice points into an explicit search tree structure.
+
+**Pseudocode:**
+```
+function reify_strategy(strategy):
+    tree = empty_tree()
+    stack = [(strategy.root, tree.root)]
+    
+    while stack is not empty:
+        (program_node, tree_node) = stack.pop()
+        
+        if program_node is choice_point:
+            tree_node.type = BRANCH
+            tree_node.choices = []
+            for each possible_choice:
+                child = create_tree_node(possible_choice)
+                tree_node.choices.append(child)
+                stack.push((possible_choice, child))
+        
+        else if program_node is contract_check:
+            if contract_violated:
+                tree_node.type = FAILURE_LEAF
+            else:
+                continue to next node
+        
+        else if program_node is terminal:
+            tree_node.type = SUCCESS_LEAF
+            tree_node.solution = program_node.value
+        
+        else:
+            process regular program node
+            stack.push((program_node.next, tree_node))
+    
+    return tree
+```
+
+**Complexity Analysis:**
+- **Time Complexity:** O(n) where n is the number of nodes in the strategy
+- **Space Complexity:** O(n) for the tree structure
+
+**Correctness:**
+- Every choice point becomes a branch
+- Every contract violation becomes a failure leaf
+- Every successful terminal becomes a success leaf
+- Tree structure preserves program semantics
+
+### Algorithm 2: Policy-Based Tree Navigation
+
+**Description:**
+Navigates a search tree using a policy that leverages LLM oracles to make decisions at choice points.
+
+**Pseudocode:**
+```
+function navigate_tree(tree, policy, demonstrations, resource_budget):
+    current_node = tree.root
+    path = [current_node]
+    resources_used = 0
+    
+    while current_node is not terminal:
+        if resources_used >= resource_budget:
+            return FAILURE (budget exhausted)
+        
+        if current_node is choice_point:
+            # Use policy to select next branch
+            context = build_context(path, demonstrations)
+            choice = policy.select_branch(current_node, context, resource_budget - resources_used)
+            
+            if choice is None:
+                return FAILURE (no valid choice)
+            
+            resources_used += choice.cost
+            current_node = choice.target
+            path.append(current_node)
+        
+        else if current_node is failure_leaf:
+            # Backtrack or try alternative
+            if policy.should_backtrack(path):
+                current_node = backtrack(path)
+            else:
+                return FAILURE
+        
+        else:
+            current_node = current_node.next
+    
+    return SUCCESS with solution from current_node
+```
+
+**Complexity Analysis:**
+- **Time Complexity:** O(d * c) where d is tree depth and c is cost per choice
+- **Space Complexity:** O(d) for path storage
+
+**Optimization Strategies:**
+- Caching LLM responses
+- Pruning unpromising branches early
+- Parallel exploration of branches
+- Adaptive resource allocation
+
+### Algorithm 3: Demonstration-Based LLM Prompting
+
+**Description:**
+Constructs prompts for LLM oracles using demonstrations of successful and unsuccessful navigation scenarios.
+
+**Pseudocode:**
+```
+function build_prompt(choice_point, path, demonstrations):
+    prompt = system_prompt()
+    prompt += problem_description(choice_point)
+    prompt += current_context(path)
+    
+    # Add relevant demonstrations
+    relevant_demos = select_relevant_demos(demonstrations, choice_point, path)
+    
+    for demo in relevant_demos:
+        if demo.successful:
+            prompt += "Example (successful):\n"
+            prompt += format_demo(demo)
+        else:
+            prompt += "Example (unsuccessful):\n"
+            prompt += format_demo(demo)
+            prompt += "Reason for failure: " + demo.failure_reason
+    
+    prompt += "Current situation:\n"
+    prompt += format_current_situation(choice_point, path)
+    prompt += "Make a choice:\n"
+    
+    return prompt
+```
+
+**Complexity Analysis:**
+- **Time Complexity:** O(d * m) where d is number of demos and m is demo size
+- **Space Complexity:** O(p) where p is prompt size
+
+**Key Points:**
+- Selects most relevant demonstrations
+- Balances successful and unsuccessful examples
+- Provides clear context for LLM decision
+
+## Implementation Patterns
+
+### Architecture Patterns
+
+#### Pattern 1: Strategy-Policy Separation
+```
+Strategy (Core Logic)
+    ↓ (reifies to)
+Search Tree
+    ↓ (navigated by)
+Policy (Search Logic)
+    ↓ (uses)
+LLM Oracle
+```
+
+#### Pattern 2: Three-Component Architecture
+```
+┌─────────────┐
+│  Strategy   │  ← Problem decomposition
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│   Policy    │  ← Search navigation
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│Demonstrations│ ← Few-shot examples
+└─────────────┘
+```
+
+#### Pattern 3: Local Query Refinement
+```
+Main Strategy
+    ├─ Query A (can be refined locally)
+    │   └─ Sub-strategy A (independent)
+    └─ Query B (can be refined locally)
+        └─ Sub-strategy B (independent)
+```
+
+### Design Patterns
+
+#### Pattern 1: Opaque Space Abstraction
+- Strategies and queries appear the same to policies
+- Enables modular composition
+- Policies don't need to know implementation details
+
+#### Pattern 2: Search Stream Protocol
+- Standardized communication between search algorithms
+- Resource-aware messaging
+- Supports diverse search strategies
+
+#### Pattern 3: Extensible Effect System
+- Easy to define new tree types
+- Supports algorithm-specific annotations
+- Maintains type safety
+
+### Data Organization
+
+#### Strategy Organization
+- **Hierarchical:** Strategies can contain sub-strategies
+- **Modular:** Each strategy is self-contained
+- **Composable:** Strategies can be combined
+
+#### Policy Organization
+- **Layered:** Built from standard building blocks
+- **Composable:** Policies can be combined
+- **Extensible:** New primitives can be added
+
+#### Demonstration Organization
+- **Indexed:** By problem type, strategy, policy
+- **Versioned:** Track changes over time
+- **Validated:** Checked for consistency with strategies
+
+### Component Structure
+
+#### Strategy Component
+1. **Choice Points:** Marked locations for LLM decisions
+2. **Contracts:** Validation conditions
+3. **Control Flow:** Standard program control structures
+4. **Sub-strategies:** Nested strategy calls
+
+#### Policy Component
+1. **Prompting Policies:** How to construct LLM prompts
+2. **Search Algorithms:** How to explore trees
+3. **Stream Transformers:** Transform search streams
+4. **Tree Transformers:** Transform trees
+5. **Resource Managers:** Track and enforce limits
+
+#### Demonstration Component
+1. **Problem Instances:** Input problems
+2. **Navigation Paths:** Successful and unsuccessful paths
+3. **Annotations:** Metadata about decisions
+4. **Validation:** Consistency checks
+
+## Code Examples and Snippets
+
+### Code Example 1: Minimal Strategy with Universal Queries
+
+**Context:** A minimal strategy that uses universal queries to solve a simple symbolic mathematics problem. The task is to find a value for an integer parameter `n` that makes a given mathematical expression nonnegative for all values of `x`.
+
+**Language:** Python (using Delphyne framework)
+
+```python
+import sympy as sp
+import delphyne as dp
+from delphyne import Branch, Fail, IPDict, Strategy, strategy
+
+@strategy
+def find_param_value(expr: str) -> Strategy[Branch | Fail, IPDict, int]:
+    """
+    Find an integer `n` that makes a given math expression nonnegative
+    for all real `x`. Prove that the resulting expression is nonnegative
+    by rewriting it into an equivalent form.
+    """
+    x, n = sp.Symbol("x", real=True), sp.Symbol("n")
+    symbs = {"x": x, "n": n}
+    try:
+        n_val = yield from dp.guess(int, using=[expr])
+        expr_sp = sp.parse_expr(expr, symbs).subs({n: n_val})
+        equiv = yield from dp.guess(str, using=[str(expr_sp)])
+        equiv_sp = sp.parse_expr(equiv, symbs)
+        equivalent = (expr_sp - equiv_sp).simplify() == 0
+        yield from dp.ensure(equivalent, "not_equivalent")
+        yield from dp.ensure(equiv_sp.is_nonnegative, "not_nonneg")
+        return n_val
+    except Exception as e:
+        yield from dp.fail("sympy_error", message=str(e))
+```
+
+**Explanation:**
+- Uses `@strategy` decorator to define an oracular strategy
+- `dp.guess(int, using=[expr])` creates a choice point where LLM guesses an integer value
+- `dp.ensure()` creates validation contracts
+- `dp.fail()` creates failure conditions
+- The strategy first guesses `n`, then guesses an equivalent expression, then validates both equivalence and nonnegativity
+
+**Key Points:**
+- `guess()` creates nondeterministic choice points
+- `ensure()` enforces validation contracts
+- `using=[expr]` provides context to the LLM
+- Strategy can fail at multiple points (invalid guess, non-equivalent, not nonnegative)
+
+### Code Example 2: System Prompt for Universal Queries
+
+**Context:** Default system prompt currently implemented in Delphyne for universal queries. This is used when the LLM needs to generate a value for a nondeterministic assignment.
+
+**Language:** Text (System Prompt)
+
+```
+I am executing a program that contains nondeterministic assignments along with assertions (e.g., in the form of ensure and fail statements). I am stuck at one of these nondeterministic assignments and your goal is to generate an assigned value, in such a way that the program can go on and not fail any assertion. More specifically, I'll give you three pieces of information:
+
+- A nondeterministic program.
+- The name of the variable that is being assigned at the program location where I am stuck.
+- Some values for a number of local variables.
+
+Your job is to generate a correct value to assign. The expected type of this value is indicated inside the nondeterministic assignment operator. Terminate your answer with a code block (delimited by triple backquotes) that contains a YAML object of the requested type.
+```
+
+**Explanation:**
+- Explains the context to the LLM
+- Specifies the three pieces of information provided
+- Instructs the LLM on the expected output format (YAML in code block)
+
+**Key Points:**
+- Clear explanation of the task
+- Structured input format
+- Structured output format (YAML)
+
+### Code Example 3: Strategy with Multiple Choice Points
+
+**Context:** A more complex strategy that demonstrates multiple choice points and validation contracts.
+
+**Language:** Python (Pseudocode)
+
+```python
+@strategy
+def solve_optimization_problem(problem_spec: ProblemSpec) -> Strategy[Branch | Fail, IPDict, Solution]:
+    """
+    Solve an optimization problem by:
+    1. Guessing an initial solution
+    2. Validating constraints
+    3. If invalid, guessing a repair
+    4. Optimizing the solution
+    """
+    # Choice point 1: Guess initial solution
+    initial_solution = yield from dp.guess(Solution, using=[problem_spec])
+    
+    # Validate initial constraints
+    constraints_satisfied = validate_constraints(initial_solution, problem_spec)
+    yield from dp.ensure(constraints_satisfied, "constraints_violated")
+    
+    # Choice point 2: Guess optimization strategy
+    opt_strategy = yield from dp.guess(OptimizationStrategy, using=[initial_solution, problem_spec])
+    
+    # Apply optimization
+    optimized_solution = apply_optimization(initial_solution, opt_strategy)
+    
+    # Validate final solution
+    final_valid = validate_solution(optimized_solution, problem_spec)
+    yield from dp.ensure(final_valid, "solution_invalid")
+    
+    return optimized_solution
+```
+
+**Explanation:**
+- Multiple choice points (`guess()` calls)
+- Multiple validation contracts (`ensure()` calls)
+- Sequential decision making
+- Each choice point can be refined into a sub-strategy
+
+**Key Points:**
+- Strategies can have multiple choice points
+- Validation happens after each critical step
+- Failure at any point causes backtracking or failure
+- Context is passed to LLM at each choice point
+
+## Mathematical Foundations
+
+### Notation
+
+- **Strategy:** $S$ - A nondeterministic program
+- **Policy:** $\pi$ - A function that navigates search trees
+- **Demonstration:** $D$ - A set of examples
+- **Search Tree:** $T$ - Tree structure reified from strategy
+- **Choice Point:** $c \in C$ - A location where LLM makes a decision
+- **Branch:** $b \in B$ - A possible choice at a choice point
+- **Path:** $p$ - A sequence of nodes from root to leaf
+- **Resource Budget:** $R$ - Maximum resources (e.g., API calls, tokens)
+- **LLM Oracle:** $O$ - Function that takes prompt and returns value
+- **Validation Contract:** $\phi$ - A predicate that must be satisfied
+
+### Core Formulas
+
+#### Strategy Reification
+
+A strategy $S$ is reified into a search tree $T$:
+
+$$T = \text{reify}(S)$$
+
+where:
+- Each choice point $c \in S$ becomes a branch node in $T$
+- Each contract $\phi$ becomes a validation node
+- Terminal nodes represent success or failure
+
+#### Policy Navigation
+
+A policy $\pi$ navigates tree $T$ with demonstrations $D$ and budget $R$:
+
+$$\text{navigate}(T, \pi, D, R) = \begin{cases}
+\text{SUCCESS}(s) & \text{if path } p \text{ reaches success leaf with solution } s \\
+\text{FAILURE} & \text{if budget exhausted or no valid path}
+\end{cases}$$
+
+#### LLM Prompt Construction
+
+For a choice point $c$ with current path $p$:
+
+$$\text{prompt}(c, p, D) = \text{system\_prompt} + \text{context}(p) + \text{select\_demos}(D, c, p) + \text{current\_situation}(c, p)$$
+
+#### Resource-Aware Selection
+
+Policy selects branch $b$ at choice point $c$:
+
+$$b^* = \arg\max_{b \in \text{branches}(c)} \text{value}(b, \pi, D, R_{\text{remaining}})$$
+
+subject to: $\text{cost}(b) \leq R_{\text{remaining}}$
+
+### Variable Definitions
+
+- **Strategy ($S$):** A nondeterministic program with choice points and validation contracts
+- **Policy ($\pi$):** A function $\pi: (T, D, R) \rightarrow \text{Action}$ that selects how to navigate a search tree
+- **Demonstration ($D$):** A set $D = \{d_1, d_2, \ldots, d_n\}$ where each $d_i$ is a tuple $(p_i, \text{success}_i, \text{context}_i)$
+- **Search Tree ($T$):** A tree $T = (N, E)$ where $N$ are nodes (choice, validation, terminal) and $E$ are edges (branches)
+- **Choice Point ($c$):** A node $c \in N$ where $c.\text{type} = \text{CHOICE}$ and $c.\text{branches} = \{b_1, b_2, \ldots, b_k\}$
+- **Resource Budget ($R$):** A tuple $R = (\text{api\_calls}, \text{tokens}, \text{time})$ with limits for each resource
+- **LLM Oracle ($O$):** A function $O: \text{Prompt} \times \text{Context} \rightarrow \text{Value}$ that returns a value given a prompt
+
+## Experimental Setup
+
+### Implementation: Delphyne
+
+The paper describes an implementation called **Delphyne**, which is a framework for oracular programming.
+
+#### Key Features of Delphyne
+- Strategy language for writing nondeterministic programs
+- Policy language for defining search strategies
+- Demonstration management system
+- Integration with LLM APIs
+- VSCode extension for development
+
+#### Example Use Case: Theorem Proving in Lean
+
+The paper describes using Delphyne for automated theorem proving in Lean:
+
+**Scenario:** Proving theorems in the Lean theorem prover
+
+**Strategy:** 
+- Generate proof sketches
+- Break down into subgoals
+- Use tools like `FindTheorem` to locate relevant lemmas
+- Validate each step
+
+**Policy:**
+- Depth-first search with backtracking
+- LLM generates proof steps
+- Validation ensures each step is correct
+
+**Demonstrations:**
+- Examples of successful proof strategies
+- Examples of failed proof attempts with reasons
+- Learned advice automatically generated via search reflection
+
+#### Example: Algebra Problem
+
+**Problem:** Prove that for real numbers $a, b$ with $a^2 b^2 = 1$, we have $a b |a - b| \leq 1$
+
+**Strategy Produces Sketch:**
+```lean
+have eq_sq : (a - b)^2 = (1 : Real) - 2*(a*b) := by sorry
+have abs_eq_sqrt : abs (a - b) = Real.sqrt ((1 : Real) - 2*(a*b)) := by sorry
+have ab_le_half : a * b <= (1 : Real) / 2 := by sorry
+have rhs_nonneg : 0 <= (1 : Real) - a * b := by sorry
+have square_ineq : (1 : Real) - 2*(a*b) <= (1 - a * b)^2 := by sorry
+```
+
+**Process:**
+1. Strategy generates proof sketch with subgoals
+2. For each subgoal, LLM attempts to find proof
+3. If LLM hallucinates non-existent theorem, system calls `FindTheorem` tool
+4. `FindTheorem` uses dedicated strategy with Loogle to find matches
+5. System backtracks and tries alternative approaches if needed
+
+### Evaluation Methodology
+
+The paper discusses evaluation through:
+
+1. **Case Studies:** Real-world applications (theorem proving, symbolic math)
+2. **Search Reflection:** Learning from search traces to improve demonstrations
+3. **Modularity Validation:** Demonstrating that components can be independently improved
+4. **Composition Examples:** Showing how strategies can be composed
+
+### Datasets
+
+- **MiniF2F Validation Set:** Used for theorem proving evaluation
+- **Symbolic Mathematics Problems:** Used for universal query examples
+- **Lean Theorem Prover:** Used as target system for proof generation
+
+### Hardware and Software
+
+- **Framework:** Delphyne (Python-based)
+- **LLM Integration:** Various LLM APIs
+- **IDE Integration:** VSCode extension
+- **Theorem Prover:** Lean 4
+- **Mathematical Library:** Mathlib (for Lean)
+
+## Results and Evaluation
+
+### Key Findings
+
+1. **Modularity Achieved:** Strategies, policies, and demonstrations can be independently improved
+2. **Composition Works:** Heterogeneous strategies can be composed effectively
+3. **Local Refinement:** Queries can be refined into sub-strategies without global impact
+4. **Search Reflection:** Learning from search traces improves performance over time
+5. **Resource Management:** Resource-aware policies successfully manage LLM inference budgets
+
+### Example Results: Learned Advice
+
+The system automatically generates advice from search reflection. Examples include:
+
+#### Advice for Proving Subgoals
+
+- **Control casts:** Work in one type, then come back by injectivity. Avoid mixing $\mathbb{N}, \mathbb{Z}$, and $\mathbb{R}$ mid-proof.
+- **Use $\leftrightarrow$ lemmas:** Use `.mp/.mpr` (or `.1/.2`), not as functions. Many important lemmas return an equivalence $A \leftrightarrow B$.
+
+#### Advice for Generating Proof Sketches
+
+- **Avoid $\mathbb{N}$ subtraction:** Rewrite to an additive invariant and induct on that.
+- **Prepare prerequisites:** Before using sqrt/log/floor/ceil, prepare prerequisites, then use their characterization lemmas.
+
+### Performance Characteristics
+
+1. **Search Efficiency:** Policies can explore search spaces efficiently with resource constraints
+2. **Example Quality:** Demonstrations improve over time through search reflection
+3. **Modular Updates:** Changes to one component don't require changes to others
+4. **Composition Overhead:** Minimal overhead when composing strategies
+
+## Best Practices and Recommendations
+
+### Implementation Best Practices
+
+1. **Separate Concerns:**
+   - Keep strategy logic separate from search logic
+   - Don't mix problem decomposition with exploration strategies
+   - Use policies to encapsulate search algorithms
+
+2. **Design Strategies:**
+   - Express high-level problem-solving approaches
+   - Use choice points for LLM decisions
+   - Attach validation contracts at critical points
+   - Make strategies composable and modular
+
+3. **Design Policies:**
+   - Use standard building blocks when possible
+   - Define custom primitives only when needed
+   - Enforce resource limits properly
+   - Cache LLM responses when appropriate
+
+4. **Manage Demonstrations:**
+   - Keep demonstrations synchronized with strategies
+   - Include both successful and unsuccessful examples
+   - Update demonstrations based on search reflection
+   - Index demonstrations for efficient retrieval
+
+5. **Resource Management:**
+   - Set appropriate budgets for LLM inference
+   - Track resource usage throughout execution
+   - Implement early termination when budget exhausted
+   - Use caching to reduce API calls
+
+### Optimization Tips
+
+1. **Caching:**
+   - Cache LLM responses for similar choice points
+   - Reuse demonstrations across similar problems
+   - Cache validation results
+
+2. **Pruning:**
+   - Prune unpromising branches early
+   - Use heuristics to guide search
+   - Implement adaptive resource allocation
+
+3. **Parallel Exploration:**
+   - Explore multiple branches in parallel when possible
+   - Use asynchronous LLM calls
+   - Balance parallelism with resource constraints
+
+4. **Demonstration Selection:**
+   - Select most relevant demonstrations for each choice point
+   - Balance successful and unsuccessful examples
+   - Update demonstration selection based on performance
+
+### Common Pitfalls to Avoid
+
+1. **Tight Coupling:**
+   - Don't intertwine strategy and policy logic
+   - Avoid hardcoding search strategies in strategies
+   - Don't make policies depend on strategy internals
+
+2. **Example Drift:**
+   - Keep demonstrations synchronized with code changes
+   - Update examples when strategies evolve
+   - Validate example consistency regularly
+
+3. **Resource Exhaustion:**
+   - Don't ignore resource budgets
+   - Implement proper budget tracking
+   - Use early termination strategies
+
+4. **Over-Engineering:**
+   - Start with simple strategies and policies
+   - Add complexity only when needed
+   - Use standard building blocks when possible
+
+5. **Inconsistent Components:**
+   - Ensure demonstrations match current strategies
+   - Validate policy compatibility with strategy tree types
+   - Check consistency after component updates
+
+### Guidelines
+
+1. **Start Simple:**
+   - Begin with basic strategies and policies
+   - Add complexity incrementally
+   - Test each component independently
+
+2. **Iterate on Demonstrations:**
+   - Collect examples from actual runs
+   - Use search reflection to generate advice
+   - Continuously improve example quality
+
+3. **Compose Strategically:**
+   - Compose strategies at appropriate boundaries
+   - Use opaque space abstraction for modularity
+   - Test composition thoroughly
+
+4. **Monitor Resources:**
+   - Track resource usage in production
+   - Set appropriate budgets
+   - Implement alerts for budget exhaustion
+
+## Limitations and Assumptions
+
+### Stated Limitations
+
+1. **LLM Reliability:**
+   - LLMs remain inherently unreliable
+   - Requires validation and search for dependability
+   - May need multiple attempts to find solutions
+
+2. **Cost Considerations:**
+   - LLM prompting is expensive
+   - Retries and backtracking incur costs
+   - Resource budgets must be carefully managed
+
+3. **Example Maintenance:**
+   - Few-shot examples are time-consuming to write
+   - Must be kept synchronized with program changes
+   - Quality depends on example selection
+
+4. **Search Complexity:**
+   - Search spaces can be large
+   - Exhaustive search may be infeasible
+   - Requires good heuristics and policies
+
+### Assumptions
+
+1. **LLM Availability:**
+   - LLM APIs are available and accessible
+   - LLMs can understand the problem context
+   - LLMs can generate appropriate values for choice points
+
+2. **Validation Capability:**
+   - Validation contracts can be expressed
+   - Contracts can be efficiently checked
+   - Contract violations can be detected
+
+3. **Example Quality:**
+   - Users can provide good examples
+   - Examples are representative of problem space
+   - Examples can be kept up-to-date
+
+4. **Domain Knowledge:**
+   - Domain experts can express problem-solving strategies
+   - Strategies can be decomposed into choice points
+   - Validation conditions can be specified
+
+### Constraints
+
+1. **Computational Resources:**
+   - Limited by LLM API rate limits
+   - Limited by token budgets
+   - Limited by time constraints
+
+2. **Expressiveness:**
+   - Strategies must be expressible as nondeterministic programs
+   - Policies must be able to navigate resulting trees
+   - Demonstrations must capture relevant scenarios
+
+3. **Modularity Trade-offs:**
+   - Complete separation may require more abstraction
+   - Some optimizations may require tighter coupling
+   - Composition may have overhead
+
+### Scope Limitations
+
+1. **Problem Domains:**
+   - Works best for problems with clear choice points
+   - Requires expressible validation contracts
+   - May not suit all problem types
+
+2. **LLM Capabilities:**
+   - Depends on LLM quality and capabilities
+   - May require model-specific tuning
+   - Performance varies across LLM providers
+
+3. **Framework Maturity:**
+   - Delphyne is a research prototype
+   - May have limitations not addressed in paper
+   - Production use may require additional features
+
+## Related Techniques and References
+
+### Related Techniques
+
+#### Nondeterministic Programming
+- **Backtracking:** Traditional backtracking algorithms
+- **Constraint Programming:** Constraint satisfaction with choice points
+- **Logic Programming:** Prolog-style nondeterministic execution
+
+#### LLM Integration Patterns
+- **Prompt Engineering:** Techniques for constructing effective prompts
+- **Few-Shot Learning:** Using examples to guide LLM behavior
+- **Chain-of-Thought:** Breaking down problems into steps
+- **Tool Use:** LLMs calling external tools and APIs
+
+#### Search Algorithms
+- **Depth-First Search:** Systematic tree exploration
+- **Monte Carlo Tree Search:** Probabilistic tree exploration
+- **Beam Search:** Limited-width breadth-first search
+- **Best-First Search:** Heuristic-guided exploration
+
+#### Programming Language Design
+- **Effect Systems:** Tracking and controlling side effects
+- **Monads:** For managing computational effects
+- **Stream Processing:** For resource-aware communication
+- **Domain-Specific Languages:** Specialized languages for specific domains
+
+### Key References
+
+The paper references work on:
+- **Nondeterministic Programming:** Traditional formulations and extensions
+- **LLM Integration:** Patterns for integrating LLMs in software
+- **Search Algorithms:** Various tree search strategies
+- **Programming Language Design:** Effect systems, modularity, composition
+- **Theorem Proving:** Automated theorem proving systems
+- **Symbolic Mathematics:** Computer algebra systems
+
+### Cross-References
+
+This work relates to:
+- **AI Integration Patterns:** General patterns for integrating AI in software (see `ai/` folder)
+- **Development Methodologies:** Software development approaches (see `development-tools/` folder)
+- **Programming Paradigms:** Other programming paradigms and language designs
+
+## Practical Applications
+
+### Use Cases
+
+1. **Automated Theorem Proving:**
+   - Generate proof sketches
+   - Find relevant lemmas
+   - Validate proof steps
+   - Learn from failed attempts
+
+2. **Symbolic Mathematics:**
+   - Solve optimization problems
+   - Find parameter values
+   - Prove inequalities
+   - Simplify expressions
+
+3. **Code Generation:**
+   - Generate code from specifications
+   - Refactor code
+   - Fix bugs
+   - Optimize implementations
+
+4. **Problem Solving:**
+   - Break down complex problems
+   - Explore solution spaces
+   - Validate solutions
+   - Learn from examples
+
+5. **Decision Making:**
+   - Make choices under constraints
+   - Explore alternatives
+   - Validate decisions
+   - Learn from outcomes
+
+### Application Domains
+
+1. **Formal Methods:** Theorem proving, verification
+2. **Mathematics:** Symbolic computation, optimization
+3. **Software Engineering:** Code generation, refactoring
+4. **AI/ML:** Model selection, hyperparameter tuning
+5. **Research:** Scientific problem solving
+
+### Application Scenarios
+
+#### Scenario 1: Theorem Proving
+- **Challenge:** Automatically prove mathematical theorems
+- **Solution:** Strategy generates proof sketches, policy navigates proof space, demonstrations provide examples
+- **Benefits:** Modular updates, learning from failures, resource management
+
+#### Scenario 2: Symbolic Optimization
+- **Challenge:** Find parameter values that satisfy constraints
+- **Solution:** Strategy guesses values and validates, policy explores search space, demonstrations guide choices
+- **Benefits:** Handles complex constraints, learns from examples, manages search efficiently
+
+#### Scenario 3: Code Refactoring
+- **Challenge:** Refactor code while maintaining correctness
+- **Solution:** Strategy identifies refactoring opportunities, policy selects transformations, demonstrations show good/bad refactorings
+- **Benefits:** Validates correctness, learns patterns, manages complexity
+
+### Real-World Examples
+
+1. **Delphyne for Lean:** Automated theorem proving in Lean using oracular programming
+2. **Symbolic Math Solver:** Finding parameter values for mathematical expressions
+3. **Proof Assistant Integration:** Combining LLMs with formal verification systems
+
+## Implementation Checklist
+
+### Prerequisites
+- [ ] Understanding of nondeterministic programming concepts
+- [ ] Familiarity with LLM APIs and prompting
+- [ ] Knowledge of search algorithms
+- [ ] Understanding of programming language design principles
+- [ ] Access to LLM APIs (OpenAI, Anthropic, etc.)
+
+### Setup Steps
+1. [ ] Install oracular programming framework (e.g., Delphyne)
+2. [ ] Set up LLM API credentials
+3. [ ] Configure resource budgets
+4. [ ] Set up demonstration storage
+5. [ ] Install development tools (VSCode extension if available)
+
+### Implementation Steps
+1. [ ] Define problem domain and requirements
+2. [ ] Design strategy with choice points
+3. [ ] Define validation contracts
+4. [ ] Create or select policy
+5. [ ] Collect initial demonstrations
+6. [ ] Implement strategy in strategy language
+7. [ ] Implement or configure policy
+8. [ ] Test with simple examples
+9. [ ] Iterate on demonstrations
+10. [ ] Validate resource usage
+11. [ ] Test composition if using multiple strategies
+12. [ ] Deploy and monitor
+
+### Testing Steps
+1. [ ] Test strategy reification
+2. [ ] Test policy navigation
+3. [ ] Test demonstration selection
+4. [ ] Test validation contracts
+5. [ ] Test resource management
+6. [ ] Test error handling
+7. [ ] Test composition
+8. [ ] Test with diverse problem instances
+9. [ ] Validate consistency between components
+10. [ ] Performance testing
+
+### Deployment Steps
+1. [ ] Set up production LLM API access
+2. [ ] Configure production resource budgets
+3. [ ] Deploy strategy and policy code
+4. [ ] Set up demonstration database
+5. [ ] Implement monitoring and logging
+6. [ ] Set up alerts for budget exhaustion
+7. [ ] Implement caching if needed
+8. [ ] Set up search reflection pipeline
+9. [ ] Monitor performance and costs
+10. [ ] Iterate based on results
+
+## Figures and Visualizations
+
+### Figure 1: Oracular Program Architecture
+
+**Description:** Shows the three-component architecture of an oracular program with strategy, policy, and demonstrations, and how they interact to produce solutions.
+
+**Caption:** Architecture of an oracular program showing the separation between strategy (core logic), policy (search logic), and demonstrations (examples), and how they work together through search tree reification and LLM oracles.
+
+**Key Elements:**
+- Strategy component (nondeterministic program)
+- Policy component (navigation logic)
+- Demonstrations component (examples)
+- Search tree (reified from strategy)
+- LLM oracle (runtime decision maker)
+- Arrows showing data flow and interactions
+
+**Relationships:**
+- Strategy reifies to search tree
+- Policy navigates search tree using LLM oracle
+- Demonstrations inform policy decisions
+- All components can be independently updated
+
+### Figure 2: Search Tree Structure
+
+**Description:** Illustrates how a nondeterministic program with choice points is reified into a search tree, showing branch nodes, validation nodes, and terminal nodes (success/failure).
+
+**Caption:** Example search tree reified from a strategy, showing choice points as branch nodes, validation checks, and terminal nodes representing success or failure.
+
+**Key Elements:**
+- Root node
+- Branch nodes (choice points)
+- Validation nodes
+- Success leaves
+- Failure leaves
+- Path annotations
+
+**Relationships:**
+- Choice points create branches
+- Validation nodes check contracts
+- Terminal nodes represent outcomes
+- Paths from root to leaves represent execution traces
+
+### Figure 3: Policy Navigation Process
+
+**Description:** Shows how a policy navigates a search tree, making decisions at choice points using LLM oracles and demonstrations, while tracking resource usage.
+
+**Caption:** Policy navigation process showing decision-making at choice points, LLM oracle calls, demonstration selection, and resource tracking.
+
+**Key Elements:**
+- Current node in tree
+- Choice point with branches
+- LLM oracle call
+- Demonstration selection
+- Resource budget tracking
+- Decision selection
+- Path accumulation
+
+**Relationships:**
+- Policy selects branch based on LLM output
+- Demonstrations inform LLM prompts
+- Resource budget constrains exploration
+- Path accumulates as navigation proceeds
+
+### Figure 4: Strategy Composition
+
+**Description:** Demonstrates how multiple strategies can be composed, with queries refined into sub-strategies, showing the modularity of the approach.
+
+**Caption:** Example of strategy composition showing how a main strategy can contain queries that are refined into independent sub-strategies.
+
+**Key Elements:**
+- Main strategy
+- Query nodes
+- Sub-strategies
+- Composition boundaries
+- Independent policies per sub-strategy
+
+**Relationships:**
+- Queries can be refined locally
+- Sub-strategies are independent
+- Policies can be different for each sub-strategy
+- Composition maintains modularity
+
+## Tables
+
+### Table 1: Component Comparison
+
+**Caption:** Comparison of the three orthogonal components of oracular programming, showing their roles, languages, and update characteristics.
+
+| Component | Role | Language | Update Frequency | Dependencies |
+|-----------|------|----------|------------------|--------------|
+| Strategy | Problem decomposition | Strategy language | Low (domain changes) | None |
+| Policy | Search navigation | Policy language | Medium (algorithm tuning) | Strategy tree type |
+| Demonstrations | Examples | Example format | High (continuous learning) | Strategy, Policy |
+
+### Table 2: Resource Types
+
+**Caption:** Types of resources that can be tracked and managed in oracular programs.
+
+| Resource Type | Description | Typical Limits | Management Strategy |
+|---------------|-------------|----------------|-------------------|
+| API Calls | Number of LLM API calls | Per request, daily | Caching, batching |
+| Tokens | Input/output tokens | Per request, monthly | Prompt optimization |
+| Time | Execution time | Per request, total | Early termination |
+| Cost | Monetary cost | Per request, budget | Budget allocation |
+
+## Appendices and Supplementary Material
+
+### Appendix A: Delphyne Implementation Details
+
+#### System Prompt for Universal Queries
+
+The default system prompt used in Delphyne for universal queries:
+
+```
+I am executing a program that contains nondeterministic assignments along with assertions (e.g., in the form of ensure and fail statements). I am stuck at one of these nondeterministic assignments and your goal is to generate an assigned value, in such a way that the program can go on and not fail any assertion. More specifically, I'll give you three pieces of information:
+
+- A nondeterministic program.
+- The name of the variable that is being assigned at the program location where I am stuck.
+- Some values for a number of local variables.
+
+Your job is to generate a correct value to assign. The expected type of this value is indicated inside the nondeterministic assignment operator. Terminate your answer with a code block (delimited by triple backquotes) that contains a YAML object of the requested type.
+```
+
+#### Code Example: Minimal Strategy
+
+Complete code for the minimal strategy example (from Figure 27 in paper):
+
+```python
+import sympy as sp
+import delphyne as dp
+from delphyne import Branch, Fail, IPDict, Strategy, strategy
+
+@strategy
+def find_param_value(expr: str) -> Strategy[Branch | Fail, IPDict, int]:
+    """
+    Find an integer `n` that makes a given math expression nonnegative
+    for all real `x`. Prove that the resulting expression is nonnegative
+    by rewriting it into an equivalent form.
+    """
+    x, n = sp.Symbol("x", real=True), sp.Symbol("n")
+    symbs = {"x": x, "n": n}
+    try:
+        n_val = yield from dp.guess(int, using=[expr])
+        expr_sp = sp.parse_expr(expr, symbs).subs({n: n_val})
+        equiv = yield from dp.guess(str, using=[str(expr_sp)])
+        equiv_sp = sp.parse_expr(equiv, symbs)
+        equivalent = (expr_sp - equiv_sp).simplify() == 0
+        yield from dp.ensure(equivalent, "not_equivalent")
+        yield from dp.ensure(equiv_sp.is_nonnegative, "not_nonneg")
+        return n_val
+    except Exception as e:
+        yield from dp.fail("sympy_error", message=str(e))
+```
+
+**Execution Result:** Using a simple policy based on depth-first search and zero-shot prompting, this strategy successfully finds parameter values that make expressions nonnegative.
+
+### Appendix B: Theorem Proving Example
+
+#### Example Scenario: Finding a Lean Proof
+
+**Theorem:**
+```lean
+theorem algebra_sqineq_unitcircatbpabsamblt1
+    (a b : Real)
+    (ho : a ^ 2 * b ^ 2 = 1) :
+    a * b * abs (a - b) <= 1 := by sorry
+```
+
+**Strategy Produces Sketch:**
+```lean
+have eq_sq : (a - b)^ 2 = (1 : Real) - 2*(a*b) := by sorry
+have abs_eq_sqrt : abs (a - b) = Real.sqrt ((1 : Real) - 2*(a*b)) := by sorry
+have ab_le_half : a * b <= (1 : Real) / 2 := by sorry
+have rhs_nonneg : 0 <= (1 : Real) - a * b := by sorry
+have square_ineq : (1 : Real) - 2*(a*b) <= (1 - a * b)^ 2 := by sorry
+```
+
+**Process:**
+1. Strategy generates proof sketch with subgoals
+2. For subgoal `abs_eq_sqrt`, LLM attempts proof
+3. LLM hallucinates non-existent theorem `Real.sqrt_eq_abs`
+4. System receives error from Lean
+5. System calls `FindTheorem` tool (implemented as dedicated strategy)
+6. `FindTheorem` uses Loogle to find matches
+7. After several queries, discovers `Real.sqrt_sq_eq_abs`
+8. Caller closes subgoal with: `rw [Real.sqrt_sq_eq_abs (a - b) |> Eq.symm, eq_sq]`
+
+#### Learned Advice Examples
+
+**Advice for Proving Subgoals:**
+
+1. **Control casts:** Work in one type, then come back by injectivity. Avoid mixing $\mathbb{N}, \mathbb{Z}$, and $\mathbb{R}$ mid-proof. Cast early to a single target type and do all algebra there; when you need to return to $\mathbb{N}$, rewrite to a single cast (e.g., `← Nat.cast_add` / `← Nat.cast_mul`) and use `Nat.cast_injective` (or `Rat.cast_injective`) on the resulting equality. Normalize casts before ring-like tactics with `simp [Nat.cast_add, ...]`. For congruences, stay in $\mathbb{N}$ if your goal is `Nat.ModEq`; introducing $\mathbb{Z}$ gratuitously causes type mismatches without adding power.
+
+2. **Use $\leftrightarrow$ lemmas:** Use `.mp/.mpr` (or `.1/.2`), not as functions. Many important lemmas return an equivalence $A \leftrightarrow B$. To use them, first instantiate any parameters to obtain the $\leftrightarrow$, then pick a direction with `.mp` ($A \rightarrow B$) or `.mpr` ($B \rightarrow A$); `.1` and `.2` are equivalent shorthands. Don't try to "apply the lemma to a hypothesis" like a function. This pattern shows up everywhere (divisibility, order facts, `Real.sqrt`/`log` lemmas, set membership equivalences). It both fixes type errors and makes the intended direction explicit.
+
+**Advice for Generating Proof Sketches:**
+
+1. **Avoid $\mathbb{N}$ subtraction:** Rewrite to an additive invariant and induct on that. Natural number subtraction is partial and awkward in Lean. When a goal has terms like $a^{n+1}-(n+2)$, recast it as an additive equality (move the subtrahend to the other side) and prove the cleaner statement by induction. For instance, define $v_n := u_n + (n+c)$ so the recurrence on $u$ turns into a simple multiplicative or additive recurrence on $v$, which is easy to solve by `Nat.rec`. This both simplifies algebra (no case splits from $n-1$) and exposes the right invariant: prove a closed form for $v$, then convert back to $u$ by rearranging. The same idea works with helper sequences tailored to your recurrence so that the induction step is tautological.
+
+2. **Prepare prerequisites:** Before using sqrt/log/floor/ceil, then use their characterization lemmas. For square roots, first extract $0 \leq x$ or $0 \leq a$, then use theorems `Real.sqrt_eq_iff_eq_sq` and `sqr_sqrt` to move cleanly between $x^2 = a$ and $x = a$. When bounding roots, use `Real.lt_sqrt` and `Real.sqrt_lt` to reduce inequalities to squared ones, supplying the required nonnegativity hypotheses. For logs, isolate side conditions in advance ($0 <$ base, base $\neq 1$, $0 <$ argument). Use `Real.log_rpow` to take logs of powers, rewrite the equality into a cancellable form, and cancel with `mul_right_cancel` using $\log \neq 0$ (from `Real.log_pos_iff`). For floor/ceil, sandwich the number between consecutive integers and finish with `Int.floor_eq_iff` or `Int.ceil_eq_iff`. When square roots are involved, first obtain the bounds using the sqrt inequalities above, then apply the floor/ceil characterization.
+
+### Appendix C: Additional Code Patterns
+
+#### Pattern: Nested Strategy Refinement
+
+```python
+@strategy
+def complex_problem_solver(problem: Problem) -> Strategy[Branch | Fail, IPDict, Solution]:
+    # Main strategy
+    approach = yield from dp.guess(Approach, using=[problem])
+    
+    # This query can be refined into a sub-strategy
+    if approach == Approach.OPTIMIZATION:
+        # Local refinement: this becomes a sub-strategy
+        solution = yield from solve_optimization_subproblem(problem)
+    else:
+        solution = yield from solve_directly(problem)
+    
+    yield from dp.ensure(validate(solution, problem), "invalid_solution")
+    return solution
+
+@strategy
+def solve_optimization_subproblem(problem: Problem) -> Strategy[Branch | Fail, IPDict, Solution]:
+    # Independent sub-strategy with its own policy
+    initial = yield from dp.guess(Solution, using=[problem])
+    optimized = yield from optimize(initial, problem)
+    return optimized
+```
+
+**Key Points:**
+- Queries can be refined into sub-strategies
+- Sub-strategies are independent
+- Each can have its own policy
+- Refinement is local (doesn't affect parent)
+
+#### Pattern: Resource-Aware Policy
+
+```python
+def resource_aware_policy(tree, demonstrations, budget):
+    """
+    Policy that tracks and enforces resource limits.
+    """
+    remaining_budget = budget
+    
+    def select_branch(node, context):
+        nonlocal remaining_budget
+        
+        if remaining_budget.api_calls <= 0:
+            return None  # Budget exhausted
+        
+        # Estimate cost
+        estimated_cost = estimate_llm_cost(node, context)
+        
+        if estimated_cost > remaining_budget:
+            return None  # Too expensive
+        
+        # Make LLM call
+        choice = llm_oracle(build_prompt(node, context, demonstrations))
+        remaining_budget.api_calls -= 1
+        remaining_budget.tokens += choice.tokens_used
+        
+        return choice
+    
+    return select_branch
+```
+
+**Key Points:**
+- Tracks multiple resource types
+- Enforces limits before making calls
+- Estimates costs when possible
+- Returns None when budget exhausted
+
+## References
+
+### Key References from the Paper
+
+The paper references work on:
+
+1. **Nondeterministic Programming:**
+   - Traditional formulations of nondeterministic programming
+   - Extensions for search and backtracking
+   - Effect systems for managing computational effects
+
+2. **LLM Integration:**
+   - Few-shot prompting techniques
+   - Chain-of-thought reasoning
+   - Tool use and API integration
+   - Prompt engineering best practices
+
+3. **Search Algorithms:**
+   - Depth-first search
+   - Monte Carlo Tree Search
+   - Beam search
+   - Best-first search
+
+4. **Programming Language Design:**
+   - Modularity and composition
+   - Effect systems
+   - Domain-specific languages
+   - Stream processing
+
+5. **Theorem Proving:**
+   - Automated theorem proving
+   - Lean theorem prover
+   - Proof assistants
+   - Formal verification
+
+6. **Symbolic Mathematics:**
+   - Computer algebra systems
+   - Symbolic computation
+   - Mathematical optimization
+
+### Implementation References
+
+- **Delphyne Framework:** The implementation described in the paper
+- **Lean 4:** Theorem prover used in examples
+- **Mathlib:** Mathematical library for Lean
+- **SymPy:** Python library for symbolic mathematics (used in examples)
+- **Loogle:** Theorem search tool for Lean
+
+---
+
+## Important Note on Content Completeness
+
+This MDC was created based on the available content from the paper. The original paper is a comprehensive work on programming language design for LLM integration. A complete extraction would ideally include:
+
+1. **Complete Language Specifications:** Full syntax and semantics of strategy and policy languages
+2. **All Code Examples:** Every code example from the paper with full context
+3. **All Figures:** Complete descriptions of all figures and diagrams
+4. **All Tables:** Complete data from all tables
+5. **Complete Evaluation:** Full experimental results and analysis
+6. **All Theorems and Proofs:** Complete formal treatment of the language design
+7. **Complete Implementation Details:** Full Delphyne implementation documentation
+8. **All Appendices:** Complete content from all appendices
+
+For a complete implementation, it is recommended to:
+- Access the full paper for complete details
+- Review the Delphyne implementation if available
+- Consult the original paper for formal language specifications
+- Refer to the paper for complete evaluation results
+
+This MDC serves as a foundation based on the available content, but should be supplemented with the full paper for complete implementation guidance.

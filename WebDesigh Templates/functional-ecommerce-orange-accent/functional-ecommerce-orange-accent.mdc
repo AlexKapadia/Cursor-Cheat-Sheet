@@ -1,0 +1,1361 @@
+---
+alwaysApply: false
+---
+
+# Functional E-commerce Orange Accent - Website Design System
+
+## Website Metadata
+- **Source URL:** https://www.amazon.co.uk/
+- **Design Style:** Functional E-commerce with Orange Accent
+- **Primary Framework:** React (detected from DOM structure)
+- **CSS Framework:** Custom CSS with utility classes
+- **Analysis Date:** 2025-11-29
+- **Pages Analyzed:** Homepage, Product Pages, Category Pages, Search Results
+- **Total Components:** 25+
+
+## Design Overview
+
+Amazon.co.uk features a clean, functional e-commerce design focused on usability and conversion. The design prioritizes product discovery, clear pricing, and efficient navigation. The signature orange accent color (#FF9900) is used strategically for CTAs and brand recognition. The layout is information-dense yet organized, with a strong emphasis on product imagery, ratings, and pricing. The design system is optimized for both desktop and mobile shopping experiences, with responsive breakpoints that maintain usability across all devices.
+
+## Design System Fundamentals
+
+### Color Palette
+**Primary Colors:**
+- Primary Orange: `#FF9900` (usage: buttons, links, accents, "Add to Cart" buttons)
+- Primary Orange Hover: `#E88900` (usage: hover states on orange elements)
+- Primary Orange Active: `#D67A00` (usage: active/pressed states)
+
+**Neutral Colors:**
+- Background: `#FFFFFF` (main page background)
+- Surface: `#FFFFFF` (card backgrounds, modal backgrounds)
+- Surface Secondary: `#F8F9FA` (alternate sections, hover states)
+- Text Primary: `#0F1111` (main body text, headings)
+- Text Secondary: `#565959` (secondary text, metadata)
+- Text Tertiary: `#767676` (muted text, timestamps)
+- Border: `#D5D9D9` (card borders, dividers)
+- Border Light: `#E7E7E7` (subtle dividers)
+
+**Semantic Colors:**
+- Success: `#007600` (in-stock indicators, success messages)
+- Error: `#B12704` (error messages, out of stock)
+- Warning: `#FFA500` (warnings, limited stock)
+- Info: `#0066C0` (informational links, Prime badge)
+- Price: `#B12704` (sale prices, discounts)
+- Price Original: `#565959` (original prices, strikethrough)
+
+**Gradients:**
+```css
+/* Orange gradient for hero sections */
+background: linear-gradient(to bottom, #FF9900 0%, #E88900 100%);
+
+/* Subtle background gradient */
+background: linear-gradient(to bottom, #FFFFFF 0%, #F8F9FA 100%);
+```
+
+### Typography System
+**Font Families:**
+- Primary: "Amazon Ember", "Helvetica Neue", Helvetica, Arial, sans-serif (usage: all text)
+- Monospace: "Courier New", Courier, monospace (usage: code, technical specs)
+
+**Type Scale:**
+```css
+/* Desktop */
+--font-size-xs: 11px;      /* Small labels, metadata */
+--font-size-sm: 12px;      /* Secondary text, captions */
+--font-size-base: 14px;    /* Body text, default */
+--font-size-md: 16px;      /* Emphasized body text */
+--font-size-lg: 18px;      /* Subheadings, important text */
+--font-size-xl: 21px;      /* Section headings */
+--font-size-2xl: 24px;     /* Large headings */
+--font-size-3xl: 28px;     /* Hero headings */
+--font-size-4xl: 36px;     /* Display headings */
+
+/* Mobile */
+--font-size-xs-mobile: 10px;
+--font-size-sm-mobile: 11px;
+--font-size-base-mobile: 13px;
+--font-size-md-mobile: 14px;
+--font-size-lg-mobile: 16px;
+--font-size-xl-mobile: 18px;
+--font-size-2xl-mobile: 20px;
+```
+
+**Line Heights:**
+```css
+--line-height-tight: 1.2;
+--line-height-normal: 1.4;
+--line-height-relaxed: 1.6;
+--line-height-loose: 1.8;
+```
+
+**Font Weights:**
+- Light: 300
+- Regular: 400 (body text)
+- Medium: 500 (emphasized text)
+- Semibold: 600 (headings, important labels)
+- Bold: 700 (strong emphasis, CTAs)
+
+**Letter Spacing:**
+```css
+--letter-spacing-tight: -0.01em;
+--letter-spacing-normal: 0;
+--letter-spacing-wide: 0.05em;
+```
+
+### Spacing System
+```css
+--spacing-0: 0;
+--spacing-1: 4px;
+--spacing-2: 8px;
+--spacing-3: 12px;
+--spacing-4: 16px;
+--spacing-5: 20px;
+--spacing-6: 24px;
+--spacing-8: 32px;
+--spacing-10: 40px;
+--spacing-12: 48px;
+--spacing-16: 64px;
+--spacing-20: 80px;
+--spacing-24: 96px;
+```
+
+**Spacing Scale:** Based on 4px increments. Common spacing: 8px (tight), 16px (normal), 24px (comfortable), 32px (spacious).
+
+### Border Radius System
+```css
+--radius-none: 0;
+--radius-sm: 2px;
+--radius-md: 4px;
+--radius-lg: 8px;
+--radius-xl: 12px;
+--radius-full: 9999px;
+```
+
+### Shadow System
+```css
+/* Card shadow - subtle elevation */
+box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+/* Card shadow hover - elevated state */
+box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+
+/* Modal shadow - strong elevation */
+box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+
+/* Dropdown shadow */
+box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+
+/* Button shadow - pressed state */
+box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+```
+
+## Layout Systems
+
+### Grid System
+```css
+/* Main Container */
+.container {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+@media (min-width: 768px) {
+  .container {
+    padding: 0 24px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    padding: 0 32px;
+  }
+}
+
+/* Grid Layout - Product Grid */
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+@media (min-width: 768px) {
+  .product-grid {
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 24px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .product-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 32px;
+  }
+}
+```
+
+### Breakpoints
+```css
+/* Mobile */
+@media (min-width: 320px) { /* ... */ }
+
+/* Mobile Large */
+@media (min-width: 375px) { /* ... */ }
+
+/* Mobile XL */
+@media (min-width: 414px) { /* ... */ }
+
+/* Tablet */
+@media (min-width: 768px) { /* ... */ }
+
+/* Desktop */
+@media (min-width: 1024px) { /* ... */ }
+
+/* Desktop Large */
+@media (min-width: 1280px) { /* ... */ }
+
+/* Desktop XL */
+@media (min-width: 1440px) { /* ... */ }
+
+/* Desktop XXL */
+@media (min-width: 1920px) { /* ... */ }
+```
+
+## Component Library
+
+### Buttons
+
+**Primary Button (Orange):**
+```css
+.btn-primary {
+  background-color: #FF9900;
+  color: #FFFFFF;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  text-align: center;
+  display: inline-block;
+}
+
+.btn-primary:hover {
+  background-color: #E88900;
+}
+
+.btn-primary:active {
+  background-color: #D67A00;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary:disabled {
+  background-color: #D5D9D9;
+  color: #767676;
+  cursor: not-allowed;
+}
+```
+
+**Secondary Button:**
+```css
+.btn-secondary {
+  background-color: #FFFFFF;
+  color: #0F1111;
+  border: 1px solid #D5D9D9;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  border-color: #A2A6AC;
+  background-color: #F8F9FA;
+}
+
+.btn-secondary:active {
+  background-color: #E7E7E7;
+}
+```
+
+**Add to Cart Button:**
+```css
+.btn-add-to-cart {
+  background-color: #FF9900;
+  color: #FFFFFF;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  width: 100%;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.btn-add-to-cart:hover {
+  background-color: #E88900;
+}
+
+.btn-add-to-cart:active {
+  background-color: #D67A00;
+}
+```
+
+**Link Button:**
+```css
+.btn-link {
+  background: none;
+  border: none;
+  color: #0066C0;
+  text-decoration: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  transition: color 0.2s ease, text-decoration 0.2s ease;
+}
+
+.btn-link:hover {
+  color: #C45500;
+  text-decoration: underline;
+}
+```
+
+### Cards
+
+**Product Card:**
+```css
+.product-card {
+  background: #FFFFFF;
+  border: 1px solid #D5D9D9;
+  border-radius: 4px;
+  padding: 16px;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.product-card:hover {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  border-color: #A2A6AC;
+}
+
+.product-card-image {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  margin-bottom: 12px;
+  background: #F8F9FA;
+}
+
+.product-card-title {
+  font-size: 14px;
+  font-weight: 400;
+  color: #0F1111;
+  line-height: 1.4;
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.product-card-rating {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.product-card-price {
+  font-size: 18px;
+  font-weight: 600;
+  color: #0F1111;
+  margin-bottom: 4px;
+}
+
+.product-card-price-original {
+  font-size: 14px;
+  color: #565959;
+  text-decoration: line-through;
+  margin-left: 8px;
+}
+
+.product-card-price-sale {
+  color: #B12704;
+  font-weight: 600;
+}
+
+.product-card-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: #FF9900;
+  color: #FFFFFF;
+  padding: 4px 8px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+```
+
+**Deal Card:**
+```css
+.deal-card {
+  background: #FFFFFF;
+  border: 1px solid #D5D9D9;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+}
+
+.deal-card-image {
+  width: 100%;
+  max-width: 200px;
+  height: auto;
+  margin: 0 auto 16px;
+}
+
+.deal-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0F1111;
+  margin-bottom: 12px;
+}
+
+.deal-card-price {
+  font-size: 24px;
+  font-weight: 700;
+  color: #B12704;
+  margin-bottom: 8px;
+}
+```
+
+### Forms
+
+**Input Fields:**
+```css
+.input {
+  border: 1px solid #D5D9D9;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: #0F1111;
+  background: #FFFFFF;
+  width: 100%;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #FF9900;
+  box-shadow: 0 0 0 3px rgba(255, 153, 0, 0.1);
+}
+
+.input:invalid {
+  border-color: #B12704;
+}
+
+.input::placeholder {
+  color: #767676;
+}
+```
+
+**Search Input:**
+```css
+.search-input {
+  border: 2px solid #FF9900;
+  border-radius: 4px 0 0 4px;
+  padding: 10px 16px;
+  font-size: 14px;
+  flex: 1;
+  height: 40px;
+}
+
+.search-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 153, 0, 0.1);
+}
+```
+
+**Select Dropdown:**
+```css
+.select {
+  border: 1px solid #D5D9D9;
+  border-radius: 4px;
+  padding: 8px 32px 8px 12px;
+  font-size: 14px;
+  background: #FFFFFF;
+  color: #0F1111;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%230F1111' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
+.select:focus {
+  outline: none;
+  border-color: #FF9900;
+  box-shadow: 0 0 0 3px rgba(255, 153, 0, 0.1);
+}
+```
+
+### Navigation
+
+**Main Navigation:**
+```css
+.nav {
+  background: #131921;
+  color: #FFFFFF;
+  padding: 0 16px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.nav-link {
+  color: #FFFFFF;
+  text-decoration: none;
+  font-size: 14px;
+  padding: 8px 12px;
+  border-radius: 2px;
+  transition: background-color 0.2s ease;
+}
+
+.nav-link:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.nav-link.active {
+  background-color: rgba(255, 255, 255, 0.15);
+  font-weight: 600;
+}
+```
+
+**Breadcrumbs:**
+```css
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #565959;
+  padding: 12px 0;
+}
+
+.breadcrumb-item {
+  color: #0066C0;
+  text-decoration: none;
+}
+
+.breadcrumb-item:hover {
+  color: #C45500;
+  text-decoration: underline;
+}
+
+.breadcrumb-separator {
+  color: #767676;
+}
+```
+
+**Mobile Menu:**
+```css
+.mobile-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 280px;
+  height: 100vh;
+  background: #FFFFFF;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  z-index: 1001;
+  overflow-y: auto;
+}
+
+.mobile-menu.open {
+  transform: translateX(0);
+}
+
+.mobile-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+  z-index: 1000;
+}
+
+.mobile-menu-overlay.open {
+  opacity: 1;
+  visibility: visible;
+}
+```
+
+### Modals/Dialogs
+
+**Modal:**
+```css
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.modal.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modal-content {
+  background: #FFFFFF;
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  transform: scale(0.9);
+  transition: transform 0.3s ease;
+}
+
+.modal.open .modal-content {
+  transform: scale(1);
+}
+```
+
+### Badges
+
+**Prime Badge:**
+```css
+.badge-prime {
+  background: #146eb4;
+  color: #FFFFFF;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  display: inline-block;
+}
+```
+
+**Deal Badge:**
+```css
+.badge-deal {
+  background: #B12704;
+  color: #FFFFFF;
+  padding: 4px 8px;
+  border-radius: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-block;
+}
+```
+
+**Best Seller Badge:**
+```css
+.badge-bestseller {
+  background: #FFA500;
+  color: #0F1111;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-block;
+}
+```
+
+### Rating System
+
+**Star Rating:**
+```css
+.rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rating-star {
+  width: 16px;
+  height: 16px;
+  fill: #FFA500;
+}
+
+.rating-star-empty {
+  fill: #D5D9D9;
+}
+
+.rating-text {
+  font-size: 12px;
+  color: #0066C0;
+  margin-left: 4px;
+}
+
+.rating-count {
+  font-size: 12px;
+  color: #565959;
+  margin-left: 4px;
+}
+```
+
+### Loading Indicators
+
+**Spinner:**
+```css
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #D5D9D9;
+  border-top-color: #FF9900;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+```
+
+**Skeleton Loader:**
+```css
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #F0F0F0 25%,
+    #E0E0E0 50%,
+    #F0F0F0 75%
+  );
+  background-size: 200% 100%;
+  animation: loading 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+```
+
+## Animations and Transitions
+
+### CSS Transitions
+```css
+/* Standard Transition */
+.transition {
+  transition: all 0.2s ease;
+}
+
+/* Fast Transition */
+.transition-fast {
+  transition: all 0.15s ease;
+}
+
+/* Slow Transition */
+.transition-slow {
+  transition: all 0.3s ease;
+}
+
+/* Color Transition */
+.transition-color {
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Transform Transition */
+.transition-transform {
+  transition: transform 0.2s ease;
+}
+```
+
+### CSS Animations
+```css
+/* Fade In */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease;
+}
+
+/* Slide In from Right */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.slide-in-right {
+  animation: slideInRight 0.3s ease;
+}
+
+/* Scale In */
+@keyframes scaleIn {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.scale-in {
+  animation: scaleIn 0.3s ease;
+}
+```
+
+### Scroll Animations
+- Products fade in as user scrolls
+- Sticky navigation bar on scroll
+- "Back to top" button appears after scrolling down
+
+### Page Transitions
+- Smooth page transitions with fade effect
+- Loading states during page navigation
+- Progressive image loading
+
+## Page Layouts
+
+### Homepage Layout
+```css
+.homepage {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.homepage-header {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  background: #131921;
+}
+
+.homepage-hero {
+  background: #F8F9FA;
+  padding: 32px 0;
+  margin-bottom: 24px;
+}
+
+.homepage-sections {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.homepage-section {
+  margin-bottom: 48px;
+}
+
+.homepage-section-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #0F1111;
+  margin-bottom: 16px;
+}
+
+.homepage-footer {
+  background: #131921;
+  color: #FFFFFF;
+  padding: 48px 0 24px;
+  margin-top: 64px;
+}
+```
+
+### Product Page Layout
+```css
+.product-page {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.product-page-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+
+@media (min-width: 1024px) {
+  .product-page-grid {
+    grid-template-columns: 400px 1fr;
+  }
+}
+
+.product-image-gallery {
+  background: #FFFFFF;
+  border: 1px solid #D5D9D9;
+  border-radius: 4px;
+  padding: 16px;
+}
+
+.product-info {
+  background: #FFFFFF;
+  padding: 24px;
+}
+
+.product-title {
+  font-size: 24px;
+  font-weight: 400;
+  color: #0F1111;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.product-price {
+  font-size: 28px;
+  font-weight: 600;
+  color: #0F1111;
+  margin-bottom: 16px;
+}
+
+.product-description {
+  font-size: 14px;
+  color: #0F1111;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+```
+
+## User Flows and Navigation
+
+### Primary User Flows
+
+1. **Product Discovery Flow:**
+   - Step 1: User lands on homepage
+   - Step 2: User browses featured deals or categories
+   - Step 3: User clicks on product card
+   - Step 4: User views product details page
+   - Step 5: User adds product to cart
+   - Step 6: User proceeds to checkout
+
+2. **Search Flow:**
+   - Step 1: User enters search query in header search bar
+   - Step 2: User selects category (optional)
+   - Step 3: User clicks search button or presses Enter
+   - Step 4: User views search results page
+   - Step 5: User filters results (optional)
+   - Step 6: User selects product from results
+
+3. **Category Navigation Flow:**
+   - Step 1: User clicks "All" menu button
+   - Step 2: User views category menu/dropdown
+   - Step 3: User selects category
+   - Step 4: User views category page with products
+   - Step 5: User filters or sorts products (optional)
+   - Step 6: User selects product
+
+### Navigation Structure
+- **Main Navigation**: Horizontal bar with logo, search, account, cart
+- **Category Navigation**: Dropdown menu with all categories
+- **Footer Navigation**: Multi-column links organized by category
+- **Breadcrumbs**: Present on product and category pages
+
+### Link Patterns
+- **Internal Links**: Blue (#0066C0), underline on hover
+- **External Links**: Same as internal, with external icon
+- **CTA Links**: Orange (#FF9900), no underline, button style
+
+## Responsive Design Patterns
+
+### Mobile (< 768px)
+- Single column layout
+- Hamburger menu for navigation
+- Stacked product cards
+- Full-width search bar
+- Touch-friendly button sizes (min 44px)
+- Simplified footer with accordion sections
+
+### Tablet (768px - 1024px)
+- Two-column product grid
+- Expanded navigation menu
+- Side-by-side product images and info
+- Collapsible category sidebar
+
+### Desktop (> 1024px)
+- Multi-column product grids (3-4 columns)
+- Full horizontal navigation
+- Sidebar filters on category pages
+- Hover states on all interactive elements
+- Expanded product information
+
+## Loading States and Indicators
+
+### Page Load
+- Skeleton screens for product cards
+- Progressive image loading
+- Staggered content appearance
+
+### Content Loading
+- Spinner for async content
+- Skeleton loaders for product lists
+- Progressive enhancement approach
+
+### Form Submission
+- Loading state on submit buttons
+- Disabled form fields during submission
+- Success/error message display
+
+## Interactive Behaviors
+
+### Hover Effects
+```css
+/* Product Card Hover */
+.product-card:hover {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+/* Button Hover */
+.btn-primary:hover {
+  background-color: #E88900;
+}
+
+/* Link Hover */
+a:hover {
+  color: #C45500;
+  text-decoration: underline;
+}
+```
+
+### Click Interactions
+- Button press animation (scale down slightly)
+- Ripple effect on mobile
+- Immediate visual feedback
+
+### Scroll Behaviors
+- Sticky navigation bar
+- "Back to top" button appears after scrolling
+- Lazy loading of images
+- Infinite scroll on category pages (optional)
+
+### Form Interactions
+- Real-time validation
+- Error messages below fields
+- Success indicators
+- Auto-fill support
+
+## Implementation Guidelines
+
+### CSS Architecture
+- Component-based CSS organization
+- Utility classes for common patterns
+- CSS custom properties for theming
+- Mobile-first approach
+
+### Component Structure
+- Reusable product card component
+- Modular navigation components
+- Flexible grid system
+- Consistent spacing utilities
+
+### Animation Performance
+- Use transform and opacity for animations
+- Avoid animating layout properties
+- Use will-change sparingly
+- Prefer CSS animations over JavaScript
+
+### Accessibility Considerations
+- Proper ARIA labels
+- Keyboard navigation support
+- Focus indicators on all interactive elements
+- Color contrast ratios meet WCAG AA
+- Screen reader friendly markup
+
+## Design Tokens
+
+```css
+:root {
+  /* Colors */
+  --color-primary: #FF9900;
+  --color-primary-hover: #E88900;
+  --color-primary-active: #D67A00;
+  --color-background: #FFFFFF;
+  --color-surface: #F8F9FA;
+  --color-text-primary: #0F1111;
+  --color-text-secondary: #565959;
+  --color-text-tertiary: #767676;
+  --color-border: #D5D9D9;
+  --color-success: #007600;
+  --color-error: #B12704;
+  --color-link: #0066C0;
+  --color-link-hover: #C45500;
+  
+  /* Typography */
+  --font-family-primary: "Amazon Ember", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-size-base: 14px;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --line-height-normal: 1.4;
+  
+  /* Spacing */
+  --spacing-unit: 4px;
+  --spacing-xs: 8px;
+  --spacing-sm: 12px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.2);
+  
+  /* Border Radius */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.2s ease;
+  --transition-slow: 0.3s ease;
+}
+```
+
+## Page-Specific Designs
+
+### Homepage
+**Layout Structure:**
+- Sticky navigation header
+- Hero banner/carousel
+- Featured deals section
+- Category navigation
+- Product recommendations
+- Footer with links
+
+**Components Used:**
+- Navigation bar
+- Search bar
+- Product cards
+- Deal cards
+- Category links
+- Footer navigation
+
+**Responsive Behavior:**
+- Mobile: Single column, stacked sections
+- Tablet: Two columns for product grids
+- Desktop: Multi-column layouts, sidebars
+
+### Product Page
+**Layout Structure:**
+- Breadcrumb navigation
+- Product image gallery (left)
+- Product information (right)
+- Product description
+- Customer reviews
+- Related products
+
+**Components Used:**
+- Image gallery
+- Price display
+- Add to cart button
+- Rating display
+- Review cards
+- Product specifications
+
+**Responsive Behavior:**
+- Mobile: Stacked layout
+- Tablet: Side-by-side images and info
+- Desktop: Full two-column layout
+
+### Category Page
+**Layout Structure:**
+- Category header
+- Filter sidebar (desktop)
+- Product grid
+- Pagination
+- Sort options
+
+**Components Used:**
+- Filter components
+- Product cards
+- Pagination controls
+- Sort dropdown
+
+**Responsive Behavior:**
+- Mobile: Filters in modal/drawer
+- Tablet: Collapsible sidebar
+- Desktop: Fixed sidebar with filters
+
+## Motion Graphics and Advanced Animations
+
+### Carousel Animation
+**Description:** Smooth horizontal scrolling carousel for hero banners
+**Trigger:** Auto-advance every 5 seconds, or manual navigation
+**CSS/JS:**
+```css
+.carousel {
+  position: relative;
+  overflow: hidden;
+}
+
+.carousel-slide {
+  transition: transform 0.5s ease;
+}
+
+.carousel-slide.active {
+  transform: translateX(0);
+}
+```
+
+### Modal Animation
+**Description:** Fade in backdrop with scale-in modal content
+**Trigger:** Modal open/close
+**CSS:**
+```css
+.modal {
+  animation: fadeIn 0.3s ease;
+}
+
+.modal-content {
+  animation: scaleIn 0.3s ease;
+}
+```
+
+### Dropdown Animation
+**Description:** Slide down animation for dropdown menus
+**Trigger:** Hover or click on parent element
+**CSS:**
+```css
+.dropdown-menu {
+  transform: translateY(-10px);
+  opacity: 0;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.dropdown:hover .dropdown-menu {
+  transform: translateY(0);
+  opacity: 1;
+}
+```
+
+## Design Patterns and Best Practices
+
+### Layout Patterns
+- **Container Pattern**: Max-width containers with auto margins
+- **Grid Pattern**: CSS Grid for product layouts
+- **Card Pattern**: Consistent card styling across components
+- **Stack Pattern**: Vertical stacking on mobile
+
+### Component Patterns
+- **Button Variants**: Primary, secondary, link styles
+- **Card Components**: Product cards, deal cards, info cards
+- **Form Patterns**: Consistent input styling and validation
+- **Navigation Patterns**: Sticky header, mobile menu, breadcrumbs
+
+### Animation Patterns
+- **Hover States**: Subtle elevation and color changes
+- **Transitions**: Smooth 0.2s ease transitions
+- **Loading States**: Skeleton loaders and spinners
+- **Feedback**: Immediate visual response to interactions
+
+## Implementation Checklist
+
+### Setup
+- [x] Set up CSS variables/tokens
+- [x] Configure typography system
+- [x] Set up color palette
+- [x] Configure spacing system
+
+### Components
+- [x] Implement button variants
+- [x] Implement card components
+- [x] Implement form elements
+- [x] Implement navigation
+- [x] Implement product cards
+- [x] Implement rating system
+- [x] Implement badges
+- [x] Implement modals
+
+### Responsive Design
+- [x] Implement mobile layouts
+- [x] Implement tablet layouts
+- [x] Implement desktop layouts
+- [x] Test at all breakpoints
+
+### Animations
+- [x] Implement CSS transitions
+- [x] Implement CSS animations
+- [x] Implement scroll animations
+- [x] Implement page transitions
+
+## Notes and Observations
+
+### Design Characteristics
+- **Functionality First**: Design prioritizes usability and conversion over aesthetics
+- **Information Density**: High information density with clear hierarchy
+- **Trust Signals**: Ratings, reviews, and badges build trust
+- **Clear CTAs**: Orange buttons stand out and guide user actions
+
+### Implementation Considerations
+- **Performance**: Optimize images and use lazy loading
+- **Accessibility**: Ensure all interactive elements are keyboard accessible
+- **Mobile Experience**: Touch-friendly targets and simplified navigation
+- **Browser Support**: Graceful degradation for older browsers
+
+### Special Features
+- **Prime Badge**: Special styling for Prime-eligible products
+- **Deal Badges**: Prominent display of discounts and savings
+- **Rating System**: Visual star ratings with review counts
+- **Search Functionality**: Prominent search bar with category selection
+
+### Color Usage
+- Orange (#FF9900) is used strategically for CTAs and brand recognition
+- Blue (#0066C0) is used for links and informational elements
+- Red (#B12704) is used for prices and error states
+- Neutral grays provide structure and hierarchy
+
+### Typography
+- Amazon Ember font family provides consistent, readable text
+- Clear hierarchy with size and weight variations
+- Adequate line heights for readability
+- Responsive font sizing for mobile devices

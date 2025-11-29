@@ -1,0 +1,108 @@
+{
+  "brand": {
+    "primary": {
+      "description": "Primary brand color - likely blue or teal for business software",
+      "usage": "Main brand color, CTAs, links, highlights"
+    },
+    "secondary": {
+      "description": "Secondary brand color - accent color",
+      "usage": "Secondary CTAs, accents, highlights"
+    }
+  },
+  "text": {
+    "primary": {
+      "description": "Primary text color - dark for readability",
+      "usage": "Headings, body text, primary content"
+    },
+    "secondary": {
+      "description": "Secondary text color - medium gray",
+      "usage": "Subheadings, captions, secondary content"
+    },
+    "muted": {
+      "description": "Muted text color - light gray",
+      "usage": "Footer text, metadata, less important content"
+    }
+  },
+  "background": {
+    "primary": {
+      "description": "Primary background - white or very light",
+      "usage": "Main content areas, cards"
+    },
+    "secondary": {
+      "description": "Secondary background - light gray or brand color",
+      "usage": "Alternating sections, hero backgrounds"
+    },
+    "dark": {
+      "description": "Dark background - for contrast sections",
+      "usage": "Footer, dark sections, hero backgrounds"
+    }
+  },
+  "interactive": {
+    "button": {
+      "primary": {
+        "description": "Primary button color - brand color",
+        "usage": "Main CTAs like 'Request a Demo'"
+      },
+      "secondary": {
+        "description": "Secondary button color - lighter or outline",
+        "usage": "Secondary actions like 'Start Free Trial'"
+      },
+      "hover": {
+        "description": "Button hover state - darker shade",
+        "usage": "Interactive feedback on hover"
+      }
+    },
+    "link": {
+      "default": {
+        "description": "Default link color - brand color",
+        "usage": "Standard text links"
+      },
+      "hover": {
+        "description": "Link hover color - darker or underlined",
+        "usage": "Hover state for links"
+      }
+    }
+  },
+  "status": {
+    "success": {
+      "description": "Success color - green",
+      "usage": "Success messages, checkmarks, positive feedback"
+    },
+    "error": {
+      "description": "Error color - red",
+      "usage": "Error messages, validation errors, warnings"
+    },
+    "warning": {
+      "description": "Warning color - yellow/orange",
+      "usage": "Warning messages, caution indicators"
+    },
+    "info": {
+      "description": "Info color - blue",
+      "usage": "Information messages, tooltips"
+    }
+  },
+  "shadows": {
+    "level1": {
+      "description": "Subtle shadow - for cards",
+      "usage": "Card elevation, subtle depth"
+    },
+    "level2": {
+      "description": "Medium shadow - for hover states",
+      "usage": "Hover elevation, interactive feedback"
+    },
+    "level3": {
+      "description": "Strong shadow - for modals",
+      "usage": "Modal dialogs, overlays, popups"
+    }
+  },
+  "notes": {
+    "actual_colors": "Specific hex values would need to be extracted from the actual website CSS",
+    "color_system": "Likely uses a systematic color palette with consistent usage patterns",
+    "accessibility": "Colors should meet WCAG AA contrast ratios (4.5:1 for normal text, 3:1 for large text)",
+    "brand_identity": "Color choices reflect professional, modern business software aesthetic"
+  }
+}
+
+
+
+

@@ -1,0 +1,905 @@
+---
+alwaysApply: false
+---
+
+# Quantitative Finance Engine: Monte Carlo Stock Price Projection
+
+**Role:** Principal Quantitative Analyst (Financial Engineering & Risk Modeling)
+
+**Objective:** Source of Truth documentation for Mathematical Models, Yahoo Finance Data Pipeline, and Monte Carlo Simulation Architecture for projecting stock prices.
+
+---
+
+## ⚠️ CRITICAL ARCHITECTURE (THE "STOCHASTIC" RULE)
+
+### The Model Mandate
+
+**DO NOT USE SIMPLE LINEAR REGRESSION.**
+
+You must implement **Geometric Brownian Motion (GBM)** augmented with **Merton Jump Diffusion** to model stock price dynamics.
+
+### Precision Requirements
+
+- **Standard JavaScript Numbers are insufficient** for matrix math and statistical calculations.
+- **Use `math.js` or `simple-statistics`** with `Float64Array` buffers for all numerical computations.
+- **Never use `Number` type** for covariance matrices, Cholesky decompositions, or Monte Carlo paths.
+
+### The "Fat Tail" Reality
+
+Markets are not perfectly normal. Your model must account for:
+- **Jumps** (Poisson process events) to model crashes/spikes
+- **Volatility clustering** (GARCH effects)
+- **Skewness and kurtosis** in return distributions
+
+---
+
+## PHASE 1: DATA INGESTION (YAHOO FINANCE)
+
+### 1. The Data Proxy
+
+**Library:** `yahoo-finance2` (Node.js)
+
+**Endpoint:** `/api/market-data/history`
+
+**Request Parameters:**
+```typescript
+{
+  symbol: string,        // e.g., "AAPL", "MSFT"
+  period1: number,      // Unix timestamp: 100 days ago
+  period2: number,      // Unix timestamp: today
+  interval: "1d"        // Daily intervals
+}
+```
+
+**Implementation:**
+```typescript
+import yahooFinance from 'yahoo-finance2';
+
+async function fetchHistoricalData(symbol: string, days: number = 100) {
+  const period1 = Math.floor((Date.now() - days * 24 * 60 * 60 * 1000) / 1000);
+  const period2 = Math.floor(Date.now() / 1000);
+  
+  const result = await yahooFinance.historical(symbol, {
+    period1,
+    period2,
+    interval: '1d'
+  });
+  
+  return result.map(quote => ({
+    date: new Date(quote.date),
+    close: quote.close,
+    volume: quote.volume,
+    high: quote.high,
+    low: quote.low,
+    open: quote.open
+  }));
+}
+```
+
+### 2. Log Returns Calculation
+
+**⚠️ CRITICAL: Do not work with raw prices.**
+
+Calculate natural log returns: $\ln(P_t / P_{t-1})$
+
+**Formula:**
+$$r_t = \ln\left(\frac{P_t}{P_{t-1}}\right) = \ln(P_t) - \ln(P_{t-1})$$
+
+**Implementation:**
+```typescript
+function calculateLogReturns(prices: Float64Array): Float64Array {
+  const returns = new Float64Array(prices.length - 1);
+  for (let i = 1; i < prices.length; i++) {
+    returns[i - 1] = Math.log(prices[i] / prices[i - 1]);
+  }
+  return returns;
+}
+```
+
+### 3. Historical Volatility ($\sigma$)
+
+Calculate the standard deviation of Log Returns over the window.
+
+**Formula:**
+$$\sigma = \sqrt{\frac{1}{n-1} \sum_{i=1}^{n} (r_i - \bar{r})^2}$$
+
+Where:
+- $n$ = number of returns
+- $r_i$ = individual log return
+- $\bar{r}$ = mean of log returns
+
+**Implementation:**
+```typescript
+import { standardDeviation, mean } from 'simple-statistics';
+
+function calculateVolatility(logReturns: Float64Array): number {
+  const returnsArray = Array.from(logReturns);
+  return standardDeviation(returnsArray) * Math.sqrt(252); // Annualized (252 trading days)
+}
+```
+
+### 4. Drift ($\mu$)
+
+Average of Log Returns, annualized.
+
+**Formula:**
+$$\mu = \frac{1}{n} \sum_{i=1}^{n} r_i \times 252$$
+
+**Implementation:**
+```typescript
+function calculateDrift(logReturns: Float64Array): number {
+  const returnsArray = Array.from(logReturns);
+  return mean(returnsArray) * 252; // Annualized
+}
+```
+
+### 5. The Covariance Matrix (Portfolio Logic)
+
+**Goal:** If simulating multiple stocks (e.g., AAPL vs MSFT), calculate how they move together.
+
+**Formula:**
+$$Cov(X, Y) = E[(X - E[X])(Y - E[Y])] = \frac{1}{n-1} \sum_{i=1}^{n} (x_i - \bar{x})(y_i - \bar{y})$$
+
+**Correlation Coefficient:**
+$$\rho_{XY} = \frac{Cov(X, Y)}{\sigma_X \sigma_Y}$$
+
+**Implementation:**
+```typescript
+import { create, all } from 'mathjs';
+
+const math = create(all, {
+  precision: 64,
+  number: 'BigNumber'
+});
+
+function calculateCovarianceMatrix(returnsArray: Float64Array[]): number[][] {
+  const n = returnsArray.length; // Number of assets
+  const m = returnsArray[0].length; // Number of time periods
+  
+  // Calculate means for each asset
+  const means = returnsArray.map(returns => {
+    return Array.from(returns).reduce((sum, r) => sum + r, 0) / m;
+  });
+  
+  // Initialize covariance matrix
+  const covMatrix: number[][] = Array(n).fill(null).map(() => Array(n).fill(0));
+  
+  // Calculate covariance for each pair
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      let covariance = 0;
+      for (let t = 0; t < m; t++) {
+        covariance += (returnsArray[i][t] - means[i]) * (returnsArray[j][t] - means[j]);
+      }
+      covMatrix[i][j] = covariance / (m - 1);
+    }
+  }
+  
+  return covMatrix;
+}
+```
+
+**Output:** A square matrix used to correlate random shocks in the simulation.
+
+---
+
+## PHASE 2: THE MATH CORE (MONTE CARLO ENGINE)
+
+### 1. The Merton Jump Diffusion Equation
+
+**Concept:** Stocks drift, wiggle (diffusion), and sometimes crash (jump).
+
+**The Equation (Discrete Time Step):**
+
+$$S_{t+\Delta t} = S_t \cdot \exp\left((\mu - \frac{\sigma^2}{2} - \lambda k)\Delta t + \sigma \sqrt{\Delta t} Z + J_t\right)$$
+
+**Variables:**
+- $S_t$: Current stock price
+- $S_{t+\Delta t}$: Stock price at next time step
+- $\mu$: Drift (Expected return, annualized)
+- $\sigma$: Volatility (annualized)
+- $Z$: Standard Normal Random Variable ($N(0,1)$)
+- $\lambda$: Jump intensity (Poisson frequency, e.g., 0.05 for "once every 20 days")
+- $k$: Mean jump size (expected value of jump magnitude)
+- $J_t$: The jump magnitude (if a jump occurs)
+- $\Delta t$: Time step (e.g., 1/252 for daily steps)
+
+**Jump Component:**
+$$J_t = \begin{cases}
+\sum_{i=1}^{N_t} Y_i & \text{if } N_t > 0 \\
+0 & \text{if } N_t = 0
+\end{cases}$$
+
+Where:
+- $N_t \sim \text{Poisson}(\lambda \Delta t)$: Number of jumps in interval
+- $Y_i \sim N(\mu_J, \sigma_J^2)$: Jump sizes (normally distributed)
+
+**Mean Jump Size:**
+$$k = E[e^{Y_i} - 1] = e^{\mu_J + \frac{\sigma_J^2}{2}} - 1$$
+
+### 2. Box-Muller Transform (Normal Distribution Generator)
+
+**⚠️ CRITICAL: Standard `Math.random()` is uniform, not Gaussian.**
+
+You must generate Normal Distribution ($Z \sim N(0,1)$) using the Box-Muller Transform.
+
+**Algorithm:**
+1. Generate two independent uniform random variables: $U_1, U_2 \sim \text{Uniform}(0,1)$
+2. Transform to independent standard normal variables:
+
+$$Z_0 = \sqrt{-2\ln(U_1)} \cos(2\pi U_2)$$
+$$Z_1 = \sqrt{-2\ln(U_1)} \sin(2\pi U_2)$$
+
+**Implementation:**
+```typescript
+function boxMullerRandom(): [number, number] {
+  const u1 = Math.random();
+  const u2 = Math.random();
+  
+  // Avoid log(0)
+  const u1Safe = u1 === 0 ? Number.MIN_VALUE : u1;
+  
+  const z0 = Math.sqrt(-2 * Math.log(u1Safe)) * Math.cos(2 * Math.PI * u2);
+  const z1 = Math.sqrt(-2 * Math.log(u1Safe)) * Math.sin(2 * Math.PI * u2);
+  
+  return [z0, z1];
+}
+
+// Single normal random variable generator
+let spare: number | null = null;
+let hasSpare = false;
+
+function normalRandom(): number {
+  if (hasSpare) {
+    hasSpare = false;
+    return spare!;
+  }
+  
+  const [z0, z1] = boxMullerRandom();
+  hasSpare = true;
+  spare = z1;
+  return z0;
+}
+```
+
+### 3. Cholesky Decomposition (Correlated Shocks)
+
+**Purpose:** If modeling a portfolio, decompose the Covariance Matrix to apply correlated shocks to Monte Carlo paths.
+
+**Theory:** For a positive definite covariance matrix $\Sigma$, there exists a lower triangular matrix $L$ such that:
+
+$$\Sigma = L \cdot L^T$$
+
+**Algorithm:**
+For $i = 1, \ldots, n$ and $j = 1, \ldots, i$:
+
+$$L_{i,j} = \begin{cases}
+\sqrt{\Sigma_{i,i} - \sum_{k=1}^{j-1} L_{i,k}^2} & \text{if } i = j \\
+\frac{1}{L_{j,j}} \left( \Sigma_{i,j} - \sum_{k=1}^{j-1} L_{i,k} L_{j,k} \right) & \text{if } i > j \\
+0 & \text{if } i < j
+\end{cases}$$
+
+**Implementation:**
+```typescript
+function choleskyDecomposition(covMatrix: number[][]): number[][] {
+  const n = covMatrix.length;
+  const L: number[][] = Array(n).fill(null).map(() => Array(n).fill(0));
+  
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j <= i; j++) {
+      if (i === j) {
+        let sum = 0;
+        for (let k = 0; k < j; k++) {
+          sum += L[j][k] * L[j][k];
+        }
+        L[j][j] = Math.sqrt(Math.max(0, covMatrix[j][j] - sum));
+      } else {
+        let sum = 0;
+        for (let k = 0; k < j; k++) {
+          sum += L[i][k] * L[j][k];
+        }
+        L[i][j] = (covMatrix[i][j] - sum) / L[j][j];
+      }
+    }
+  }
+  
+  return L;
+}
+
+// Generate correlated random shocks
+function generateCorrelatedShocks(
+  L: number[][],
+  nAssets: number
+): Float64Array {
+  // Generate independent standard normal variables
+  const Z = new Float64Array(nAssets);
+  for (let i = 0; i < nAssets; i++) {
+    Z[i] = normalRandom();
+  }
+  
+  // Apply Cholesky decomposition: correlated = L * Z
+  const correlated = new Float64Array(nAssets);
+  for (let i = 0; i < nAssets; i++) {
+    let sum = 0;
+    for (let j = 0; j <= i; j++) {
+      sum += L[i][j] * Z[j];
+    }
+    correlated[i] = sum;
+  }
+  
+  return correlated;
+}
+```
+
+### 4. The Simulation Loop
+
+**Architecture:**
+- **Iterations:** 10,000 paths (Minimum for convergence)
+- **Horizon:** Future 30/60/90 days
+- **Time Step:** Daily ($\Delta t = 1/252$)
+
+**Optimization:** Do NOT store 10,000 arrays of length 30.
+
+**Memory-Efficient Approach:**
+- Store only the `FinalPrice[]` distribution
+- Store `PercentilePaths` (5th, 50th, 95th) for visualization
+- Use `Float64Array` buffers
+
+**Implementation:**
+```typescript
+interface MonteCarloParams {
+  initialPrice: number;
+  drift: number;           // μ (annualized)
+  volatility: number;       // σ (annualized)
+  jumpIntensity: number;    // λ (jumps per year)
+  jumpMean: number;         // μ_J (mean jump size in log space)
+  jumpVolatility: number;   // σ_J (jump volatility)
+  timeHorizon: number;      // Days
+  numPaths: number;         // 10,000
+}
+
+interface SimulationResult {
+  finalPrices: Float64Array;
+  percentilePaths: {
+    p5: Float64Array;
+    p50: Float64Array;
+    p95: Float64Array;
+  };
+  samplePaths: Float64Array[]; // 500 random paths for visualization
+}
+
+function monteCarloSimulation(params: MonteCarloParams): SimulationResult {
+  const {
+    initialPrice,
+    drift,
+    volatility,
+    jumpIntensity,
+    jumpMean,
+    jumpVolatility,
+    timeHorizon,
+    numPaths
+  } = params;
+  
+  const dt = 1 / 252; // Daily time step
+  const numSteps = timeHorizon;
+  
+  const finalPrices = new Float64Array(numPaths);
+  const pathStorage: Float64Array[] = [];
+  const allPaths: number[][] = Array(numPaths).fill(null).map(() => []);
+  
+  // Pre-calculate mean jump size
+  const k = Math.exp(jumpMean + (jumpVolatility ** 2) / 2) - 1;
+  
+  for (let path = 0; path < numPaths; path++) {
+    let price = initialPrice;
+    const pathPrices: number[] = [price];
+    
+    for (let step = 0; step < numSteps; step++) {
+      // Generate standard normal random variable
+      const Z = normalRandom();
+      
+      // Check for jump (Poisson process)
+      const jumpProb = jumpIntensity * dt;
+      const hasJump = Math.random() < jumpProb;
+      
+      let jumpComponent = 0;
+      if (hasJump) {
+        // Generate jump size (log-normal)
+        const jumpZ = normalRandom();
+        const jumpSize = jumpMean + jumpVolatility * jumpZ;
+        jumpComponent = jumpSize;
+      }
+      
+      // Merton Jump Diffusion equation
+      const driftComponent = (drift - (volatility ** 2) / 2 - jumpIntensity * k) * dt;
+      const diffusionComponent = volatility * Math.sqrt(dt) * Z;
+      
+      price = price * Math.exp(driftComponent + diffusionComponent + jumpComponent);
+      pathPrices.push(price);
+    }
+    
+    finalPrices[path] = price;
+    allPaths[path] = pathPrices;
+    
+    // Store sample paths for visualization (every 20th path)
+    if (path % 20 === 0 && pathStorage.length < 500) {
+      pathStorage.push(new Float64Array(pathPrices));
+    }
+  }
+  
+  // Calculate percentile paths
+  const percentilePaths = calculatePercentilePaths(allPaths, numSteps + 1);
+  
+  return {
+    finalPrices,
+    percentilePaths,
+    samplePaths: pathStorage
+  };
+}
+
+function calculatePercentilePaths(
+  allPaths: number[][],
+  numSteps: number
+): { p5: Float64Array; p50: Float64Array; p95: Float64Array } {
+  const p5 = new Float64Array(numSteps);
+  const p50 = new Float64Array(numSteps);
+  const p95 = new Float64Array(numSteps);
+  
+  for (let step = 0; step < numSteps; step++) {
+    const stepPrices = allPaths.map(path => path[step]).sort((a, b) => a - b);
+    p5[step] = stepPrices[Math.floor(stepPrices.length * 0.05)];
+    p50[step] = stepPrices[Math.floor(stepPrices.length * 0.50)];
+    p95[step] = stepPrices[Math.floor(stepPrices.length * 0.95)];
+  }
+  
+  return { p5, p50, p95 };
+}
+```
+
+### 5. Value at Risk (VaR) Calculation
+
+**Definition:** The maximum expected loss at a given confidence level over a time horizon.
+
+**Formula:**
+$$\text{VaR}_\alpha = S_0 \times (1 - \text{Percentile}_\alpha(\text{Final Prices}))$$
+
+Where $\alpha$ is the confidence level (e.g., 0.05 for 95% VaR).
+
+**Implementation:**
+```typescript
+function calculateVaR(
+  finalPrices: Float64Array,
+  initialPrice: number,
+  confidenceLevel: number = 0.05
+): number {
+  const sortedPrices = Array.from(finalPrices).sort((a, b) => a - b);
+  const percentileIndex = Math.floor(sortedPrices.length * confidenceLevel);
+  const percentilePrice = sortedPrices[percentileIndex];
+  
+  return initialPrice - percentilePrice;
+}
+```
+
+---
+
+## PHASE 3: QUANTITATIVE VISUALIZATION (D3/CANVAS)
+
+### 1. The Monte Carlo Cone
+
+**Type:** Canvas Line Chart
+
+**Rendering Requirements:**
+- Draw 500 random paths with `opacity: 0.05` (Blue)
+- Draw the Median Path (Solid White, lineWidth: 2)
+- Draw the 95% Confidence Interval (Shaded Cone, gradient fill)
+- X-axis: Time (days)
+- Y-axis: Price ($)
+
+**Performance:** Render on `<canvas>` using `requestAnimationFrame`. Rendering 10,000 SVG paths will crash the DOM.
+
+**Implementation:**
+```typescript
+interface CanvasConfig {
+  width: number;
+  height: number;
+  padding: { top: number; right: number; bottom: number; left: number };
+}
+
+function renderMonteCarloCone(
+  canvas: HTMLCanvasElement,
+  samplePaths: Float64Array[],
+  percentilePaths: { p5: Float64Array; p50: Float64Array; p95: Float64Array },
+  config: CanvasConfig
+) {
+  const ctx = canvas.getContext('2d')!;
+  const { width, height, padding } = config;
+  
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  
+  // Clear canvas
+  ctx.clearRect(0, 0, width, height);
+  
+  // Find price range
+  let minPrice = Infinity;
+  let maxPrice = -Infinity;
+  
+  samplePaths.forEach(path => {
+    path.forEach(price => {
+      minPrice = Math.min(minPrice, price);
+      maxPrice = Math.max(maxPrice, price);
+    });
+  });
+  
+  const priceRange = maxPrice - minPrice;
+  const pricePadding = priceRange * 0.1;
+  minPrice -= pricePadding;
+  maxPrice += pricePadding;
+  
+  // Scale functions
+  const xScale = (step: number, maxSteps: number) => {
+    return padding.left + (step / maxSteps) * chartWidth;
+  };
+  
+  const yScale = (price: number) => {
+    return padding.top + chartHeight - ((price - minPrice) / (maxPrice - minPrice)) * chartHeight;
+  };
+  
+  // Draw confidence interval (shaded cone)
+  const maxSteps = percentilePaths.p50.length;
+  ctx.beginPath();
+  ctx.moveTo(xScale(0, maxSteps), yScale(percentilePaths.p5[0]));
+  for (let i = 0; i < maxSteps; i++) {
+    ctx.lineTo(xScale(i, maxSteps), yScale(percentilePaths.p5[i]));
+  }
+  for (let i = maxSteps - 1; i >= 0; i--) {
+    ctx.lineTo(xScale(i, maxSteps), yScale(percentilePaths.p95[i]));
+  }
+  ctx.closePath();
+  
+  const gradient = ctx.createLinearGradient(0, padding.top, 0, height - padding.bottom);
+  gradient.addColorStop(0, 'rgba(0, 100, 255, 0.3)');
+  gradient.addColorStop(1, 'rgba(0, 100, 255, 0.05)');
+  ctx.fillStyle = gradient;
+  ctx.fill();
+  
+  // Draw sample paths
+  ctx.strokeStyle = 'rgba(100, 150, 255, 0.05)';
+  ctx.lineWidth = 1;
+  
+  samplePaths.forEach(path => {
+    ctx.beginPath();
+    ctx.moveTo(xScale(0, path.length), yScale(path[0]));
+    for (let i = 1; i < path.length; i++) {
+      ctx.lineTo(xScale(i, path.length), yScale(path[i]));
+    }
+    ctx.stroke();
+  });
+  
+  // Draw median path
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(xScale(0, maxSteps), yScale(percentilePaths.p50[0]));
+  for (let i = 1; i < maxSteps; i++) {
+    ctx.lineTo(xScale(i, maxSteps), yScale(percentilePaths.p50[i]));
+  }
+  ctx.stroke();
+  
+  // Draw axes
+  ctx.strokeStyle = '#666666';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padding.left, padding.top);
+  ctx.lineTo(padding.left, height - padding.bottom);
+  ctx.lineTo(width - padding.right, height - padding.bottom);
+  ctx.stroke();
+}
+```
+
+### 2. The Histogram (Probability Density)
+
+**Type:** Bar Chart (Rotated vertically next to the price chart)
+
+**Data:** Frequency distribution of the *Final Prices* of all 10,000 simulations
+
+**VaR Line:** Mark the "Value at Risk" (the price at the bottom 5% percentile)
+
+**Implementation:**
+```typescript
+function renderHistogram(
+  canvas: HTMLCanvasElement,
+  finalPrices: Float64Array,
+  varPrice: number,
+  config: CanvasConfig
+) {
+  const ctx = canvas.getContext('2d')!;
+  const { width, height, padding } = config;
+  
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  
+  // Create bins
+  const numBins = 50;
+  const prices = Array.from(finalPrices);
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const binWidth = (maxPrice - minPrice) / numBins;
+  
+  const bins = new Array(numBins).fill(0);
+  prices.forEach(price => {
+    const binIndex = Math.min(
+      Math.floor((price - minPrice) / binWidth),
+      numBins - 1
+    );
+    bins[binIndex]++;
+  });
+  
+  const maxFrequency = Math.max(...bins);
+  
+  // Draw bars
+  bins.forEach((frequency, i) => {
+    const barHeight = (frequency / maxFrequency) * chartHeight;
+    const barX = padding.left + (i / numBins) * chartWidth;
+    const barY = height - padding.bottom - barHeight;
+    const barWidth = chartWidth / numBins;
+    
+    ctx.fillStyle = '#4A90E2';
+    ctx.fillRect(barX, barY, barWidth, barHeight);
+  });
+  
+  // Draw VaR line
+  const varX = padding.left + ((varPrice - minPrice) / (maxPrice - minPrice)) * chartWidth;
+  ctx.strokeStyle = '#FF4444';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(varX, padding.top);
+  ctx.lineTo(varX, height - padding.bottom);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  
+  // Label
+  ctx.fillStyle = '#FF4444';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('VaR (5%)', varX + 5, padding.top + 15);
+}
+```
+
+### 3. The Covariance Heatmap
+
+**Visuals:** A grid showing correlation coefficients (-1 to 1)
+
+**Color Scale:** Red (-1) -> Black (0) -> Green (1)
+
+**Implementation:**
+```typescript
+function renderCovarianceHeatmap(
+  canvas: HTMLCanvasElement,
+  covMatrix: number[][],
+  symbols: string[],
+  config: CanvasConfig
+) {
+  const ctx = canvas.getContext('2d')!;
+  const { width, height, padding } = config;
+  
+  const n = covMatrix.length;
+  const cellWidth = (width - padding.left - padding.right) / n;
+  const cellHeight = (height - padding.top - padding.bottom) / n;
+  
+  // Convert covariance to correlation
+  const corrMatrix: number[][] = Array(n).fill(null).map(() => Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const stdI = Math.sqrt(covMatrix[i][i]);
+      const stdJ = Math.sqrt(covMatrix[j][j]);
+      corrMatrix[i][j] = covMatrix[i][j] / (stdI * stdJ);
+    }
+  }
+  
+  // Draw heatmap
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const correlation = corrMatrix[i][j];
+      const x = padding.left + j * cellWidth;
+      const y = padding.top + i * cellHeight;
+      
+      // Color interpolation: Red (-1) -> Black (0) -> Green (1)
+      let r, g, b;
+      if (correlation < 0) {
+        r = Math.floor(255 * Math.abs(correlation));
+        g = 0;
+        b = 0;
+      } else {
+        r = 0;
+        g = Math.floor(255 * correlation);
+        b = 0;
+      }
+      
+      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+      ctx.fillRect(x, y, cellWidth, cellHeight);
+      
+      // Draw correlation value
+      ctx.fillStyle = correlation > 0.5 || correlation < -0.5 ? '#FFFFFF' : '#000000';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(
+        correlation.toFixed(2),
+        x + cellWidth / 2,
+        y + cellHeight / 2 + 3
+      );
+    }
+  }
+  
+  // Draw labels
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'right';
+  symbols.forEach((symbol, i) => {
+    ctx.fillText(
+      symbol,
+      padding.left - 5,
+      padding.top + (i + 0.5) * cellHeight + 4
+    );
+  });
+  
+  ctx.textAlign = 'center';
+  symbols.forEach((symbol, j) => {
+    ctx.fillText(
+      symbol,
+      padding.left + (j + 0.5) * cellWidth,
+      padding.top - 5
+    );
+  });
+}
+```
+
+---
+
+## PHASE 4: API ENDPOINT ARCHITECTURE
+
+### Endpoint Structure
+
+```
+POST /api/quant/simulate
+GET  /api/market-data/history
+GET  /api/quant/portfolio-analysis
+```
+
+### Request/Response Types
+
+```typescript
+interface SimulationRequest {
+  symbols: string[];
+  timeHorizon: number;      // Days: 30, 60, 90
+  numPaths: number;         // Default: 10000
+  jumpIntensity?: number;   // Optional: default 0.05
+  jumpMean?: number;        // Optional: default -0.02
+  jumpVolatility?: number;  // Optional: default 0.05
+}
+
+interface SimulationResponse {
+  symbols: string[];
+  initialPrices: number[];
+  finalPriceDistributions: {
+    symbol: string;
+    mean: number;
+    median: number;
+    p5: number;
+    p95: number;
+    var: number;
+  }[];
+  percentilePaths: {
+    symbol: string;
+    p5: Float64Array;
+    p50: Float64Array;
+    p95: Float64Array;
+  }[];
+  covarianceMatrix: number[][];
+  correlationMatrix: number[][];
+  samplePaths: Float64Array[]; // 500 paths for visualization
+}
+```
+
+---
+
+## CRITICAL IMPLEMENTATION NOTES
+
+### 1. Numerical Stability
+
+- **Always check for division by zero** in Cholesky decomposition
+- **Handle negative values** in square root operations (use `Math.max(0, value)`)
+- **Avoid log(0)** in Box-Muller transform (use `Number.MIN_VALUE`)
+
+### 2. Memory Management
+
+- **Use `Float64Array`** for all numerical arrays
+- **Do not store all 10,000 paths** in memory simultaneously
+- **Stream results** when possible for large simulations
+
+### 3. Performance Optimization
+
+- **Pre-allocate arrays** before loops
+- **Use Web Workers** for Monte Carlo simulation in browser
+- **Batch canvas operations** using `requestAnimationFrame`
+- **Consider GPU acceleration** (WebGL) for very large simulations
+
+### 4. Validation
+
+- **Verify covariance matrix is positive definite** before Cholesky decomposition
+- **Check that jump parameters are reasonable** (e.g., $\lambda > 0$, $\sigma_J > 0$)
+- **Validate input ranges** (e.g., time horizon > 0, numPaths >= 1000)
+
+---
+
+## DEPENDENCIES
+
+```json
+{
+  "dependencies": {
+    "yahoo-finance2": "^2.4.0",
+    "mathjs": "^12.0.0",
+    "simple-statistics": "^7.8.2"
+  }
+}
+```
+
+---
+
+## TESTING REQUIREMENTS
+
+### Unit Tests
+
+1. **Box-Muller Transform:** Verify output is approximately $N(0,1)$
+2. **Cholesky Decomposition:** Verify $L \cdot L^T = \Sigma$
+3. **Log Returns:** Verify $\sum r_i = \ln(P_n / P_0)$
+4. **Monte Carlo:** Verify convergence (mean of final prices approaches expected value)
+
+### Integration Tests
+
+1. **Yahoo Finance API:** Test data fetching and error handling
+2. **End-to-End Simulation:** Test full pipeline from data fetch to visualization
+3. **Portfolio Simulation:** Test multi-asset correlation
+
+---
+
+## MATHEMATICAL REFERENCES
+
+### Key Equations Summary
+
+1. **Log Returns:** $r_t = \ln(P_t / P_{t-1})$
+2. **Volatility:** $\sigma = \sqrt{\text{Var}(r_t)} \times \sqrt{252}$
+3. **Drift:** $\mu = E[r_t] \times 252$
+4. **Merton Jump Diffusion:** $S_{t+\Delta t} = S_t \exp((\mu - \frac{\sigma^2}{2} - \lambda k)\Delta t + \sigma \sqrt{\Delta t} Z + J_t)$
+5. **Covariance:** $Cov(X,Y) = E[(X - E[X])(Y - E[Y])]$
+6. **Cholesky:** $\Sigma = L \cdot L^T$
+7. **Value at Risk:** $\text{VaR}_\alpha = S_0 - \text{Percentile}_\alpha(\text{Final Prices})$
+
+---
+
+## RELATED MDCs
+
+### Jump-Diffusion Models (Comprehensive Theory)
+
+**Location:** `quant-finance-engine/jump-diffusion-models/jump-diffusion-models.mdc`
+
+**Relationship:** This MDC provides comprehensive theoretical foundation for jump-diffusion models, including:
+- Complete mathematical preliminaries (stochastic analysis, generalized Itô formula, Girsanov transformations)
+- Detailed model specifications beyond Merton (term structure models, stochastic volatility models)
+- Pricing theory and methods (risk-neutral pricing, PDE methods, Fourier methods)
+- Hedging strategies for complete and incomplete markets
+- Market price of risk and martingale measures
+- Computational methods and best practices
+
+**When to Use:**
+- Need deeper understanding of jump-diffusion theory
+- Implementing advanced models (term structure, stochastic volatility)
+- Working with incomplete markets and hedging
+- Understanding measure transformations and market price of risk
+- Implementing alternative pricing methods (Fourier, PDE)
+
+**Connection:** This implementation MDC focuses on practical Merton jump-diffusion implementation, while the jump-diffusion-models MDC provides the complete theoretical framework and additional model types.
+
+---
+
+**END OF DOCUMENTATION**

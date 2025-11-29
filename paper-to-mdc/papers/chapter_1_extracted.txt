@@ -1,0 +1,27 @@
+Chapter 1: Introduction to AI 1
+What is Artificial Intelligence? 2
+Strong AI versus Weak AI 4
+The Turing Test 5
+Definition of the Turing Test 5
+An Interrogator Test 6
+Heuristics 6
+Genetic Algorithms 8
+Knowledge Representation 8
+Logic-based Solutions 9
+Semantic Networks 9
+AI and Games 10
+The Success of AlphaZero 11
+Expert Systems 12
+Neural Computing 13
+Evolutionary Computation 14
+Natural Language Processing 14
+Bioinformatics 17
+Major Parts of AI 18
+Machine Learning 18
+Deep Learning 19
+Reinforcement Learning 19
+Robotics 20
+Code Samples 21
+Summary 22
+
+viii • Contents

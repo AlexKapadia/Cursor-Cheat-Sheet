@@ -1,0 +1,911 @@
+---
+alwaysApply: false
+---
+
+# Jump-Diffusion Models
+
+## Paper Metadata
+- **Title:** Jump-Diffusion Models
+- **Author:** Wolfgang J. Runggaldier
+- **Affiliation:** Dipartimento di Matematica Pura ed Applicata, Università di Padova, 7 Via Belzoni, I-35131, Padova, Italy
+- **Web:** http://www.math.unipd.it/runggaldier/index.html
+- **Keywords:** jump-diffusions, Poisson point processes, marked point processes, Cox processes, hidden processes, martingale measures, market price of risk, pricing and hedging in incomplete markets, market completion, risk minimization, stochastic volatility, high frequency data, computing expectations of functionals of jump-diffusions
+- **Type:** Survey/Tutorial Paper on Financial Mathematics
+
+## Abstract / Summary
+
+We discuss jump-diffusion type models for financial market as well as methods for pricing and hedging of contingent claims in such markets. We consider both, asset price and term structure models, and deal also with situations when there is a stochastic volatility correlated with the jumps and when one has very small time scales, i.e., high frequency data. To make the presentation possibly self-contained, in a preliminary section we recall some basic notions from stochastic analysis for jump-diffusions.
+
+## Problem Statement
+
+### Problem Definition
+
+Most standard finance literature, particularly for pricing and hedging contingent claims, assumes that underlying asset prices follow diffusion-type processes, especially geometric Brownian motion (GBM). However, empirical studies show that such models are inadequate both in their descriptive power and in the mispricing they might induce. The problem is that returns of various asset prices and interest rates exhibit jumping behavior that cannot be adequately modeled by pure diffusion-type processes.
+
+### Motivation
+
+1. **Empirical Evidence:** Various empirical studies document jumping behavior in prices and interest rates (Ball and Torous, 1985; Jorion, 1988; Babbs and Webber, 1997).
+2. **Inadequacy of Pure Diffusion Models:** Standard GBM models fail to capture:
+   - Large sudden price movements (jumps)
+   - Fat tails in return distributions
+   - Volatility skews in option pricing
+3. **Market Realities:** On very small time scales, actual prices change at discrete random points in time in reaction to trades and/or significant new information, rather than continuously.
+
+### Challenges
+
+1. **Market Incompleteness:** The introduction of jumps in the Black-Scholes model implies that derivative prices are no longer determined by the principle of absence of arbitrage alone.
+2. **Systematic Jump Risk:** Early approaches (Merton, 1976) assumed jump risk was not systematic, but later studies showed jumps in stock returns are indeed systematic.
+3. **Hedging Complexity:** In incomplete markets, perfect hedging is generally not possible, requiring alternative hedging strategies.
+4. **Stochastic Volatility Correlation:** Empirical evidence shows correlation between jumps in volatility and jumps in prices.
+
+### Scope
+
+The paper covers:
+- Jump-diffusion models for asset prices
+- Jump-diffusion models for term structure (interest rates)
+- Models with stochastic volatility correlated with jumps
+- High-frequency data modeling
+- Pricing methods in jump-diffusion markets
+- Hedging strategies in complete and incomplete markets
+- Martingale measures and market price of risk
+
+### Assumptions
+
+1. Jump-diffusions form a particular class of Lévy processes (not the general case)
+2. Prices change continuously most of the time, with occasional larger jumps
+3. The market may be incomplete when jumps are present
+
+## Key Concepts and Techniques
+
+- **Jump-Diffusion Processes:** Superpositions of jump and diffusion processes
+- **Poisson Point Processes:** Univariate and multivariate point processes for modeling jumps
+- **Marked Point Processes:** Point processes with associated marks (jump sizes)
+- **Cox Processes:** Doubly stochastic Poisson processes
+- **Martingale Measures:** Equivalent martingale measures for pricing
+- **Market Price of Risk:** Risk premium for jump-diffusion risk
+- **Market Completion:** Methods to complete incomplete markets
+- **Risk Minimization:** Hedging strategies in incomplete markets
+- **Stochastic Volatility:** Volatility models with jumps
+- **High Frequency Data:** Modeling discrete price changes at small time scales
+- **Generalized Itô Formula:** Extension of Itô's lemma for jump-diffusions
+- **Girsanov Transformation:** Measure changes for jump-diffusions
+- **Martingale Representation:** Representation theorems for jump-diffusions
+
+## Related Work and Background
+
+### Previous Approaches
+
+1. **Merton (1976):** First approach extending Black-Scholes model with jumps, assuming jump risk was not systematic. Later criticized as equivalent to existence of a market portfolio without jumping behavior.
+
+2. **Cox and Ross (1976):** Considered simple jump-type process with fixed jump amplitude, keeping the market complete with a single source of randomness.
+
+3. **Ball and Torous (1985), Jorion (1988):** Empirical studies documenting jumping behavior in prices and interest rates.
+
+4. **Babbs and Webber (1997):** Identified specific sources of jumps in interest rates (e.g., central bank moves).
+
+5. **Bakshi, Cao and Chen (1997):** Documented that combination of jumps and stochastic volatility leads to better fits and avoids implied volatility skews.
+
+### How This Differs
+
+This paper provides a comprehensive survey and tutorial on jump-diffusion modeling, covering:
+- Both asset price and term structure models
+- Complete and incomplete market scenarios
+- Stochastic volatility in conjunction with jumps
+- High-frequency data considerations
+- Systematic treatment of pricing and hedging methods
+
+### Adopted Techniques
+
+The paper builds upon:
+- Stochastic analysis for jump-diffusions
+- Martingale theory for incomplete markets
+- Risk minimization approaches (Föllmer-Sondermann, Föllmer-Schweizer)
+- Market completion techniques
+
+## Methodology and Approach
+
+### High-Level Overview
+
+The paper systematically covers:
+1. **Preliminaries:** Basic stochastic analysis for jump-diffusions
+2. **Market Models:** Various jump-diffusion model formulations
+3. **Martingale Measures:** Existence and uniqueness, market price of risk
+4. **Hedging:** Strategies for complete and incomplete markets
+5. **Pricing:** General aspects and computational methods
+
+### Detailed Methodology
+
+The methodology follows a mathematical finance framework:
+
+1. **Model Specification:** Define jump-diffusion processes using stochastic differential equations
+2. **Measure Transformation:** Use Girsanov-type transformations to find equivalent martingale measures
+3. **Market Analysis:** Determine market completeness/incompleteness
+4. **Pricing:** Apply risk-neutral pricing when possible, or use alternative methods
+5. **Hedging:** Develop hedging strategies appropriate to market completeness
+
+### Design Principles
+
+1. **Mathematical Rigor:** All models are mathematically well-defined
+2. **Empirical Relevance:** Models address observed market phenomena
+3. **Computational Tractability:** Methods should be implementable
+4. **Market Realism:** Models should reflect actual market behavior
+
+### Architecture
+
+The paper is organized as a tutorial/survey with:
+- **Section 2:** Mathematical preliminaries (foundation)
+- **Section 3:** Model specifications (application)
+- **Section 4:** Pricing theory (valuation)
+- **Section 5:** Hedging theory (risk management)
+- **Section 6:** Computational aspects (implementation)
+
+## Preliminaries: Stochastic Analysis for Jump-Diffusions
+
+### 2.1. Univariate Point Processes (Poisson Jump Processes)
+
+**Definition:** A point process is a random collection of points (jump times) on the real line.
+
+**Poisson Process:**
+- Counting process $N_t$ with intensity $\lambda > 0$
+- Increments are independent
+- $N_t - N_s \sim \text{Poisson}(\lambda(t-s))$ for $s < t$
+
+**Key Properties:**
+- $E[N_t] = \lambda t$
+- $\text{Var}(N_t) = \lambda t$
+- Inter-arrival times are exponentially distributed with parameter $\lambda$
+
+### 2.2. Multivariate and Marked Point Processes
+
+**Marked Point Process:**
+- Point process with associated marks (jump sizes)
+- Jump times: $\tau_1, \tau_2, \ldots$
+- Jump sizes: $Y_1, Y_2, \ldots$ (marks)
+
+**Compensated Jump Process:**
+$$\tilde{N}_t = N_t - \lambda t$$
+
+**Cox Process (Doubly Stochastic Poisson Process):**
+- Intensity $\lambda_t$ is itself a stochastic process
+- Conditional on the intensity path, $N_t$ is a Poisson process
+
+### 2.3. Martingale Representation
+
+**Martingale Representation Theorem for Jump-Diffusions:**
+For a martingale $M_t$ adapted to the filtration generated by a Brownian motion $W_t$ and a Poisson process $N_t$, there exist predictable processes $\phi_t$ and $\psi_t$ such that:
+
+$$M_t = M_0 + \int_0^t \phi_s dW_s + \int_0^t \psi_s d\tilde{N}_s$$
+
+where $\tilde{N}_t$ is the compensated Poisson process.
+
+### 2.4. Exponential Formula; Generalized Itô Formula
+
+**Generalized Itô Formula for Jump-Diffusions:**
+
+For a process $X_t$ satisfying:
+$$dX_t = \mu_t dt + \sigma_t dW_t + \int_{\mathbb{R}} \gamma_t(z) \tilde{N}(dt, dz)$$
+
+and a function $f(t, X_t)$, we have:
+
+$$df(t, X_t) = \frac{\partial f}{\partial t} dt + \frac{\partial f}{\partial x} dX_t + \frac{1}{2}\frac{\partial^2 f}{\partial x^2} \sigma_t^2 dt + [f(t, X_{t-} + \gamma_t(z)) - f(t, X_{t-})] * \tilde{N}(dt, dz)$$
+
+**Exponential Formula:**
+For a jump-diffusion process, the exponential martingale is:
+
+$$\mathcal{E}_t = \exp\left(\int_0^t \mu_s dW_s - \frac{1}{2}\int_0^t \mu_s^2 ds + \int_0^t \log(1+\theta_s) dN_s - \int_0^t \theta_s \lambda_s ds\right)$$
+
+### 2.5. Absolutely Continuous Transformation of Measures
+
+**Girsanov Transformation for Jump-Diffusions:**
+
+Given a probability measure $P$, we can define an equivalent measure $Q$ via:
+
+$$\frac{dQ}{dP}\bigg|_{\mathcal{F}_t} = \mathcal{E}_t$$
+
+where $\mathcal{E}_t$ is an exponential martingale.
+
+**Change of Measure Effects:**
+- Brownian motion: $dW_t^Q = dW_t^P - \mu_t dt$
+- Poisson intensity: $\lambda_t^Q = (1 + \theta_t) \lambda_t^P$
+- Jump size distribution may also change
+
+## Market Models with Jump-Diffusions
+
+### 3.1. Asset-Price and Term Structure Models with Additive Jumps
+
+#### 3.1.1. Asset Price Models with Jumps
+
+**Merton Jump-Diffusion Model:**
+
+The asset price $S_t$ follows:
+
+$$dS_t = S_{t-}\left[\mu dt + \sigma dW_t + \int_{\mathbb{R}} (e^z - 1) \tilde{N}(dt, dz)\right]$$
+
+or equivalently:
+
+$$S_t = S_0 \exp\left(\mu t + \sigma W_t - \frac{1}{2}\sigma^2 t + \sum_{i=1}^{N_t} Y_i\right)$$
+
+where:
+- $\mu$: drift coefficient
+- $\sigma$: volatility coefficient
+- $W_t$: Brownian motion
+- $N_t$: Poisson process with intensity $\lambda$
+- $Y_i$: jump sizes (typically normally distributed: $Y_i \sim N(\mu_J, \sigma_J^2)$)
+
+**Log-Price Process:**
+$$d\log S_t = \left(\mu - \frac{1}{2}\sigma^2\right) dt + \sigma dW_t + \int_{\mathbb{R}} z \tilde{N}(dt, dz)$$
+
+**Characteristic Function:**
+For Merton model with $Y_i \sim N(\mu_J, \sigma_J^2)$:
+
+$$E[e^{iu \log S_t}] = \exp\left(iu \log S_0 + iu\mu t - \frac{1}{2}iu\sigma^2 t - \frac{1}{2}u^2\sigma^2 t + \lambda t(e^{iu\mu_J - \frac{1}{2}u^2\sigma_J^2} - 1)\right)$$
+
+#### 3.1.2. Term Structure Models with Jumps
+
+**Short Rate Model with Jumps:**
+
+$$dr_t = \kappa(\theta - r_t) dt + \sigma \sqrt{r_t} dW_t + \int_{\mathbb{R}} z \tilde{N}(dt, dz)$$
+
+where:
+- $\kappa$: mean reversion speed
+- $\theta$: long-term mean
+- $\sigma$: volatility
+- Jumps affect the short rate directly
+
+**Forward Rate Model:**
+
+$$df(t, T) = \alpha(t, T) dt + \sigma(t, T) dW_t + \int_{\mathbb{R}} \gamma(t, T, z) \tilde{N}(dt, dz)$$
+
+### 3.2. Jump-Diffusion Models Driven by Hidden Jump Processes
+
+**Hidden Jump Process Model:**
+
+The volatility itself follows a jump-diffusion:
+
+$$dV_t = \kappa_V(\theta_V - V_t) dt + \sigma_V \sqrt{V_t} dW_t^V + \int_{\mathbb{R}} z_V \tilde{N}_V(dt, dz_V)$$
+
+with correlation between:
+- Price jumps and volatility jumps
+- Brownian motions: $d\langle W, W^V \rangle_t = \rho dt$
+
+**Correlated Jumps:**
+- When volatility jumps, price typically also jumps
+- Natural expectation: if volatility jumps, price should jump (Naik, 1993)
+
+### 3.3. Asset Prices as Diffusions Sampled at the Jump Times of a Jump Process
+
+**High-Frequency Data Model:**
+
+For very small time scales, prices change at discrete random points:
+
+$$S_t = X_{\tau_{N_t}}$$
+
+where:
+- $X_t$: continuous diffusion process
+- $\tau_n$: jump times of a point process
+- $N_t$: counting process
+
+This captures the discrete nature of actual price changes at high frequencies.
+
+## Martingale Measures: Existence and Uniqueness
+
+### Market Price of Risk and Market Completion
+
+**Fundamental Question:** When does an equivalent martingale measure exist? When is it unique?
+
+### 4.1. The Case of Jump-Diffusion Asset Price Models
+
+**Market Price of Risk:**
+
+For a jump-diffusion asset price model, the market price of risk has two components:
+
+1. **Diffusion Risk Premium:** $\theta_t$ (affects Brownian motion)
+2. **Jump Risk Premium:** $\phi_t(z)$ (affects jump intensity and size distribution)
+
+**Radon-Nikodym Derivative:**
+
+$$\frac{dQ}{dP}\bigg|_{\mathcal{F}_t} = \mathcal{E}_t = \exp\left(\int_0^t \theta_s dW_s - \frac{1}{2}\int_0^t \theta_s^2 ds + \int_0^t \int_{\mathbb{R}} \log(1+\phi_s(z)) \tilde{N}(ds, dz) - \int_0^t \int_{\mathbb{R}} \phi_s(z) \lambda_s \nu(dz) ds\right)$$
+
+**Existence Conditions:**
+- Novikov-type conditions for the exponential martingale
+- Integrability conditions on $\theta_t$ and $\phi_t(z)$
+
+**Uniqueness:**
+- Market is complete if and only if there is a unique equivalent martingale measure
+- With jumps, market is typically incomplete
+- Uniqueness requires specific conditions on jump structure
+
+**Market Completion:**
+- Add additional traded assets to complete the market
+- Use additional derivatives to span the jump risk
+- Results in unique martingale measure
+
+### 4.2. The Case of Jump-Diffusion Term Structure Models
+
+**HJM Framework with Jumps:**
+
+For forward rates:
+$$df(t, T) = \alpha(t, T) dt + \sigma(t, T) dW_t + \int_{\mathbb{R}} \gamma(t, T, z) \tilde{N}(dt, dz)$$
+
+**No-Arbitrage Condition (HJM Drift Condition with Jumps):**
+
+$$\alpha(t, T) = \sigma(t, T) \int_t^T \sigma(t, u) du + \int_{\mathbb{R}} \gamma(t, T, z) \left(e^{\int_t^T \gamma(t, u, z) du} - 1\right) \lambda_t \nu(dz)$$
+
+**Market Price of Risk:**
+- Determines the drift adjustment
+- Affects both diffusion and jump components
+- May not be unique (incomplete market)
+
+## Hedging in Jump-Diffusion Market Models
+
+### 5.1. Hedging when the Market is Completed
+
+#### 5.1.1. Asset-Price Models
+
+**Complete Market Hedging:**
+
+When the market is complete (unique martingale measure exists), every contingent claim can be perfectly hedged using a self-financing portfolio.
+
+**Hedging Portfolio:**
+- Hold $\Delta_t$ units of the underlying asset
+- Hold risk-free bonds
+- Portfolio value: $V_t = \Delta_t S_t + B_t$
+
+**Delta Hedging:**
+$$\Delta_t = \frac{\partial C(t, S_t)}{\partial S}$$
+
+where $C(t, S)$ is the option price.
+
+**Self-Financing Condition:**
+$$dV_t = \Delta_t dS_t + r(V_t - \Delta_t S_t) dt$$
+
+#### 5.1.2. Term Structure Models
+
+**Hedging Interest Rate Derivatives:**
+
+- Use multiple bonds with different maturities
+- Delta-gamma hedging
+- Duration and convexity matching
+
+### 5.2. Hedging when the Market is not Complete
+
+**Incomplete Market Hedging Strategies:**
+
+1. **Risk Minimization (Föllmer-Sondermann):**
+   - Minimize the variance of the hedging error
+   - Use the minimal martingale measure
+   - Quadratic hedging criterion
+
+2. **Local Risk Minimization (Föllmer-Schweizer):**
+   - Minimize risk locally in time
+   - Allows non-self-financing strategies
+   - More flexible than global risk minimization
+
+3. **Mean-Variance Hedging:**
+   - Minimize $E[(H_T - V_T)^2]$ where $H_T$ is the claim payoff
+   - Requires specification of the physical measure
+
+4. **Utility-Based Hedging:**
+   - Maximize expected utility
+   - Depends on investor's risk preferences
+
+**Risk-Minimizing Strategy:**
+
+For a claim with payoff $H_T$, the risk-minimizing strategy $\xi_t$ satisfies:
+
+$$\xi_t = \frac{d\langle S, H \rangle_t}{d\langle S, S \rangle_t}$$
+
+where $\langle \cdot, \cdot \rangle$ denotes the predictable quadratic covariation.
+
+## Pricing in Jump-Diffusion Models
+
+### 6.1. General Aspects
+
+**Risk-Neutral Pricing:**
+
+When an equivalent martingale measure $Q$ exists:
+
+$$C(t, S_t) = E^Q\left[e^{-r(T-t)} H_T \middle| \mathcal{F}_t\right]$$
+
+**Pricing PDE (when applicable):**
+
+For European options, the price $C(t, S)$ satisfies:
+
+$$\frac{\partial C}{\partial t} + rS\frac{\partial C}{\partial S} + \frac{1}{2}\sigma^2 S^2 \frac{\partial^2 C}{\partial S^2} - rC + \lambda \int_{\mathbb{R}} [C(t, Se^z) - C(t, S)] \nu(dz) = 0$$
+
+with boundary condition $C(T, S) = H(S)$.
+
+**Characteristic Function Method:**
+
+For models with known characteristic function:
+
+$$C(t, S_t) = e^{-r(T-t)} E^Q[H(S_T) | \mathcal{F}_t]$$
+
+Can be computed using Fourier inversion:
+
+$$C(t, S_t) = \frac{e^{-r(T-t)}}{2\pi} \int_{-\infty}^{\infty} e^{-iu \log S_T} \hat{H}(u) \phi_T(u) du$$
+
+where $\phi_T(u)$ is the characteristic function and $\hat{H}(u)$ is the Fourier transform of the payoff.
+
+### 6.2. Computational Aspects
+
+**Monte Carlo Simulation:**
+
+1. Simulate jump-diffusion paths under risk-neutral measure
+2. Compute discounted payoffs
+3. Average over many paths
+
+**Algorithm:**
+```
+For i = 1 to N:
+  S_T = S_0
+  For t = 0 to T with step dt:
+    Generate Z ~ N(0,1)
+    Generate jump indicator: J ~ Poisson(λ dt)
+    If J > 0:
+      Generate jump size Y ~ ν(dz)
+      S_t = S_t * exp(Y)
+    S_t = S_t * exp((r - 0.5*σ²)dt + σ√dt * Z)
+  Payoff_i = H(S_T)
+Price = e^(-rT) * mean(Payoff_i)
+```
+
+**Finite Difference Methods:**
+
+Solve the pricing PDE numerically using:
+- Explicit schemes
+- Implicit schemes
+- Crank-Nicolson scheme
+
+**Fourier Methods:**
+
+- Fast Fourier Transform (FFT) for characteristic function pricing
+- Efficient for European options
+- Can handle complex jump structures
+
+**Series Expansion Methods:**
+
+For Merton model, the option price can be written as:
+
+$$C = \sum_{n=0}^{\infty} \frac{e^{-\lambda T}(\lambda T)^n}{n!} C_{BS}(S_n, K, T, r, \sigma_n)$$
+
+where:
+- $C_{BS}$ is the Black-Scholes formula
+- $S_n = S_0 e^{n\mu_J + \frac{1}{2}n\sigma_J^2}$
+- $\sigma_n^2 = \sigma^2 + n\sigma_J^2/T$
+
+## Mathematical Foundations
+
+### Notation
+
+- $S_t$: Asset price at time $t$
+- $r_t$: Short interest rate at time $t$
+- $W_t$: Standard Brownian motion
+- $N_t$: Poisson counting process
+- $\lambda_t$: Jump intensity (possibly time-dependent)
+- $\nu(dz)$: Jump size distribution (Lévy measure)
+- $\tilde{N}(dt, dz)$: Compensated Poisson random measure
+- $\mathcal{F}_t$: Filtration (information up to time $t$)
+- $E^Q[\cdot]$: Expectation under measure $Q$
+- $\langle X, Y \rangle_t$: Predictable quadratic covariation
+
+### Core Formulas
+
+**Jump-Diffusion SDE:**
+$$dX_t = \mu_t dt + \sigma_t dW_t + \int_{\mathbb{R}} \gamma_t(z) \tilde{N}(dt, dz)$$
+
+**Merton Jump-Diffusion:**
+$$dS_t = S_{t-}\left[\mu dt + \sigma dW_t + \int_{\mathbb{R}} (e^z - 1) \tilde{N}(dt, dz)\right]$$
+
+**Generalized Itô Formula:**
+$$df(t, X_t) = \frac{\partial f}{\partial t} dt + \frac{\partial f}{\partial x} dX_t + \frac{1}{2}\frac{\partial^2 f}{\partial x^2} \sigma_t^2 dt + \int_{\mathbb{R}} [f(t, X_{t-} + \gamma_t(z)) - f(t, X_{t-})] \tilde{N}(dt, dz)$$
+
+**Exponential Martingale:**
+$$\mathcal{E}_t = \exp\left(\int_0^t \theta_s dW_s - \frac{1}{2}\int_0^t \theta_s^2 ds + \int_0^t \int_{\mathbb{R}} \log(1+\phi_s(z)) \tilde{N}(ds, dz) - \int_0^t \int_{\mathbb{R}} \phi_s(z) \lambda_s \nu(dz) ds\right)$$
+
+**Risk-Neutral Pricing:**
+$$C(t, S_t) = E^Q\left[e^{-r(T-t)} H_T \middle| \mathcal{F}_t\right]$$
+
+**HJM No-Arbitrage Condition (with jumps):**
+$$\alpha(t, T) = \sigma(t, T) \int_t^T \sigma(t, u) du + \int_{\mathbb{R}} \gamma(t, T, z) \left(e^{\int_t^T \gamma(t, u, z) du} - 1\right) \lambda_t \nu(dz)$$
+
+### Variable Definitions
+
+- **$\mu$**: Drift coefficient (expected return)
+- **$\sigma$**: Volatility coefficient (diffusion parameter)
+- **$\lambda$**: Jump intensity (expected number of jumps per unit time)
+- **$\nu(dz)$**: Lévy measure (jump size distribution)
+- **$\theta_t$**: Market price of diffusion risk
+- **$\phi_t(z)$**: Market price of jump risk (function of jump size)
+- **$\kappa$**: Mean reversion speed (for interest rate models)
+- **$\theta$**: Long-term mean (for mean-reverting processes)
+- **$\mu_J$**: Mean jump size (in log space)
+- **$\sigma_J$**: Jump size volatility
+- **$\rho$**: Correlation coefficient between Brownian motions
+
+## Experimental Setup
+
+### Model Calibration
+
+**Calibration to Market Data:**
+- Use option prices to calibrate jump parameters
+- Maximum likelihood estimation from historical data
+- Moment matching methods
+
+**Parameters to Estimate:**
+- Diffusion volatility: $\sigma$
+- Jump intensity: $\lambda$
+- Jump size distribution parameters: $\mu_J$, $\sigma_J$
+- Drift: $\mu$ (or risk-free rate $r$ under risk-neutral measure)
+
+### Datasets
+
+**Market Data:**
+- Historical asset prices
+- Option prices (for calibration)
+- Interest rate term structure
+
+### Evaluation Metrics
+
+**Model Performance:**
+- Pricing errors (model vs. market prices)
+- Hedging effectiveness
+- Out-of-sample forecasting accuracy
+- Fit to empirical return distributions
+
+## Results and Evaluation
+
+### Key Findings from Literature
+
+1. **Empirical Evidence:**
+   - Jumps are present in asset returns (Ball and Torous, 1985; Jorion, 1988)
+   - Jump-diffusion models provide better fit than pure diffusion models
+   - Combination with stochastic volatility improves fit further (Bakshi, Cao, Chen, 1997)
+
+2. **Pricing Performance:**
+   - Jump-diffusion models can explain volatility smiles/skews
+   - Better pricing of out-of-the-money options
+   - Improved fit to market data
+
+3. **Hedging:**
+   - Perfect hedging generally not possible in incomplete markets
+   - Risk-minimizing strategies provide good approximations
+   - Local risk minimization more flexible than global
+
+### Limitations Discovered
+
+1. **Market Incompleteness:**
+   - Unique pricing not always possible
+   - Requires additional assumptions or market completion
+
+2. **Calibration Complexity:**
+   - More parameters to estimate
+   - Requires sufficient market data
+
+3. **Computational Cost:**
+   - More complex than pure diffusion models
+   - Monte Carlo methods may be slower
+
+## Best Practices and Recommendations
+
+### Implementation Best Practices
+
+1. **Model Selection:**
+   - Start with Merton model for simplicity
+   - Add stochastic volatility if needed
+   - Consider high-frequency models for intraday data
+
+2. **Calibration:**
+   - Use both historical and option price data
+   - Validate out-of-sample
+   - Check parameter stability
+
+3. **Pricing:**
+   - Use characteristic function methods when available (efficient)
+   - Monte Carlo for complex payoffs
+   - Finite difference for American options
+
+4. **Hedging:**
+   - Use risk-minimizing strategies in incomplete markets
+   - Monitor hedging errors
+   - Adjust strategy as needed
+
+### Optimization Tips
+
+1. **Computational Efficiency:**
+   - Use FFT for characteristic function pricing
+   - Parallelize Monte Carlo simulations
+   - Cache intermediate calculations
+
+2. **Numerical Stability:**
+   - Use appropriate time steps
+   - Handle jump events carefully
+   - Check for numerical errors
+
+### Common Pitfalls to Avoid
+
+1. **Ignoring Market Incompleteness:**
+   - Don't assume unique pricing
+   - Consider multiple equivalent measures
+
+2. **Parameter Overfitting:**
+   - Don't over-calibrate to in-sample data
+   - Validate out-of-sample
+
+3. **Computational Errors:**
+   - Ensure sufficient Monte Carlo paths
+   - Check convergence of numerical methods
+
+### Warnings
+
+1. **Model Risk:**
+   - Jump-diffusion models are still approximations
+   - Real markets may have more complex structures
+
+2. **Calibration Risk:**
+   - Parameters may change over time
+   - Regular re-calibration needed
+
+3. **Hedging Risk:**
+   - Incomplete markets mean residual risk
+   - Monitor and manage hedging errors
+
+## Limitations and Assumptions
+
+### Stated Limitations
+
+1. **Model Scope:**
+   - Focuses on jump-diffusions (subset of Lévy processes)
+   - Does not cover all possible jump structures
+
+2. **Market Assumptions:**
+   - Assumes frictionless markets
+   - No transaction costs
+   - Continuous trading (except high-frequency section)
+
+3. **Computational Limitations:**
+   - Some methods computationally intensive
+   - Exact solutions not always available
+
+### Assumptions
+
+1. **Mathematical:**
+   - Processes are well-defined
+   - Integrability conditions satisfied
+   - Measure transformations valid
+
+2. **Market:**
+   - No arbitrage opportunities
+   - Markets are liquid
+   - Risk-free rate exists and is known
+
+### Constraints
+
+1. **Theoretical:**
+   - Requires mathematical framework of stochastic calculus
+   - Needs measure theory background
+
+2. **Practical:**
+   - Requires sufficient data for calibration
+   - Computational resources for simulations
+
+### Scope Limitations
+
+- Focuses on theoretical framework
+- Limited discussion of specific implementation details
+- Does not cover all possible extensions
+
+## Related Techniques and References
+
+### Related Techniques
+
+1. **Lévy Processes:**
+   - Jump-diffusions are a special case
+   - More general framework available
+
+2. **Stochastic Volatility Models:**
+   - Heston model
+   - Can be combined with jumps
+
+3. **Regime-Switching Models:**
+   - Alternative to jumps
+   - Can capture similar phenomena
+
+4. **GARCH Models:**
+   - For volatility clustering
+   - Can be combined with jumps
+
+### Key References
+
+**Foundational Papers:**
+- Merton (1976): Option pricing when underlying stock returns are discontinuous
+- Cox and Ross (1976): Valuation of options for alternative stochastic processes
+
+**Empirical Studies:**
+- Ball and Torous (1985): On jumps in common stock prices
+- Jorion (1988): On jump processes in foreign exchange and stock markets
+- Bakshi, Cao, Chen (1997): Empirical performance of alternative option pricing models
+
+**Theoretical Developments:**
+- Föllmer and Sondermann (1986): Hedging of non-redundant contingent claims
+- Föllmer and Schweizer (1991): Hedging of contingent claims under incomplete information
+- Various papers on market completion and risk minimization
+
+### Cross-References
+
+- See quantitative finance engine MDC for implementation of Merton jump-diffusion
+- See stochastic volatility models for combined approaches
+- See Monte Carlo methods for computational techniques
+
+## Practical Applications
+
+### Use Cases
+
+1. **Option Pricing:**
+   - European and American options
+   - Exotic derivatives
+   - Volatility smile modeling
+
+2. **Risk Management:**
+   - Value at Risk (VaR) calculations
+   - Stress testing
+   - Hedging strategies
+
+3. **Portfolio Optimization:**
+   - Asset allocation with jump risk
+   - Risk-return optimization
+
+4. **Interest Rate Modeling:**
+   - Bond pricing
+   - Interest rate derivatives
+   - Term structure modeling
+
+### Application Domains
+
+- Equity markets
+- Foreign exchange markets
+- Interest rate markets
+- Commodity markets
+- Credit risk modeling
+
+### Application Scenarios
+
+1. **High Volatility Periods:**
+   - Market crashes
+   - Financial crises
+   - Sudden market moves
+
+2. **Event-Driven Markets:**
+   - Earnings announcements
+   - Central bank decisions
+   - Economic data releases
+
+3. **High-Frequency Trading:**
+   - Intraday price movements
+   - Tick-by-tick data
+   - Market microstructure
+
+## Implementation Checklist
+
+### Prerequisites
+
+- [ ] Understanding of stochastic calculus
+- [ ] Knowledge of probability theory and measure theory
+- [ ] Familiarity with financial markets
+- [ ] Programming skills (Python, MATLAB, or similar)
+- [ ] Numerical methods knowledge
+
+### Setup Steps
+
+1. [ ] Choose appropriate jump-diffusion model
+2. [ ] Gather market data (prices, options)
+3. [ ] Set up numerical computing environment
+4. [ ] Implement basic stochastic processes
+
+### Implementation Steps
+
+1. [ ] Implement Poisson process simulation
+2. [ ] Implement jump-diffusion path simulation
+3. [ ] Implement calibration methods
+4. [ ] Implement pricing methods (Monte Carlo, PDE, Fourier)
+5. [ ] Implement hedging strategies
+6. [ ] Validate against known solutions
+7. [ ] Test with market data
+
+### Testing Steps
+
+1. [ ] Test against analytical solutions (when available)
+2. [ ] Compare with Black-Scholes (limit case)
+3. [ ] Validate calibration on historical data
+4. [ ] Test pricing on market option prices
+5. [ ] Validate hedging performance
+6. [ ] Stress test with extreme parameters
+
+## Figures and Visualizations
+
+*Note: The paper does not include specific figures in the provided content, but typical visualizations for jump-diffusion models would include:*
+
+### Typical Visualizations
+
+1. **Sample Paths:**
+   - Simulated price paths showing jumps
+   - Comparison with pure diffusion paths
+
+2. **Return Distributions:**
+   - Histogram of returns
+   - Comparison with normal distribution
+   - Showing fat tails
+
+3. **Volatility Surfaces:**
+   - Implied volatility as function of strike and maturity
+   - Comparison with market data
+
+4. **Hedging Errors:**
+   - Distribution of hedging errors
+   - Over time
+
+## Tables
+
+*Note: The paper does not include specific tables in the provided content, but typical tables would include:*
+
+### Typical Tables
+
+1. **Calibration Results:**
+   - Estimated parameters
+   - Goodness of fit measures
+
+2. **Pricing Errors:**
+   - Model prices vs. market prices
+   - By moneyness and maturity
+
+3. **Hedging Performance:**
+   - Hedging errors
+   - By strategy type
+
+## Appendices and Supplementary Material
+
+*Note: The paper structure shows references but specific appendix content is not provided in the excerpt. Typical appendices would include:*
+
+### Typical Appendix Content
+
+1. **Mathematical Proofs:**
+   - Proofs of key theorems
+   - Technical lemmas
+
+2. **Additional Algorithms:**
+   - Detailed pseudocode
+   - Implementation details
+
+3. **Additional Results:**
+   - Extended numerical results
+   - Sensitivity analyses
+
+## References
+
+**Key References from the Paper:**
+
+1. Aase, K.K. (1988). Contingent claim valuation when the security price is a combination of an Ito process and a random point process.
+
+2. Ahn, C. (1992). Option pricing when jump risk is systematic.
+
+3. Ahn, C.M., Thompson, H.E. (1988). Jump-diffusion processes and the term structure of interest rates.
+
+4. Babbs, S., Webber, N. (1997). Term structure modelling under alternative official regimes.
+
+5. Bakshi, G., Cao, C., Chen, Z. (1997). Empirical performance of alternative option pricing models.
+
+6. Ball, C.A., Torous, W.N. (1985). On jumps in common stock prices and their impact on call option pricing.
+
+7. Björk, T., Näslund, B. (1998). Diversified portfolios in continuous time.
+
+8. Cox, J.C., Ross, S.A. (1976). The valuation of options for alternative stochastic processes.
+
+9. Föllmer, H., Sondermann, D. (1986). Hedging of non-redundant contingent claims.
+
+10. Föllmer, H., Schweizer, M. (1991). Hedging of contingent claims under incomplete information.
+
+11. Merton, R. (1976). Option pricing when the underlying stock returns are discontinuous.
+
+12. Naik, V. (1993). Option valuation and hedging strategies with jumps in the volatility of asset returns.
+
+*[Full reference list available in the original paper]*

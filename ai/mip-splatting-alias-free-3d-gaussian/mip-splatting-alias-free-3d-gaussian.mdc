@@ -1,0 +1,1514 @@
+---
+alwaysApply: false
+---
+
+# Mip-Splatting: Alias-free 3D Gaussian Splatting
+
+## Paper Metadata
+- **Title:** Mip-Splatting: Alias-free 3D Gaussian Splatting
+- **Authors:** Zehao Yu, Anpei Chen, Binbin Huang, Torsten Sattler, Andreas Geiger
+- **Year:** 2023
+- **Venue:** NeurIPS 2023
+- **DOI/URL:** https://niujinshuchong.github.io/mip-splatting
+- **Keywords:** 3D Gaussian Splatting, Novel View Synthesis, Anti-aliasing, Neural Rendering
+- **Source Paper:** Zehao Yu, Anpei Chen, Binbin Huang, Torsten Sattler, Andreas Geiger. Mip-Splatting: Alias-free 3D Gaussian Splatting. NeurIPS 2023.
+
+## Abstract / Summary
+
+Recently, 3D Gaussian Splatting has demonstrated impressive novel view synthesis results, reaching high fidelity and efficiency. However, strong artifacts can be observed when changing the sampling rate, e.g., by changing focal length or camera distance. We find that the source for this phenomenon can be attributed to the lack of 3D frequency constraints and the usage of a 2D dilation filter. To address this problem, we introduce a 3D smoothing filter which constrains the size of the 3D Gaussian primitives based on the maximal sampling frequency induced by the input views, eliminating high-frequency artifacts when zooming in. Moreover, replacing 2D dilation with a 2D Mip filter, which simulates a 2D box filter, effectively mitigates aliasing and dilation issues. Our evaluation, including scenarios such as training on single-scale images and testing on multiple scales, validates the effectiveness of our approach.
+
+## Problem Statement
+
+### Problem Definition
+
+3D Gaussian Splatting (3DGS) produces artifacts when camera views diverge from those seen during training, particularly when changing the sampling rate via:
+- Changing focal length
+- Changing camera distance (zooming in/out)
+- Rendering at different resolutions
+
+The artifacts include:
+- **High-frequency artifacts** when zooming in (erosion effects)
+- **Dilation artifacts** when zooming out (brightening, incorrect light accumulation)
+- **Aliasing** when rendering at lower sampling rates
+- **Degenerate 3D Gaussians** that exceed sampling limits
+
+### Motivation
+
+Novel View Synthesis (NVS) plays a critical role in computer graphics and computer vision, with applications including:
+- Virtual reality
+- Cinematography
+- Robotics
+- Real-time rendering at high resolutions
+
+3D Gaussian Splatting has gained attention as an appealing alternative to both MLP-based NeRF and feature grid-based representations, achieving:
+- Impressive novel view synthesis results
+- Real-time rendering at high-definition resolutions
+- Potential integration into standard GPU rasterization pipelines
+
+However, 3DGS focuses on in-distribution evaluation where training and testing are conducted at similar sampling rates. The out-of-distribution generalization (training at single scale, testing at multiple scales) is crucial for practical applications.
+
+### Challenges
+
+1. **Scale Ambiguity:** The scale of 3D Gaussians is not properly constrained during optimization, leading to degenerate representations
+2. **Lack of 3D Frequency Constraints:** No mechanism to limit the maximum frequency of 3D representation based on training views
+3. **2D Dilation Filter Issues:** 
+   - Constant dilation regardless of zoom level causes erosion when zooming in
+   - Causes dilation artifacts when zooming out
+4. **Aliasing:** Rendering at lower sampling rates results in aliasing without proper anti-aliasing
+5. **Out-of-Distribution Generalization:** Models trained at one scale fail when tested at different scales
+
+### Scope
+
+This work addresses:
+- Out-of-distribution generalization of 3DGS across different sampling rates
+- Training models at a single scale and evaluating at multiple scales
+- Eliminating artifacts when changing focal length or camera distance
+- Achieving alias-free rendering at arbitrary scales
+
+### Assumptions
+
+- Multi-view images are available for training
+- Camera poses and intrinsics are known
+- The scene can be represented as a collection of 3D Gaussians
+- Training views provide sufficient information to constrain 3D frequency bounds
+
+## Key Concepts and Techniques
+
+1. **3D Gaussian Splatting (3DGS):** Representing scenes as collections of 3D Gaussians rendered via splatting-based rasterization
+2. **Novel View Synthesis (NVS):** Generating new images from viewpoints different from original captures
+3. **Neural Radiance Fields (NeRF):** MLP-based representation for view synthesis
+4. **Nyquist-Shannon Sampling Theorem:** Fundamental theorem constraining signal reconstruction from discrete samples
+5. **Multi-view Frequency Bounds:** Deriving maximum reconstructable frequency from training views
+6. **3D Smoothing Filter:** Low-pass filter applied in 3D space to constrain maximum frequency
+7. **2D Mip Filter:** Approximates 2D box filter of physical imaging process
+8. **Volume Splatting:** Rendering technique for projecting 3D primitives to 2D screen space
+9. **Alpha Blending:** Compositing technique for rendering semi-transparent primitives
+10. **Spherical Harmonics:** Basis functions for modeling view-dependent appearance
+11. **Anisotropic Gaussians:** Gaussians with different scales in different directions
+12. **EWA Splatting:** Elliptical Weighted Average splatting for anti-aliasing
+13. **Dilation Operation:** Morphological operation to avoid degenerate cases
+14. **Inverse Rendering:** Optimizing 3D representation from 2D observations
+15. **Differentiable Rendering:** Rendering process with gradients for optimization
+
+## Related Work and Background
+
+### Previous Approaches
+
+#### Novel View Synthesis
+- **NeRF (2020):** Utilizes MLPs to model scenes as continuous functions, demonstrating remarkable novel view rendering quality
+- **Subsequent NeRF Methods:** Distill pretrained NeRF into sparse representations for real-time rendering
+- **Feature Grid-based Representations:** Methods like TensoRF, Plenoxels, Instant-NGP use explicit feature grids
+- **3D Gaussian Splatting (2023):** Represents scenes explicitly as collections of 3D Gaussians, achieving real-time rendering at high-definition resolutions
+
+#### Primitive-based Differentiable Rendering
+- **Point-based Rendering:** Rasterize geometric primitives onto image plane
+- **Pulsar:** Efficient sphere rasterization
+- **3DGS:** Utilizes anisotropic Gaussians and tile-based sorting for rendering
+
+#### Anti-aliasing in Rendering
+- **Super-sampling:** Increases number of samples
+- **Prefiltering:** Applies low-pass filtering to meet Nyquist limit
+- **EWA Splatting:** Applies Gaussian low-pass filter to projected 2D Gaussians in screen space
+- **Mip-NeRF, Tri-MipRF, Zip-NeRF:** Integrate pre-filtering to mitigate aliasing using cone tracing and pre-filtered positional/feature encodings
+
+### How This Differs
+
+1. **3D vs 2D Filtering:** Our band-limited filter is applied in 3D space, with filter size determined by training images, not rendered images
+2. **Box Filter Approximation:** Our 2D Mip filter approximates the box filter of physical imaging process, targeting exact approximation of a single pixel
+3. **Closed-form Modification:** Unlike MLP-based methods that rely on interpolation during multi-scale training, our closed-form modification enables excellent out-of-distribution generalization
+4. **Single-scale Training:** Training at a single sampling rate enables faithful rendering at various sampling rates different from training
+5. **Reconstruction vs Rendering:** We tackle the reconstruction problem, optimizing 3D Gaussian representation via inverse rendering, while EWA splatting only considers the rendering problem
+
+### Adopted Techniques
+
+- **3D Gaussian Splatting Framework:** Built upon the open-source 3DGS codebase
+- **Volume Splatting:** Uses the same splatting-based rasterization approach
+- **Spherical Harmonics:** Models view-dependent color
+- **Alpha Blending:** Uses same depth-ordered alpha blending for rendering
+- **Gaussian Density Control:** Uses same adaptive Gaussian addition/deletion strategy
+
+## Methodology and Approach
+
+### High-Level Overview
+
+Mip-Splatting makes two key modifications to the original 3DGS model:
+
+1. **3D Smoothing Filter:** Limits the frequency of the 3D representation to below half the maximum sampling rate determined by training images, eliminating high-frequency artifacts when zooming in
+2. **2D Mip Filter:** Replaces 2D screen space dilation with a 2D Mip filter that approximates the box filter inherent to the physical imaging process, effectively mitigating aliasing and dilation issues
+
+In combination, Mip-Splatting enables alias-free rendering across various sampling rates.
+
+### Detailed Methodology
+
+#### Step 1: Multi-view Frequency Bounds Computation
+
+For each 3D Gaussian primitive, compute the maximal sampling rate based on all training views:
+
+1. For each training image, compute the sampling interval in world space:
+   - Image has focal length `f` in pixel units
+   - Sampling interval in screen space is 1 pixel
+   - Back-project to 3D world space: `T̂ = d/f` where `d` is depth
+   - Sampling frequency: `ν̂ = f/d`
+
+2. For each primitive at position `p_k`, compute sampling rate for each camera:
+   - Check if primitive is visible in camera's view frustum
+   - Compute depth `d` using primitive center `p_k`
+   - Compute sampling frequency `ν̂_n = f_n / d_n` for camera `n`
+
+3. Select maximal sampling rate:
+   - Choose the maximum sampling rate among all cameras where primitive is visible
+   - This ensures at least one camera can reconstruct the primitive
+
+#### Step 2: 3D Smoothing Filter Application
+
+Apply Gaussian low-pass filter to each 3D Gaussian primitive:
+
+1. Compute filter scale based on maximal sampling rate:
+   - Filter scale: `s / ν̂_k` where `s` is hyperparameter
+   - Ensures highest frequency component doesn't exceed half of maximal sampling rate
+
+2. Convolve 3D Gaussian with low-pass filter:
+   - Convolution of two Gaussians results in another Gaussian
+   - New covariance: `Σ_k + (s/ν̂_k) · I`
+   - This becomes intrinsic part of 3D representation, constant post-training
+
+#### Step 3: 2D Mip Filter Application
+
+Replace 2D dilation with 2D Mip filter:
+
+1. Project 3D Gaussian to screen space (same as 3DGS)
+2. Apply 2D Mip filter instead of dilation:
+   - Filter variance chosen to cover a single pixel in screen space
+   - Approximates box filter of physical imaging process
+   - Uses Gaussian approximation for efficiency
+
+### Design Principles
+
+1. **Nyquist Constraint:** Maximum frequency of 3D representation must not exceed half the sampling rate
+2. **Physical Imaging Process:** 2D filter should replicate the box filter of actual camera sensor
+3. **Efficiency:** Use Gaussian approximations for computational efficiency
+4. **Intrinsic Representation:** 3D smoothing filter becomes part of scene representation, constant regardless of viewpoint
+5. **Out-of-Distribution Generalization:** Enable rendering at scales unobserved during training
+
+### Architecture
+
+The architecture follows 3DGS with two key modifications:
+
+```
+Input: Multi-view Images + Camera Poses
+  ↓
+1. Initialize 3D Gaussians
+  ↓
+2. For each iteration:
+   a. Compute multi-view frequency bounds (every m=100 iterations)
+   b. Apply 3D smoothing filter to each Gaussian
+   c. Project to screen space
+   d. Apply 2D Mip filter (instead of dilation)
+   e. Render via alpha blending
+   f. Compute loss and backpropagate
+   g. Adaptively add/delete Gaussians
+  ↓
+Output: Optimized 3D Gaussian Representation
+```
+
+### Data Structures
+
+1. **3D Gaussian Primitive:**
+   - Position: `p_k ∈ R³`
+   - Covariance: `Σ_k ∈ R³ˣ³` (parameterized as `Σ_k = O_k s_k s_k^T O_k^T`)
+   - Opacity: `α_k ∈ [0,1]`
+   - Color: `c_k` (spherical harmonics coefficients)
+
+2. **Sampling Rate Storage:**
+   - Maximal sampling rate: `ν̂_k` for each Gaussian
+   - Recomputed every `m=100` iterations during training
+
+3. **Filter Parameters:**
+   - 3D smoothing filter variance: `s_3d = 0.2`
+   - 2D Mip filter variance: `s_2d = 0.1`
+   - Total variance: `0.3` (for fair comparison with 3DGS)
+
+## Algorithms
+
+### Algorithm 1: Multi-view Frequency Bounds Computation
+
+**Description:**
+Computes the maximal sampling rate for each 3D Gaussian primitive based on all training views. This determines the highest frequency that can be reconstructed for each primitive.
+
+**Pseudocode:**
+```
+function ComputeMaximalSamplingRate(Gaussians G, Cameras C):
+    for each Gaussian g_k in G:
+        max_sampling_rate = 0
+        
+        for each camera c_n in C:
+            if g_k.center p_k is in view frustum of c_n:
+                // Compute depth
+                d = distance(p_k, c_n.position)
+                
+                // Compute sampling interval in world space
+                T_hat = d / c_n.focal_length
+                
+                // Compute sampling frequency
+                nu_hat = c_n.focal_length / d
+                
+                // Update maximum
+                max_sampling_rate = max(max_sampling_rate, nu_hat)
+        
+        // Store for Gaussian
+        g_k.max_sampling_rate = max_sampling_rate
+    
+    return G
+```
+
+**Complexity Analysis:**
+- **Time Complexity:** O(K × N) where K is number of Gaussians, N is number of cameras
+- **Space Complexity:** O(K) for storing sampling rates
+
+**Optimization Strategies:**
+- Recompute only every `m=100` iterations (Gaussian centers remain relatively stable)
+- Early termination if primitive not visible in any camera
+- Parallel computation across Gaussians
+
+**Edge Cases:**
+- Primitive not visible in any camera: use default minimal sampling rate
+- Very close to camera: handle numerical stability for depth computation
+
+### Algorithm 2: 3D Smoothing Filter Application
+
+**Description:**
+Applies a Gaussian low-pass filter to each 3D Gaussian primitive to constrain its maximum frequency based on the computed sampling rate bounds.
+
+**Pseudocode:**
+```
+function Apply3DSmoothingFilter(Gaussians G):
+    for each Gaussian g_k in G:
+        // Get maximal sampling rate
+        nu_hat_k = g_k.max_sampling_rate
+        
+        // Compute filter scale
+        s = hyperparameter  // typically 0.2
+        filter_scale = s / nu_hat_k
+        
+        // Convolve with low-pass filter
+        // Convolution of two Gaussians: Σ_new = Σ_old + filter_covariance
+        filter_covariance = filter_scale * I  // I is 3x3 identity
+        
+        // Update Gaussian covariance
+        g_k.covariance = g_k.covariance + filter_covariance
+        
+        // Normalization factor
+        g_k.normalization = sqrt(det(g_k.covariance))
+    
+    return G
+```
+
+**Complexity Analysis:**
+- **Time Complexity:** O(K) where K is number of Gaussians
+- **Space Complexity:** O(1) additional space
+
+**Correctness:**
+- Convolution of two Gaussians with covariances Σ₁ and Σ₂ results in Gaussian with covariance Σ₁ + Σ₂
+- Ensures highest frequency component doesn't exceed ν̂_k/2 (Nyquist limit)
+
+**Initialization:**
+- Applied during optimization, not at initialization
+- Filter becomes intrinsic part of representation post-training
+
+### Algorithm 3: 2D Mip Filter Application
+
+**Description:**
+Replaces 2D screen space dilation with a 2D Mip filter that approximates the box filter of the physical imaging process.
+
+**Pseudocode:**
+```
+function Apply2DMipFilter(Projected2DGaussians G_2D):
+    for each projected 2D Gaussian g_2d in G_2D:
+        // Get 2D covariance matrix
+        Sigma_2D = g_2d.covariance
+        
+        // Mip filter variance (covers single pixel)
+        s = 0.1  // hyperparameter
+        
+        // Apply filter: add identity matrix scaled by s
+        Sigma_mip = Sigma_2D + s * I_2D
+        
+        // Update Gaussian
+        g_2d.covariance = Sigma_mip
+        
+        // Normalization factor
+        g_2d.normalization = sqrt(det(Sigma_mip) / det(Sigma_2D))
+    
+    return G_2D
+```
+
+**Complexity Analysis:**
+- **Time Complexity:** O(K) where K is number of projected Gaussians
+- **Space Complexity:** O(1) additional space
+
+**Key Points:**
+- Filter size chosen to cover a single pixel in screen space
+- Approximates box filter of physical imaging process
+- More principled than constant dilation
+
+### Algorithm 4: Complete Mip-Splatting Rendering Pipeline
+
+**Description:**
+Complete rendering pipeline integrating 3D smoothing and 2D Mip filters.
+
+**Pseudocode:**
+```
+function RenderMipSplatting(Gaussians G, Camera cam):
+    // Step 1: Apply 3D smoothing filter
+    G_smoothed = Apply3DSmoothingFilter(G)
+    
+    // Step 2: Transform to camera coordinates
+    for each Gaussian g in G_smoothed:
+        g.position_cam = cam.R * g.position + cam.t
+        g.covariance_cam = cam.R * g.covariance * cam.R^T
+    
+    // Step 3: Project to ray space
+    for each Gaussian g in G_smoothed:
+        // Compute Jacobian of projection
+        J = ComputeProjectionJacobian(g.position_cam, cam)
+        
+        // Project covariance
+        g.covariance_2D = J * g.covariance_cam * J^T
+        // Remove third row/column to get 2D covariance
+    
+    // Step 4: Apply 2D Mip filter
+    G_2D = Apply2DMipFilter(G_smoothed)
+    
+    // Step 5: Sort by depth
+    G_2D_sorted = SortByDepth(G_2D)
+    
+    // Step 6: Alpha blending
+    image = zeros(height, width, 3)
+    for each pixel (x, y):
+        color = [0, 0, 0]
+        alpha_accum = 1.0
+        
+        for each Gaussian g in G_2D_sorted (front to back):
+            // Evaluate 2D Gaussian
+            weight = g.alpha * Evaluate2DGaussian(g, x, y)
+            
+            // Blend color
+            color += weight * g.color * alpha_accum
+            alpha_accum *= (1 - weight)
+            
+            if alpha_accum < epsilon:
+                break
+        
+        image[y, x] = color
+    
+    return image
+```
+
+**Complexity Analysis:**
+- **Time Complexity:** O(K × H × W) where K is Gaussians, H×W is image resolution
+- **Space Complexity:** O(H × W) for output image
+
+## Implementation Patterns
+
+### Architecture Patterns
+
+1. **Modular Filter Design:** 3D smoothing and 2D Mip filters are separate, composable components
+2. **Frequency-based Regularization:** Frequency constraints applied during optimization, not post-processing
+3. **Intrinsic Representation:** 3D smoothing filter becomes part of scene representation
+
+### Design Patterns
+
+1. **Filter Composition:** Convolution of Gaussians for efficient filtering
+2. **Adaptive Computation:** Sampling rate recomputed periodically, not every iteration
+3. **View-dependent Filtering:** Filter parameters depend on training views, not rendering views
+
+### Data Organization
+
+1. **Gaussian Storage:** Each Gaussian stores its maximal sampling rate
+2. **Lazy Evaluation:** Sampling rates recomputed only when needed (every m iterations)
+3. **Cached Projections:** 2D projections cached during rendering
+
+### Component Structure
+
+```
+MipSplatting/
+├── Gaussian3D/
+│   ├── position, covariance, opacity, color
+│   └── max_sampling_rate
+├── FrequencyBounds/
+│   ├── compute_multi_view_bounds()
+│   └── update_sampling_rates()
+├── Filter3D/
+│   ├── apply_smoothing_filter()
+│   └── compute_filter_scale()
+├── Filter2D/
+│   ├── apply_mip_filter()
+│   └── compute_mip_variance()
+└── Renderer/
+    ├── project_to_screen()
+    ├── apply_filters()
+    └── alpha_blend()
+```
+
+## Code Examples and Snippets
+
+### Code Example 1: Multi-view Frequency Bounds Computation
+
+**Context:** Computing maximal sampling rate for each Gaussian based on training cameras
+
+**Language:** Python (PyTorch)
+
+```python
+def compute_maximal_sampling_rate(gaussians, cameras):
+    """
+    Compute maximal sampling rate for each Gaussian based on all cameras.
+    
+    Args:
+        gaussians: Dict with 'positions' (N, 3) and other attributes
+        cameras: List of camera objects with 'R', 't', 'focal_length', 'view_frustum'
+    
+    Returns:
+        max_sampling_rates: (N,) tensor of maximal sampling rates
+    """
+    N = gaussians['positions'].shape[0]
+    max_sampling_rates = torch.zeros(N, device=gaussians['positions'].device)
+    
+    for cam in cameras:
+        # Transform Gaussian positions to camera coordinates
+        positions_cam = (cam.R @ gaussians['positions'].T + cam.t.unsqueeze(1)).T
+        
+        # Check visibility (simplified - check if in view frustum)
+        visible = check_view_frustum(positions_cam, cam.view_frustum)
+        
+        # Compute depth (distance from camera)
+        depths = torch.norm(positions_cam, dim=1)
+        
+        # Compute sampling frequency: nu_hat = f / d
+        sampling_frequencies = cam.focal_length / depths
+        
+        # Update maximum for visible Gaussians
+        mask = visible & (sampling_frequencies > max_sampling_rates)
+        max_sampling_rates[mask] = sampling_frequencies[mask]
+    
+    return max_sampling_rates
+```
+
+**Explanation:**
+- Iterates through all cameras
+- Transforms Gaussian positions to camera coordinates
+- Checks visibility in view frustum
+- Computes sampling frequency for each visible Gaussian
+- Updates maximum sampling rate
+
+**Key Points:**
+- Efficient vectorized operations
+- Handles visibility checking
+- Returns maximum across all cameras
+
+### Code Example 2: 3D Smoothing Filter Application
+
+**Context:** Applying Gaussian low-pass filter to 3D Gaussians
+
+**Language:** Python (PyTorch)
+
+```python
+def apply_3d_smoothing_filter(gaussians, max_sampling_rates, s=0.2):
+    """
+    Apply 3D smoothing filter to constrain maximum frequency.
+    
+    Args:
+        gaussians: Dict with 'covariances' (N, 3, 3)
+        max_sampling_rates: (N,) tensor of maximal sampling rates
+        s: Scalar hyperparameter controlling filter size
+    
+    Returns:
+        filtered_gaussians: Gaussians with updated covariances
+    """
+    N = gaussians['covariances'].shape[0]
+    device = gaussians['covariances'].device
+    
+    # Compute filter scale for each Gaussian
+    # Filter scale = s / nu_hat_k
+    filter_scales = s / (max_sampling_rates + 1e-8)  # Avoid division by zero
+    
+    # Create identity matrices
+    I = torch.eye(3, device=device).unsqueeze(0).expand(N, -1, -1)
+    
+    # Apply filter: convolution of two Gaussians
+    # New covariance = old_covariance + filter_covariance
+    filter_covariances = filter_scales.unsqueeze(1).unsqueeze(2) * I
+    
+    # Update covariances
+    filtered_covariances = gaussians['covariances'] + filter_covariances
+    
+    # Update normalization factors
+    det_old = torch.det(gaussians['covariances'])
+    det_new = torch.det(filtered_covariances)
+    normalization_factors = torch.sqrt(det_new / (det_old + 1e-8))
+    
+    gaussians['covariances'] = filtered_covariances
+    gaussians['normalization_factors'] = normalization_factors
+    
+    return gaussians
+```
+
+**Explanation:**
+- Computes filter scale based on maximal sampling rate
+- Adds scaled identity matrix to covariance (convolution of Gaussians)
+- Updates normalization factors for proper probability density
+
+**Key Points:**
+- Efficient batch operations
+- Handles numerical stability
+- Preserves Gaussian structure
+
+### Code Example 3: 2D Mip Filter Application
+
+**Context:** Replacing 2D dilation with 2D Mip filter
+
+**Language:** Python (PyTorch)
+
+```python
+def apply_2d_mip_filter(projected_gaussians, s=0.1):
+    """
+    Apply 2D Mip filter to projected Gaussians.
+    
+    Args:
+        projected_gaussians: Dict with 'covariances_2d' (N, 2, 2)
+        s: Scalar hyperparameter (variance covering single pixel)
+    
+    Returns:
+        filtered_gaussians: Projected Gaussians with Mip filter applied
+    """
+    N = projected_gaussians['covariances_2d'].shape[0]
+    device = projected_gaussians['covariances_2d'].device
+    
+    # Create 2D identity matrices
+    I_2d = torch.eye(2, device=device).unsqueeze(0).expand(N, -1, -1)
+    
+    # Apply Mip filter: add scaled identity
+    filter_covariances = s * I_2d
+    filtered_covariances = projected_gaussians['covariances_2d'] + filter_covariances
+    
+    # Update normalization factors
+    det_old = torch.det(projected_gaussians['covariances_2d'])
+    det_new = torch.det(filtered_covariances)
+    normalization_factors = torch.sqrt(det_new / (det_old + 1e-8))
+    
+    projected_gaussians['covariances_2d'] = filtered_covariances
+    projected_gaussians['normalization_factors'] = normalization_factors
+    
+    return projected_gaussians
+```
+
+**Explanation:**
+- Adds scaled 2D identity matrix to 2D covariance
+- Filter variance `s` chosen to cover single pixel
+- Updates normalization for proper rendering
+
+**Key Points:**
+- Simple and efficient
+- Replaces constant dilation with principled filter
+- Approximates box filter of physical imaging
+
+### Code Example 4: Complete Rendering with Filters
+
+**Context:** Complete rendering pipeline integrating both filters
+
+**Language:** Python (PyTorch)
+
+```python
+def render_mip_splatting(gaussians, camera, max_sampling_rates=None):
+    """
+    Render image using Mip-Splatting with 3D smoothing and 2D Mip filters.
+    
+    Args:
+        gaussians: Dict with positions, covariances, opacities, colors
+        camera: Camera object with R, t, focal_length, image_size
+        max_sampling_rates: Optional precomputed sampling rates
+    
+    Returns:
+        image: (H, W, 3) rendered image
+    """
+    # Step 1: Apply 3D smoothing filter if sampling rates provided
+    if max_sampling_rates is not None:
+        gaussians = apply_3d_smoothing_filter(gaussians, max_sampling_rates)
+    
+    # Step 2: Transform to camera coordinates
+    positions_cam = (camera.R @ gaussians['positions'].T + camera.t.unsqueeze(1)).T
+    covariances_cam = camera.R @ gaussians['covariances'] @ camera.R.T
+    
+    # Step 3: Project to screen space
+    projected = project_to_screen_space(positions_cam, covariances_cam, camera)
+    
+    # Step 4: Apply 2D Mip filter
+    projected = apply_2d_mip_filter(projected)
+    
+    # Step 5: Sort by depth
+    depths = projected['positions_2d'][:, 2]  # z-coordinate
+    sorted_indices = torch.argsort(depths)
+    
+    # Step 6: Alpha blending
+    H, W = camera.image_size
+    image = torch.zeros(H, W, 3, device=gaussians['positions'].device)
+    
+    for i in sorted_indices:
+        g = {
+            'position_2d': projected['positions_2d'][i],
+            'covariance_2d': projected['covariances_2d'][i],
+            'opacity': gaussians['opacities'][i],
+            'color': gaussians['colors'][i],
+            'normalization': projected['normalization_factors'][i]
+        }
+        
+        # Rasterize Gaussian to image
+        image = alpha_blend_gaussian(image, g)
+    
+    return image
+```
+
+**Explanation:**
+- Applies 3D smoothing filter if sampling rates available
+- Transforms to camera coordinates
+- Projects to screen space
+- Applies 2D Mip filter
+- Renders via alpha blending
+
+**Key Points:**
+- Modular design allows filters to be applied independently
+- Efficient rendering pipeline
+- Handles depth sorting for proper alpha blending
+
+## Mathematical Foundations
+
+### Notation
+
+- **Gaussians:** `G_k` for k-th Gaussian primitive
+- **Positions:** `p_k ∈ R³` - 3D position of Gaussian center
+- **Covariances:** `Σ_k ∈ R³ˣ³` - 3D covariance matrix
+- **Opacities:** `α_k ∈ [0,1]` - Opacity/scale of Gaussian
+- **Colors:** `c_k` - View-dependent color (spherical harmonics)
+- **Sampling Rate:** `ν̂` - Sampling frequency (inverse of sampling interval)
+- **Sampling Interval:** `T̂` - World space sampling interval
+- **Focal Length:** `f` - Camera focal length in pixels
+- **Depth:** `d` - Distance from camera to point
+- **Filter Scale:** `s` - Hyperparameter controlling filter size
+
+### Core Formulas
+
+#### Formula 1: 3D Gaussian Definition
+
+$$
+G_k(x) = e^{-\frac{1}{2}(x - p_k)^T \Sigma_k^{-1}(x - p_k)}
+$$
+
+**Explanation:** Standard 3D Gaussian function with center `p_k` and covariance `Σ_k`.
+
+#### Formula 2: Sampling Interval in World Space
+
+$$
+\hat{T} = \frac{1}{\hat{\nu}} = \frac{d}{f}
+$$
+
+**Explanation:** 
+- `T̂` is the sampling interval in world space
+- `ν̂ = f/d` is the sampling frequency
+- `d` is depth, `f` is focal length in pixels
+
+#### Formula 3: Maximal Sampling Rate
+
+$$
+\hat{\nu}_k = \max_{n=1}^{N} \mathbf{1}_n(p_k) \cdot \frac{f_n}{d_n}
+$$
+
+**Explanation:**
+- `ν̂_k` is maximal sampling rate for Gaussian `k`
+- `1_n(p_k)` is indicator function (1 if visible in camera `n`, 0 otherwise)
+- Maximum over all cameras where Gaussian is visible
+
+#### Formula 4: 3D Smoothing Filter
+
+$$
+G_k^{reg}(x) = \sqrt{\frac{|\Sigma_k + \frac{s}{\hat{\nu}_k} \cdot I|}{|\Sigma_k|}} e^{-\frac{1}{2}(x - p_k)^T(\Sigma_k + \frac{s}{\hat{\nu}_k} \cdot I)^{-1}(x - p_k)}
+$$
+
+**Explanation:**
+- Regularized Gaussian after applying 3D smoothing filter
+- Filter adds `(s/ν̂_k) · I` to covariance matrix
+- `s` is hyperparameter (typically 0.2)
+- Normalization factor ensures proper probability density
+
+#### Formula 5: 2D Mip Filter
+
+$$
+G_k^{2D}(x)_{mip} = \sqrt{\frac{|\Sigma_k^{2D} + sI|}{|\Sigma_k^{2D}|}} e^{-\frac{1}{2}(x - p_k)^T(\Sigma_k^{2D} + sI)^{-1}(x - p_k)}
+$$
+
+**Explanation:**
+- 2D Gaussian after applying Mip filter
+- Adds `sI` to 2D covariance matrix
+- `s` is hyperparameter (typically 0.1, covering single pixel)
+- Approximates box filter of physical imaging process
+
+#### Formula 6: Projection to Screen Space
+
+$$
+\Sigma_k'' = J_k \Sigma_k' J_k^T
+$$
+
+**Explanation:**
+- Projects 3D covariance to ray space
+- `J_k` is Jacobian matrix of projective transformation
+- `Σ_k'` is covariance in camera coordinates
+- Removing third row/column gives 2D covariance `Σ_k^{2D}`
+
+#### Formula 7: Alpha Blending
+
+$$
+c(x) = \sum_{k=1}^{K} c_k \alpha_k G_k^{2D}(x) \prod_{j=1}^{k-1}(1 - \alpha_j G_j^{2D}(x))
+$$
+
+**Explanation:**
+- Final rendered color at pixel `x`
+- Sum over all Gaussians sorted by depth
+- Alpha blending with proper occlusion handling
+
+### Theorems and Proofs
+
+#### Theorem 1: Nyquist-Shannon Sampling Theorem
+
+**Statement:** A continuous signal can be accurately reconstructed from discrete samples if:
+1. The signal is band-limited (no frequencies above `ν_max`)
+2. The sampling rate `ν̂ ≥ 2ν_max`
+
+**Application:** We constrain the maximum frequency of 3D Gaussians to `ν̂_k/2` to satisfy Nyquist limit.
+
+#### Theorem 2: Convolution of Gaussians
+
+**Statement:** The convolution of two Gaussian functions with covariances `Σ₁` and `Σ₂` is another Gaussian with covariance `Σ₁ + Σ₂`.
+
+**Application:** This property makes 3D smoothing filter efficient - we simply add filter covariance to Gaussian covariance.
+
+### Variable Definitions
+
+- **`G_k`:** k-th 3D Gaussian primitive
+- **`p_k ∈ R³`:** Center position of Gaussian `k`
+- **`Σ_k ∈ R³ˣ³`:** Covariance matrix of Gaussian `k` (positive semi-definite)
+- **`α_k ∈ [0,1]`:** Opacity/scale of Gaussian `k`
+- **`c_k`:** View-dependent color of Gaussian `k` (spherical harmonics coefficients)
+- **`O_k ∈ R³ˣ³`:** Rotation matrix (parameterized by quaternion)
+- **`s_k ∈ R³`:** Scaling vector
+- **`R ∈ R³ˣ³`:** Camera rotation matrix
+- **`t ∈ R³`:** Camera translation vector
+- **`J_k`:** Jacobian matrix of projective transformation
+- **`Σ_k^{2D} ∈ R²ˣ²`:** 2D covariance matrix in screen space
+- **`f`:** Focal length in pixels
+- **`d`:** Depth (distance from camera)
+- **`T̂`:** Sampling interval in world space
+- **`ν̂`:** Sampling frequency (inverse of `T̂`)
+- **`ν̂_k`:** Maximal sampling rate for Gaussian `k`
+- **`s`:** Filter scale hyperparameter
+- **`N`:** Number of training images/cameras
+- **`K`:** Number of 3D Gaussians
+- **`1_n(p)`:** Indicator function (1 if `p` visible in camera `n`, 0 otherwise)
+
+## Experimental Setup
+
+### Datasets
+
+1. **Blender Dataset [28]:**
+   - Synthetic scenes with known camera poses
+   - 8 scenes: chair, drums, ficus, hotdog, lego, materials, mic, ship
+   - Used for multi-scale and single-scale training/testing
+
+2. **Mip-NeRF 360 Dataset [2]:**
+   - Real-world unbounded scenes
+   - 9 scenes: bicycle, flowers, garden, stump, treehill, room, counter, kitchen, bonsai
+   - Indoor scenes downsampled by factor of 2, outdoor by factor of 4
+   - Challenging benchmark for novel view synthesis
+
+### Hardware Configuration
+
+- GPU: A100 with 40GB memory (mentioned for ablation study)
+- Standard GPU setup for neural rendering
+
+### Software Environment
+
+- Built upon open-source 3DGS codebase
+- PyTorch for computation
+- CUDA for GPU acceleration
+
+### Hyperparameters
+
+**Training:**
+- Iterations: 30K across all scenes
+- Loss function: Same as 3DGS (multi-view photometric loss)
+- Gaussian density control: Same strategy as 3DGS
+- Schedule: Same as 3DGS
+
+**Filter Parameters:**
+- 2D Mip filter variance: `s_2d = 0.1` (approximates single pixel)
+- 3D smoothing filter variance: `s_3d = 0.2`
+- Total variance: `0.3` (for fair comparison with 3DGS and 3DGS+EWA)
+
+**Sampling Rate Computation:**
+- Recompute every `m = 100` iterations
+- Gaussian centers remain relatively stable throughout training
+
+### Evaluation Metrics
+
+1. **PSNR (Peak Signal-to-Noise Ratio):** Higher is better
+2. **SSIM (Structural Similarity Index):** Higher is better (range [0,1])
+3. **LPIPS (Learned Perceptual Image Patch Similarity):** Lower is better
+
+### Baseline Methods
+
+1. **NeRF [28]:** Original NeRF with MLP
+2. **Mip-NeRF [1]:** Multi-scale NeRF with integrated positional encoding
+3. **TensoRF [4]:** Tensor-based radiance field
+4. **Instant-NGP [32]:** Hash grid encoding
+5. **Tri-MipRF [17]:** Tri-mip representation for anti-aliasing
+6. **3DGS [18]:** Original 3D Gaussian Splatting
+7. **3DGS + EWA [59]:** 3DGS with EWA splatting filter
+
+### Experimental Protocol
+
+**Multi-scale Training and Multi-scale Testing:**
+- Train with multi-scale data (40% full resolution, 20% each other resolution)
+- Evaluate at multiple scales
+- Following [1, 17]
+
+**Single-scale Training and Multi-scale Testing:**
+- Train at single scale (full resolution or downsampled)
+- Evaluate at multiple scales (different from training)
+- Tests out-of-distribution generalization
+
+**Single-scale Training and Same-scale Testing:**
+- Standard in-distribution evaluation
+- Train and test at same scale
+- Baseline comparison
+
+## Results and Evaluation
+
+### Quantitative Results
+
+#### Blender Dataset - Multi-scale Training and Multi-scale Testing
+
+| Method | PSNR↑ | SSIM↑ | LPIPS↓ |
+|--------|-------|-------|--------|
+| NeRF [28] | 31.23 | 0.958 | 0.044 |
+| MipNeRF [1] | 34.51 | 0.973 | 0.026 |
+| TensoRF [4] | 30.60 | 0.956 | 0.054 |
+| Instant-NGP [32] | 31.20 | 0.959 | 0.047 |
+| Tri-MipRF [17] | 34.36 | 0.974 | 0.026 |
+| 3DGS [18] | 29.77 | 0.960 | 0.040 |
+| 3DGS+EWA [59] | 33.01 | 0.974 | 0.027 |
+| **Mip-Splatting (ours)** | **34.56** | **0.979** | **0.019** |
+
+**Key Findings:**
+- Mip-Splatting achieves state-of-the-art performance
+- Significantly outperforms 3DGS [18] and 3DGS+EWA [59]
+- Comparable or superior to NeRF-based methods
+
+#### Blender Dataset - Single-scale Training and Multi-scale Testing
+
+| Method | PSNR↑ (Avg) | SSIM↑ (Avg) | LPIPS↓ (Avg) |
+|--------|-------------|-------------|--------------|
+| NeRF [28] | 30.23 | 0.956 | 0.053 |
+| MipNeRF [1] | 31.31 | 0.965 | 0.041 |
+| TensoRF [4] | 30.48 | 0.961 | 0.048 |
+| Instant-NGP [32] | 30.57 | 0.961 | 0.049 |
+| Tri-MipRF [17] | 29.47 | 0.947 | 0.050 |
+| 3DGS [18] | 24.84 | 0.890 | 0.063 |
+| 3DGS+EWA [59] | 29.40 | 0.960 | 0.034 |
+| **Mip-Splatting (ours)** | **31.97** | **0.974** | **0.024** |
+
+**Key Findings:**
+- Mip-Splatting significantly outperforms all methods at non-training scales
+- 3DGS [18] shows severe degradation (PSNR drops from 33.33 to 17.69 at 1/8 resolution)
+- Mip-Splatting maintains quality across all scales
+
+#### Mip-NeRF 360 Dataset - Single-scale Training and Multi-scale Testing (Zoom-in)
+
+| Method | PSNR↑ (Avg) | SSIM↑ (Avg) | LPIPS↓ (Avg) |
+|--------|-------------|-------------|--------------|
+| Instant-NGP [32] | 25.02 | 0.677 | 0.382 |
+| mip-NeRF360 [2] | 25.67 | 0.741 | 0.295 |
+| zip-NeRF [3] | 23.52 | 0.674 | 0.318 |
+| 3DGS [18] | 23.25 | 0.715 | 0.305 |
+| 3DGS+EWA [59] | 25.43 | 0.741 | 0.292 |
+| **Mip-Splatting (ours)** | **27.37** | **0.803** | **0.252** |
+
+**Key Findings:**
+- Mip-Splatting significantly exceeds all methods at higher resolutions
+- NeRF-based methods (mip-NeRF360, zip-NeRF) show subpar performance due to MLP limitations
+- 3DGS [18] introduces notable erosion artifacts
+
+#### Mip-NeRF 360 Dataset - Single-scale Training and Same-scale Testing
+
+| Method | PSNR↑ | SSIM↑ | LPIPS↓ |
+|--------|-------|-------|--------|
+| NeRF [28] | 23.85 | 0.605 | 0.451 |
+| mip-NeRF [1] | 24.04 | 0.616 | 0.441 |
+| NeRF++ [56] | 25.11 | 0.676 | 0.375 |
+| Plenoxels [11] | 23.08 | 0.626 | 0.463 |
+| InstantNGP [32] | 25.68 | 0.705 | 0.302 |
+| mip-NeRF360 [2] | 27.57 | 0.793 | 0.234 |
+| Zip-NeRF [3] | 28.54 | 0.828 | 0.189 |
+| 3DGS [18] | 27.21 | 0.815 | 0.214 |
+| 3DGS+EWA [59] | 27.77 | 0.826 | 0.206 |
+| **Mip-Splatting (ours)** | **27.79** | **0.827** | **0.203** |
+
+**Key Findings:**
+- Mip-Splatting performs on par with state-of-the-art in in-distribution setting
+- No decrease in performance compared to 3DGS [18]
+
+### Performance Metrics
+
+**Rendering Speed:**
+- Maintains real-time rendering capability of 3DGS
+- Filter application adds minimal overhead
+- Sampling rate computation only during training (every 100 iterations)
+
+**Memory Usage:**
+- Similar to 3DGS
+- Additional storage for maximal sampling rates (one float per Gaussian)
+
+### Comparisons
+
+**vs 3DGS [18]:**
+- Eliminates high-frequency artifacts when zooming in
+- Eliminates dilation artifacts when zooming out
+- Maintains quality at training scale
+- Significantly better at non-training scales
+
+**vs 3DGS+EWA [59]:**
+- Better anti-aliasing without over-smoothing
+- More principled filter design (box filter approximation vs empirical)
+- Better performance across all scales
+
+**vs NeRF-based Methods:**
+- Faster rendering (real-time vs slower)
+- Better out-of-distribution generalization
+- No MLP evaluation overhead
+
+### Statistical Analysis
+
+Results show consistent improvements across:
+- All scenes in both datasets
+- All evaluation metrics (PSNR, SSIM, LPIPS)
+- All scale factors tested
+
+### Ablation Studies
+
+#### Effectiveness of 3D Smoothing Filter
+
+**Setting:** Single-scale training, multi-scale testing (zoom-in) on Mip-NeRF 360
+
+| Method | PSNR↑ (Avg) | SSIM↑ (Avg) | LPIPS↓ (Avg) |
+|--------|-------------|-------------|--------------|
+| Mip-Splatting (full) | 27.37 | 0.803 | 0.252 |
+| w/o 3D smoothing | 26.93 | 0.778 | 0.272 |
+| w/o 2D Mip filter | 27.23 | 0.795 | 0.262 |
+
+**Findings:**
+- Removing 3D smoothing filter results in high-frequency artifacts when zooming in
+- Removing 2D Mip filter causes slight decline (mainly affects zoom-out)
+
+#### Effectiveness of 2D Mip Filter
+
+**Setting:** Single-scale training, multi-scale testing (zoom-out) on Blender
+
+| Method | PSNR↑ (Avg) | SSIM↑ (Avg) | LPIPS↓ (Avg) |
+|--------|-------------|-------------|--------------|
+| Mip-Splatting (full) | 31.97 | 0.974 | 0.024 |
+| 3DGS [18] | 24.84 | 0.890 | 0.063 |
+| 3DGS-Dilation | 30.58 | 0.963 | 0.042 |
+| w/o 2D Mip filter | 30.76 | 0.964 | 0.041 |
+
+**Findings:**
+- Removing 2D Mip filter results in notable decline at lower resolutions
+- Validates critical role in anti-aliasing
+- 3DGS-Dilation (removing dilation) eliminates dilation effects but causes aliasing
+
+### Sensitivity Analysis
+
+**Filter Hyperparameters:**
+- 2D Mip filter variance `s_2d = 0.1`: Chosen to cover single pixel
+- 3D smoothing filter variance `s_3d = 0.2`: Balances frequency constraint and detail preservation
+- Total variance `0.3`: Matches 3DGS and 3DGS+EWA for fair comparison
+
+**Sampling Rate Recomputation Frequency:**
+- `m = 100` iterations: Balance between accuracy and efficiency
+- Gaussian centers remain relatively stable throughout training
+
+### Failure Cases
+
+1. **Extreme Zoom-out:** Increased errors when zooming out significantly (Gaussian approximation of box filter introduces errors when Gaussian is small in screen space)
+2. **Very Small Gaussians:** Approximation errors become more apparent
+3. **Training Overhead:** Slight increase due to sampling rate computation (every 100 iterations)
+
+## Best Practices and Recommendations
+
+### Implementation Best Practices
+
+1. **Sampling Rate Computation:**
+   - Recompute every `m=100` iterations (not every iteration)
+   - Cache results to avoid redundant computation
+   - Use efficient visibility checking
+
+2. **Filter Application:**
+   - Apply 3D smoothing filter during optimization
+   - Apply 2D Mip filter during rendering
+   - Use efficient Gaussian convolution (simple matrix addition)
+
+3. **Numerical Stability:**
+   - Add small epsilon when dividing by sampling rate
+   - Handle edge cases (Gaussians not visible in any camera)
+   - Use stable determinant computation
+
+4. **Memory Management:**
+   - Store sampling rates efficiently (one float per Gaussian)
+   - Consider CUDA implementation for sampling rate computation
+   - Precompute and store if camera poses don't change
+
+### Optimization Tips
+
+1. **Hyperparameter Tuning:**
+   - Start with default values (`s_2d=0.1`, `s_3d=0.2`)
+   - Adjust based on scene characteristics
+   - Balance between detail preservation and artifact elimination
+
+2. **Training Efficiency:**
+   - Use same training schedule as 3DGS
+   - Sampling rate computation is only overhead (minimal)
+   - Consider more efficient CUDA implementation
+
+3. **Rendering Efficiency:**
+   - 3D smoothing filter can be fused with Gaussian primitives post-training
+   - No additional overhead during rendering
+   - 2D Mip filter adds minimal computation
+
+### Common Pitfalls to Avoid
+
+1. **Forgetting to Recompute Sampling Rates:**
+   - Must recompute periodically during training
+   - Gaussian positions change during optimization
+
+2. **Incorrect Filter Application Order:**
+   - Apply 3D smoothing before projection
+   - Apply 2D Mip filter after projection
+
+3. **Ignoring Visibility:**
+   - Only consider cameras where Gaussian is visible
+   - Prevents incorrect sampling rate computation
+
+4. **Numerical Instability:**
+   - Handle division by zero in sampling rate computation
+   - Use stable matrix operations
+
+### Guidelines
+
+1. **When to Use:**
+   - Out-of-distribution rendering (different scales than training)
+   - Scenarios requiring zoom in/out
+   - Applications needing alias-free rendering
+
+2. **When Not to Use:**
+   - In-distribution only (same scale training/testing)
+   - Extreme computational constraints (minimal overhead, but exists)
+   - Scenes with very few training views (sampling rate bounds less reliable)
+
+3. **Integration:**
+   - Minimal changes to 3DGS codebase
+   - Can be added as optional feature
+   - Backward compatible (can disable filters)
+
+### Warnings
+
+1. **Approximation Errors:**
+   - Gaussian filter is approximation of box filter
+   - Errors more apparent when Gaussian is small in screen space
+   - Consider more accurate box filter for critical applications
+
+2. **Training Overhead:**
+   - Sampling rate computation adds overhead
+   - More efficient implementation possible (CUDA)
+   - Consider precomputation if camera poses fixed
+
+3. **Hyperparameter Sensitivity:**
+   - Filter parameters affect quality
+   - May need tuning for different scenes
+   - Default values work well for most cases
+
+## Limitations and Assumptions
+
+### Stated Limitations
+
+1. **Gaussian Filter Approximation:**
+   - Uses Gaussian filter as approximation to box filter for efficiency
+   - Introduces errors, particularly when Gaussian is small in screen space
+   - Correlates with experimental findings (increased errors when zooming out)
+
+2. **Training Overhead:**
+   - Slight increase due to sampling rate computation
+   - Currently implemented in PyTorch (not optimized CUDA)
+   - More efficient implementation could reduce overhead
+
+3. **Data Structure:**
+   - Sampling rate depends solely on camera poses and intrinsics
+   - Could be precomputed and stored more efficiently
+   - Future work: better data structure for precomputation
+
+4. **Extreme Zoom-out:**
+   - Approximation errors become more apparent
+   - As evidenced in Table 2 (larger errors at 1/8 resolution)
+
+### Assumptions
+
+1. **Multi-view Images:**
+   - Assumes availability of multiple training views
+   - Camera poses and intrinsics known
+   - Sufficient coverage for frequency bound computation
+
+2. **Scene Representation:**
+   - Scene can be represented as collection of 3D Gaussians
+   - Gaussian primitives sufficient for scene representation
+   - Density control mechanism works effectively
+
+3. **Sampling Rate Stability:**
+   - Gaussian centers remain relatively stable during training
+   - Allows recomputing sampling rates every 100 iterations
+   - May not hold for highly dynamic scenes
+
+4. **Visibility:**
+   - Can accurately determine Gaussian visibility in camera views
+   - View frustum checking is reliable
+   - Occlusion handling sufficient
+
+### Constraints
+
+1. **Computational:**
+   - Sampling rate computation requires iterating over all cameras
+   - More cameras = more computation
+   - Can be parallelized
+
+2. **Memory:**
+   - Additional storage for sampling rates
+   - Minimal compared to Gaussian storage
+   - Scales linearly with number of Gaussians
+
+3. **Rendering:**
+   - Filter application adds minimal computation
+   - No significant impact on real-time capability
+   - Can be optimized further
+
+### Scope Limitations
+
+1. **In-distribution Performance:**
+   - Focus on out-of-distribution generalization
+   - In-distribution performance on par with baselines
+   - Not designed to improve in-distribution quality
+
+2. **Other Artifacts:**
+   - Addresses aliasing and frequency artifacts
+   - May not address other rendering artifacts
+   - Focused on scale-related issues
+
+3. **Scene Types:**
+   - Evaluated on standard benchmarks
+   - May have different behavior on other scene types
+   - General approach should work broadly
+
+## Related Techniques and References
+
+### Related Techniques
+
+1. **3D Gaussian Splatting [18]:**
+   - Base framework
+   - Same rendering pipeline
+   - Same optimization strategy
+
+2. **EWA Splatting [59]:**
+   - Also applies Gaussian filter in screen space
+   - Different principle (bandwidth limiting vs box filter approximation)
+   - Empirical filter size vs principled single-pixel approximation
+
+3. **Mip-NeRF [1], Tri-MipRF [17], Zip-NeRF [3]:**
+   - Address aliasing via pre-filtering
+   - Use MLP-based representations
+   - Require multi-scale training
+
+4. **Neural Radiance Fields (NeRF) [28]:**
+   - Alternative representation for novel view synthesis
+   - MLP-based vs explicit Gaussian representation
+   - Slower rendering but different trade-offs
+
+### Key References
+
+1. **3D Gaussian Splatting:** Kerbl et al. 2023 - Base framework
+2. **NeRF:** Mildenhall et al. 2020 - Neural radiance fields
+3. **Mip-NeRF:** Barron et al. 2021 - Anti-aliasing for NeRF
+4. **EWA Splatting:** Zwicker et al. 2001 - Elliptical weighted average
+5. **Nyquist-Shannon Theorem:** Fundamental sampling theory
+
+### Cross-References
+
+- See "3D Gaussian Splatting" for base framework details
+- See "Neural Radiance Fields" for alternative approaches
+- See "Anti-aliasing Techniques" for related filtering methods
+
+## Practical Applications
+
+### Use Cases
+
+1. **Virtual Reality:**
+   - Real-time novel view synthesis
+   - Handling different viewing distances
+   - Zoom in/out interactions
+
+2. **Cinematography:**
+   - Post-production view synthesis
+   - Camera movement and zoom effects
+   - High-quality rendering at various scales
+
+3. **Robotics:**
+   - Scene understanding from multiple views
+   - Navigation and planning
+   - Real-time rendering for visualization
+
+4. **3D Content Creation:**
+   - Interactive 3D scene exploration
+   - Multi-scale visualization
+   - Real-time preview at different resolutions
+
+### Application Domains
+
+1. **Computer Graphics:**
+   - Real-time rendering
+   - View synthesis
+   - Scene representation
+
+2. **Computer Vision:**
+   - 3D reconstruction
+   - Scene understanding
+   - Multi-view geometry
+
+3. **Mixed Reality:**
+   - AR/VR applications
+   - Real-time scene rendering
+   - Interactive exploration
+
+### Application Scenarios
+
+1. **Training at Single Scale, Rendering at Multiple Scales:**
+   - Practical scenario where training data is limited
+   - Need to render at different resolutions
+   - Out-of-distribution generalization crucial
+
+2. **Zoom In/Out Interactions:**
+   - User-controlled camera movements
+   - Dynamic focal length changes
+   - Maintaining quality across zoom levels
+
+3. **Multi-resolution Rendering:**
+   - Adaptive rendering based on view distance
+   - Level-of-detail systems
+   - Performance-quality trade-offs
+
+### Real-World Examples
+
+1. **Scene Reconstruction:**
+   - Photogrammetry applications
+   - 3D scanning and visualization
+   - Cultural heritage preservation
+
+2. **Interactive Applications:**
+   - 3D viewers and explorers
+   - Virtual tours
+   - Interactive visualization tools
+
+3. **Content Creation:**
+   - 3D asset creation from images
+   - Scene composition
+   - Pre-visualization
+
+## Implementation Checklist
+
+### Prerequisites
+
+- [ ] PyTorch installed
+- [ ] CUDA-capable GPU (for efficient training/rendering)
+- [ ] 3DGS codebase cloned
+- [ ] Multi-view images with camera poses
+- [ ] Camera intrinsics (focal length, etc.)
+
+### Setup Steps
+
+1. [ ] Clone 3DGS repository
+2. [ ] Install dependencies (PyTorch, CUDA toolkit, etc.)
+3. [ ] Prepare dataset (images + camera poses)
+4. [ ] Set up project structure
+
+### Implementation Steps
+
+1. [ ] Implement multi-view frequency bounds computation
+   - [ ] Camera visibility checking
+   - [ ] Sampling rate computation for each camera
+   - [ ] Maximum selection across cameras
+
+2. [ ] Implement 3D smoothing filter
+   - [ ] Filter scale computation
+   - [ ] Gaussian convolution (covariance addition)
+   - [ ] Normalization factor update
+
+3. [ ] Implement 2D Mip filter
+   - [ ] Replace dilation operation
+   - [ ] Add scaled identity to 2D covariance
+   - [ ] Update normalization
+
+4. [ ] Integrate into rendering pipeline
+   - [ ] Apply 3D smoothing before projection
+   - [ ] Apply 2D Mip filter after projection
+   - [ ] Maintain alpha blending
+
+5. [ ] Add training loop modifications
+   - [ ] Sampling rate recomputation (every 100 iterations)
+   - [ ] Filter application during optimization
+   - [ ] Loss computation (same as 3DGS)
+
+### Testing Steps
+
+1. [ ] Test on Blender dataset
+   - [ ] Multi-scale training and testing
+   - [ ] Single-scale training, multi-scale testing
+   - [ ] Compare with 3DGS baseline
+
+2. [ ] Test on Mip-NeRF 360 dataset
+   - [ ] Single-scale training, same-scale testing
+   - [ ] Single-scale training, multi-scale testing
+   - [ ] Verify quality improvements
+
+3. [ ] Ablation studies
+   - [ ] Test without 3D smoothing filter
+   - [ ] Test without 2D Mip filter
+   - [ ] Verify each component's contribution
+
+4. [ ] Performance testing
+   - [ ] Measure training time overhead
+   - [ ] Measure rendering speed
+   - [ ] Verify real-time capability maintained
+
+## Figures and Visualizations
+
+### Figure 1: Problem Illustration
+
+**Description:** Shows the artifacts in 3DGS when changing sampling rate.
+
+**Caption:** "3D Gaussian Splatting [18] renders images by representing 3D Objects as 3D Gaussians which are projected onto the image plane followed by 2D Dilation in screen space as shown in (a). The method's intrinsic shrinkage bias leads to degenerate 3D Gaussians exceeding sampling limit as illustrated by the δ function in (b) while rendering similarly to 2D due to the dilation operation. However, when changing the sampling rate (via the focal length or camera distance), we observe strong dilation effects (c) and high frequency artifacts (d)."
+
+**Key Elements:**
+- (a) Faithful representation with proper 3D Gaussian
+- (b) Degenerate representation (Dirac δ function)
+- (c) Zoom-out showing dilation artifacts
+- (d) Zoom-in showing high-frequency artifacts
+
+**Relationships:** Illustrates the scale ambiguity problem and resulting artifacts.
+
+### Figure 2: Solution Demonstration
+
+**Description:** Shows Mip-Splatting rendering at different scales compared to baselines.
+
+**Caption:** "We trained all the models on single-scale (full resolution here) images and rendered images with different resolutions by changing focal length. While all methods show similar performance at training scale, we observe strong artifacts in previous work [18,59] when changing the sampling rate. By contrast, our Mip-Splatting renders faithful images across different scales."
+
+**Key Elements:**
+- Full resolution rendering
+- 1/4× resolution rendering
+- 8× resolution rendering
+- Comparison with 3DGS [18] and 3DGS+EWA [59]
+
+**Relationships:** Demonstrates out-of-distribution generalization capability.
+
+### Figure 3: Sampling Limits
+
+**Description:** Illustrates how maximal sampling rate is determined from multiple cameras.
+
+**Caption:** "Sampling limits. A pixel corresponds to sampling interval T̂. We band-limit the 3D Gaussians by the maximal sampling rate (i.e., minimal sampling interval) among all observations. This example shows 5 cameras at different depths d and with different focal lengths f. Here, camera 3 determines the minimal T̂ and hence the maximal sampling rate ν̂."
+
+**Key Elements:**
+- Multiple cameras at different positions
+- Different focal lengths
+- Sampling intervals in world space
+- Maximal sampling rate selection
+
+**Relationships:** Explains multi-view frequency bounds computation.
+
+## Tables
+
+### Table 1: Multi-scale Training and Multi-scale Testing (Blender)
+
+**Caption:** "Multi-scale Training and Multi-scale Testing on the Blender dataset [28]. Our approach achieves state-of-the-art performance in most metrics. It significantly outperforms 3DGS [18] and 3DGS+EWA [59]."
+
+| Method | PSNR↑ | SSIM↑ | LPIPS↓ |
+|--------|-------|-------|--------|
+| MipNeRF [1] | 34.51 | 0.973 | 0.026 |
+| Tri-MipRF [17] | 34.36 | 0.974 | 0.026 |
+| 3DGS [18] | 29.77 | 0.960 | 0.040 |
+| 3DGS+EWA [59] | 33.01 | 0.974 | 0.027 |
+| **Mip-Splatting (ours)** | **34.56** | **0.979** | **0.019** |
+
+### Table 2: Single-scale Training and Multi-scale Testing (Blender)
+
+**Caption:** "Single-scale Training and Multi-scale Testing on the Blender Dataset [28]. All methods are trained on full-resolution images and evaluated at four different (smaller) resolutions, with lower resolutions simulating zoom-out effects. While Mip-Splatting yields comparable results at training resolution, it significantly surpasses previous work at all other scales."
+
+Shows results at Full, 1/2, 1/4, and 1/8 resolutions. Mip-Splatting maintains quality across all scales while 3DGS [18] degrades significantly.
+
+### Table 3: Single-scale Training and Multi-scale Testing (Mip-NeRF 360, Zoom-in)
+
+**Caption:** "Single-scale Training and Multi-scale Testing on the Mip-NeRF 360 Dataset [2]. All methods are trained on the smallest scale (1×) and evaluated across four scales (1×, 2×, 4×, and 8×), with evaluations at higher sampling rates simulating zoom-in effects."
+
+Mip-Splatting significantly exceeds all methods at higher resolutions.
+
+## Appendices and Supplementary Material
+
+### Ablation Studies
+
+**Section 8.1: Effectiveness of 3D Smoothing Filter**
+- Removing 3D smoothing filter results in high-frequency artifacts when zooming in
+- Quantitative results show performance degradation
+- Qualitative results show visible artifacts
+
+**Section 8.2: Effectiveness of 2D Mip Filter**
+- Removing 2D Mip filter results in aliasing artifacts when zooming out
+- Performance decline at lower resolutions
+- Validates critical role in anti-aliasing
+
+**Section 8.3: Single-scale Training and Multi-scale Testing**
+- Additional experiment on Mip-NeRF 360
+- Evaluates both zoom-in and zoom-out effects
+- Consistent with main results
+
+### Additional Results
+
+**Section 9.1: Blender Dataset**
+- Additional quantitative results
+- Per-scene metrics
+- Qualitative comparisons
+
+**Section 9.2: Mip-NeRF 360 Dataset**
+- Additional experimental setups
+- Per-scene metrics
+- Qualitative comparisons
+
+## References
+
+1. Barron, J.T., et al. Mip-nerf: A multiscale representation for anti-aliasing neural radiance fields. ICCV, 2021.
+2. Barron, J.T., et al. Mip-nerf 360: Unbounded anti-aliased neural radiance fields. CVPR, 2022.
+3. Barron, J.T., et al. Zip-nerf: Anti-aliased grid-based neural radiance fields. ICCV, 2023.
+4. Chen, A., et al. Tensorf: Tensorial radiance fields. 2022.
+11. Fridovich-Keil, S., et al. Plenoxels: Radiance fields without neural networks. CVPR, 2022.
+17. Hu, W., et al. Tri-miprf: Tri-mip representation for efficient anti-aliasing neural radiance fields. ICCV, 2023.
+18. Kerbl, B., et al. 3d gaussian splatting for real-time radiance field rendering. ACM Transactions on Graphics, 42(4), 2023.
+28. Mildenhall, B., et al. Nerf: Representing scenes as neural radiance fields for view synthesis. ECCV, 2020.
+32. Müller, T., et al. Instant neural graphics primitives with a multiresolution hash encoding. ACM Trans. Graph., 41(4), 2022.
+59. Zwicker, M., et al. Ewa volume splatting. Proceedings Visualization, 2001.

@@ -12,25 +12,25 @@ This repository contains curated documentation, rules, and reference guides orga
 
 1. **Open the relevant category folder** for your project
 2. **Reference specific files** in your Cursor chat:
-   - "Use the patterns from `engines/decision-logic-engine.mdc`"
-   - "Follow the architecture in `backend/supabase-backend-architecture.mdc`"
-   - "Apply the design system from `web-design/apple-adaptive-system.mdc`"
+   - "Use the patterns from `engines/decision-logic-engine/decision-logic-engine.mdc`"
+   - "Follow the architecture in `backend/supabase-backend-architecture/supabase-backend-architecture.mdc`"
+   - "Apply the design system from `web-design/elegant-typography-warm-minimalist/elegant-typography-warm-minimalist.mdc`"
 
 3. **Point Cursor to multiple files** for comprehensive guidance:
    - "Read all files in `ai/` and `backend/` to understand the full stack architecture"
-   - "Use `apis-integration/stripe-integration-rules.mdc` and `engines/fintech-ledger-engine.mdc` for payment processing"
+   - "Use `apis-integration/stripe-integration-rules/stripe-integration-rules.mdc` and `engines/fintech-ledger-engine/fintech-ledger-engine.mdc` for payment processing"
 
 ### Quick Start
 
 ```bash
 # Example: Building a diagnostic app
-# Reference: engines/decision-logic-engine.mdc
+# Reference: engines/decision-logic-engine/decision-logic-engine.mdc
 
 # Example: Building a payment system
-# Reference: apis-integration/stripe-integration-rules.mdc + engines/fintech-ledger-engine.mdc
+# Reference: apis-integration/stripe-integration-rules/stripe-integration-rules.mdc + engines/fintech-ledger-engine/fintech-ledger-engine.mdc
 
 # Example: Building a modern web app
-# Reference: web-design/apple-adaptive-system.mdc + backend/supabase-backend-architecture.mdc
+# Reference: web-design/elegant-typography-warm-minimalist/elegant-typography-warm-minimalist.mdc + backend/supabase-backend-architecture/supabase-backend-architecture.mdc
 ```
 
 ---
@@ -40,34 +40,51 @@ This repository contains curated documentation, rules, and reference guides orga
 ### 🤖 [AI](./ai/)
 AI and machine learning guides, integration rules, and engine architectures.
 
-- `agentic-ai-guide.mdc` - Agentic AI system design patterns
-- `ai-transcription-engine.mdc` - Speech-to-text transcription architecture
-- `ai-writing-rules.mdc` - Writing guidelines for AI-generated content
-- `chatbot-creation-guide.mdc` - Conversational AI chatbot architecture
-- `gemini-ai-integration-guide.mdc` - Google Gemini API integration
-- `machine-learning-models-guide.mdc` - ML model development and deployment
-- `openai-integration-rules.mdc` - OpenAI API integration patterns
-- `rag-ai-engine.mdc` - Retrieval-Augmented Generation (RAG) architecture
+Each guide is organized in its own folder with a README.md and the main .mdc file.
+
+- `agentic-ai-guide/` - Agentic AI system design patterns
+- `ai-transcription-engine/` - Speech-to-text transcription architecture
+- `ai-writing-rules/` - Writing guidelines for AI-generated content
+- `atomic-agents/` - Atomic agent patterns and architectures
+- `building-generative-ai-agents/` - Guide to building generative AI agents
+- `chatbot-creation-guide/` - Conversational AI chatbot architecture
+- `classifiers-in-machine-learning/` - Machine learning classifier patterns
+- `deep-learning-introduction/` - Introduction to deep learning concepts
+- `deep-learning-recommender-system-survey/` - Recommender system architectures
+- `gemini-ai-integration-guide/` - Google Gemini API integration
+- `introduction-to-ai/` - AI fundamentals and concepts
+- `machine-learning-models-guide/` - ML model development and deployment
+- `mip-splatting-alias-free-3d-gaussian/` - 3D Gaussian splatting techniques
+- `nlp-and-reinforcement-learning/` - NLP and reinforcement learning patterns
+- `openai-integration-rules/` - OpenAI API integration patterns
+- `rag-ai-engine/` - Retrieval-Augmented Generation (RAG) architecture
+- `rnns-and-lstms/` - Recurrent Neural Networks and LSTM architectures
+- `tensorflow-2/` - TensorFlow 2.x implementation patterns
 
 ### 🔌 [APIs & Integration](./apis-integration/)
 Third-party API integration guides and reference documentation.
 
-- `api-integration-guide.mdc` - General API integration patterns
-- `google-maps-engine.mdc` - Google Maps Platform integration with Advanced Markers and cost optimization
-- `mapbox-reference.mdc` - Mapbox mapping service integration
-- `posthog-analytics-engine.mdc` - PostHog analytics integration and event tracking
-- `stripe-integration-rules.mdc` - Stripe payment processing integration
+Each guide is organized in its own folder with a README.md and the main .mdc file.
+
+- `api-integration-guide/` - General API integration patterns
+- `google-maps-engine/` - Google Maps Platform integration with Advanced Markers and cost optimization
+- `mapbox-reference/` - Mapbox mapping service integration
+- `posthog-analytics-engine/` - PostHog analytics integration and event tracking
+- `stripe-integration-rules/` - Stripe payment processing integration
 
 ### ⚙️ [Backend](./backend/)
 Backend architecture patterns, serverless configurations, and database architectures.
 
-- `aws-serverless-backend.mdc` - AWS Lambda, API Gateway, and serverless patterns
-- `clerk-auth-engine.mdc` - Clerk authentication, user sync, and RBAC architecture
-- `etl-pipeline-engine.mdc` - ETL (Extract, Transform, Load) pipeline architecture
-- `headless-cms-engine.mdc` - Headless CMS architecture with Sanity, GROQ, and visual editing
-- `mongodb-backend-architecture.mdc` - MongoDB database architecture and patterns
-- `supabase-backend-architecture.mdc` - Supabase backend architecture and best practices
-- `workflow-automation-engine.mdc` - Workflow automation and orchestration patterns
+Each guide is organized in its own folder with a README.md and the main .mdc file.
+
+- `aws-serverless-backend/` - AWS Lambda, API Gateway, and serverless patterns
+- `clerk-auth-engine/` - Clerk authentication, user sync, and RBAC architecture
+- `etl-pipeline-engine/` - ETL (Extract, Transform, Load) pipeline architecture
+- `headless-cms-engine/` - Headless CMS architecture with Sanity, GROQ, and visual editing
+- `mongodb-backend-architecture/` - MongoDB database architecture and patterns
+- `supabase-backend-architecture/` - Supabase backend architecture and best practices
+- `tao-distributed-data-store/` - TAO distributed data store architecture
+- `workflow-automation-engine/` - Workflow automation and orchestration patterns
 
 ### 🗄️ [Databases](./databases/)
 Database-specific rules, schemas, and optimisation patterns.
@@ -77,68 +94,75 @@ Database-specific rules, schemas, and optimisation patterns.
 ### 🛠️ [Development Tools](./development-tools/)
 Code quality, version control, and development workflow guides.
 
-- `code-review-rules.mdc` - Code review best practices and checklists
-- `codebase-hygiene.mdc` - Code organisation and maintenance patterns
-- `git-connection-rules.mdc` - Git workflow and branching strategies
-- `github-research-rules.mdc` - GitHub research and discovery workflows
-- `report-data-extraction-rules.mdc` - Data extraction from reports and documents
+Each guide is organized in its own folder with a README.md and the main .mdc file.
+
+- `account-profile-system/` - Account and profile management patterns
+- `code-review-rules/` - Code review best practices and checklists
+- `codebase-hygiene/` - Code organisation and maintenance patterns
+- `git-connection-rules/` - Git workflow and branching strategies
+- `github-research-rules/` - GitHub research and discovery workflows
+- `oracular-programming/` - Oracular programming patterns and practices
+- `report-data-extraction-rules/` - Data extraction from reports and documents
 
 ### 🏗️ [Engines](./engines/)
 Application engines and business logic systems for common use cases.
 
-- `booking-reservation-engine.mdc` - Booking and reservation system architecture
-- `cal-scheduling-engine.mdc` - Calendar scheduling and appointment management
-- `communication-engine.mdc` - Communication systems (email, SMS, notifications)
-- `decision-logic-engine.mdc` - Graph-based decision logic and diagnostic systems
-- `fintech-ledger-engine.mdc` - Financial transaction ledger architecture
-- `freelance-bidding-engine.mdc` - Freelance marketplace bidding system
-- `iot-control-engine.mdc` - IoT device control and management systems
-- `liveblocks-multiplayer-engine.mdc` - Real-time multiplayer collaboration with Liveblocks
-- `marketplace-engine.mdc` - Multi-vendor marketplace architecture
-- `mux-video-engine.mdc` - Video streaming and processing with Mux
-- `security-encryption-engine.mdc` - Security and encryption patterns
-- `social-event-engine.mdc` - Social event management system
-- `social-media-engine.mdc` - Social media platform architecture
+Each guide is organized in its own folder with a README.md and the main .mdc file.
+
+- `booking-reservation-engine/` - Booking and reservation system architecture
+- `cal-scheduling-engine/` - Calendar scheduling and appointment management
+- `communication-engine/` - Communication systems (email, SMS, notifications)
+- `decision-logic-engine/` - Graph-based decision logic and diagnostic systems
+- `fintech-ledger-engine/` - Financial transaction ledger architecture
+- `freelance-bidding-engine/` - Freelance marketplace bidding system
+- `iot-control-engine/` - IoT device control and management systems
+- `liveblocks-multiplayer-engine/` - Real-time multiplayer collaboration with Liveblocks
+- `marketplace-engine/` - Multi-vendor marketplace architecture
+- `mux-video-engine/` - Video streaming and processing with Mux
+- `security-encryption-engine/` - Security and encryption patterns
+- `social-event-engine/` - Social event management system
+- `social-media-engine/` - Social media platform architecture
 
 ### 🔬 [Science & Maths](./science-maths/)
 Scientific computing, mathematical analysis, and data processing guides.
 
-- `data-analysis-rules.mdc` - Data analysis workflows and patterns
-- `dem-data-rules.mdc` - Digital Elevation Model (DEM) data processing
-- `excel-data-extraction-rules.mdc` - Excel data extraction and parsing
-- `gis-rules.mdc` - Geographic Information Systems (GIS) patterns
-- `graph_generator.py` - Graph generation utilities
-- `mathematical-equation-extraction-rules.mdc` - Mathematical equation parsing
-- `mathematical-functions-analysis-rules.mdc` - Function analysis patterns
-- `phreeqc-geochemistry-engine.mdc` - PHREEQC geochemical modelling
-- `statistical-analysis-engine.mdc` - Statistical analysis architecture
-- `vector-math-visual-engine.mdc` - Vector mathematics visualisation
+Each guide is organized in its own folder with a README.md and the main .mdc file.
 
-### 💰 [Quantitative Finance](./)
+- `data-analysis-rules/` - Data analysis workflows and patterns
+- `dem-data-rules/` - Digital Elevation Model (DEM) data processing
+- `dijkstra-shortest-path-algorithm/` - Dijkstra's shortest path algorithm implementation
+- `excel-data-extraction-rules/` - Excel data extraction and parsing
+- `gis-rules/` - Geographic Information Systems (GIS) patterns
+- `graph_generator.py` - Graph generation utilities
+- `mathematical-equation-extraction-rules/` - Mathematical equation parsing
+- `mathematical-functions-analysis-rules/` - Function analysis patterns
+- `phreeqc-geochemistry-engine/` - PHREEQC geochemical modelling
+- `statistical-analysis-engine/` - Statistical analysis architecture
+- `vector-math-visual-engine/` - Vector mathematics visualisation
+
+### 💰 [Quantitative Finance](./quant-finance-engine/)
 Financial engineering, risk modeling, and quantitative analysis.
 
-- `quant-finance-engine.mdc` - Monte Carlo stock price projection with Merton Jump Diffusion, Yahoo Finance data pipeline, and risk modeling
+Each guide is organized in its own folder with a README.md and the main .mdc file.
+
+- `quant-finance-engine/` - Monte Carlo stock price projection with Merton Jump Diffusion, Yahoo Finance data pipeline, and risk modeling
+- `jump-diffusion-models/` - Jump diffusion model implementations
 
 ### 🎨 [Web Design](./web-design/)
 UI/UX design systems, component libraries, and visual design patterns.
 
-- `apple-adaptive-system.mdc` - Apple-inspired adaptive design system
-- `apple-saas-suite.mdc` - SaaS application design patterns
-- `AtmosphericBackground.tsx` - React component for atmospheric backgrounds
-- `brutalist-archival-index.mdc` - Brutalist design system
-- `cinematic-angular-smoke.mdc` - Cinematic smoke effects
-- `code-website-publishing-guide.mdc` - Code documentation website patterns
-- `data-driven-cyber-ui.mdc` - Cyberpunk data visualisation UI
-- `interactive-motion.mdc` - Interactive motion design patterns
-- `japanese-corporate-playful.mdc` - Japanese-inspired corporate design
-- `kinetic-minimalist-portfolio.mdc` - Minimalist portfolio design
-- `motion-graphics-library.mdc` - Motion graphics component library
-- `RazorCard.tsx` - React card component
-- `sculptural-luxury-minimal.mdc` - Luxury minimalist design system
-- `structural-swiss-grid.mdc` - Swiss grid system architecture
-- `tailwind.config.js` - Tailwind CSS configuration
-- `TimelineConnector.tsx` - React timeline component
-- `tokyo-techno-minimal.mdc` - Tokyo-inspired techno design
+Each design system is organized in its own folder with a README.md and the main .mdc file.
+
+- `elegant-typography-warm-minimalist/` - Elegant typography-focused design with warm minimalist aesthetics
+- `princity-com-en/` - Printer monitoring design system (content structure and information architecture)
+
+### 🎨 [Web Design Templates](./WebDesigh%20Templates/)
+Additional web design templates and patterns extracted from real websites.
+
+Each template is organized in its own folder with a README.md and the main .mdc file.
+
+- `princity-com-en/` - Princity printer monitoring website design system
+- And many more design templates...
 
 ---
 
@@ -148,48 +172,48 @@ UI/UX design systems, component libraries, and visual design patterns.
 
 ```markdown
 Reference these files in Cursor:
-- engines/decision-logic-engine.mdc (graph-based decision logic)
-- web-design/apple-adaptive-system.mdc (UI design system)
-- backend/supabase-backend-architecture.mdc (backend architecture)
+- engines/decision-logic-engine/decision-logic-engine.mdc (graph-based decision logic)
+- web-design/elegant-typography-warm-minimalist/elegant-typography-warm-minimalist.mdc (UI design system)
+- backend/supabase-backend-architecture/supabase-backend-architecture.mdc (backend architecture)
 ```
 
 ### Example 2: Creating a Payment System
 
 ```markdown
 Reference these files in Cursor:
-- apis-integration/stripe-integration-rules.mdc (payment integration)
-- engines/fintech-ledger-engine.mdc (transaction ledger)
-- engines/security-encryption-engine.mdc (security patterns)
+- apis-integration/stripe-integration-rules/stripe-integration-rules.mdc (payment integration)
+- engines/fintech-ledger-engine/fintech-ledger-engine.mdc (transaction ledger)
+- engines/security-encryption-engine/security-encryption-engine.mdc (security patterns)
 ```
 
 ### Example 3: Building a Social Platform
 
 ```markdown
 Reference these files in Cursor:
-- engines/social-media-engine.mdc (core architecture)
-- engines/social-event-engine.mdc (event features)
-- web-design/tokyo-techno-minimal.mdc (design system)
-- backend/mongodb-backend-architecture.mdc (database)
+- engines/social-media-engine/social-media-engine.mdc (core architecture)
+- engines/social-event-engine/social-event-engine.mdc (event features)
+- web-design/elegant-typography-warm-minimalist/elegant-typography-warm-minimalist.mdc (design system)
+- backend/mongodb-backend-architecture/mongodb-backend-architecture.mdc (database)
 ```
 
 ### Example 4: Data Analysis Application
 
 ```markdown
 Reference these files in Cursor:
-- science-maths/data-analysis-rules.mdc (analysis patterns)
-- science-maths/statistical-analysis-engine.mdc (statistics engine)
-- science-maths/vector-math-visual-engine.mdc (visualisation)
-- web-design/data-driven-cyber-ui.mdc (data UI)
+- science-maths/data-analysis-rules/data-analysis-rules.mdc (analysis patterns)
+- science-maths/statistical-analysis-engine/statistical-analysis-engine.mdc (statistics engine)
+- science-maths/vector-math-visual-engine/vector-math-visual-engine.mdc (visualisation)
+- web-design/elegant-typography-warm-minimalist/elegant-typography-warm-minimalist.mdc (data UI)
 ```
 
 ### Example 5: Financial Analysis Dashboard
 
 ```markdown
 Reference these files in Cursor:
-- quant-finance-engine.mdc (Monte Carlo simulation, risk modeling)
-- science-maths/statistical-analysis-engine.mdc (statistical analysis)
-- web-design/data-driven-cyber-ui.mdc (financial data visualization)
-- backend/supabase-backend-architecture.mdc (data storage)
+- quant-finance-engine/quant-finance-engine.mdc (Monte Carlo simulation, risk modeling)
+- science-maths/statistical-analysis-engine/statistical-analysis-engine.mdc (statistical analysis)
+- web-design/elegant-typography-warm-minimalist/elegant-typography-warm-minimalist.mdc (financial data visualization)
+- backend/supabase-backend-architecture/supabase-backend-architecture.mdc (data storage)
 ```
 
 ---
@@ -197,10 +221,25 @@ Reference these files in Cursor:
 ## 📝 File Format Guide
 
 - **`.mdc`** - Markdown Cursor files (architecture guides, system designs, rules, and reference documentation)
-- **`.md`** - Standard markdown files (README only)
+- **`.md`** - Standard markdown files (README files in each guide folder)
 - **`.tsx`** - React TypeScript components
 - **`.js`** - JavaScript configuration files
 - **`.py`** - Python utilities and scripts
+
+### Folder Structure
+
+Each guide is organized in its own folder:
+```
+category/
+  └── guide-name/
+      ├── guide-name.mdc    # Main MDC file with architecture/patterns
+      └── README.md         # Guide overview and usage instructions
+```
+
+This structure makes it easy to:
+- Browse available guides
+- Understand what each guide contains
+- Reference specific guides in Cursor
 
 ---
 
@@ -237,9 +276,9 @@ Each `.mdc` file contains:
 **Explicitly mention the file** in your Cursor conversation:
 
 ```
-"Use the patterns from quant-finance-engine.mdc to build a Monte Carlo simulation"
-"Follow the architecture in backend/supabase-backend-architecture.mdc"
-"Apply the design system from web-design/apple-adaptive-system.mdc"
+"Use the patterns from quant-finance-engine/quant-finance-engine.mdc to build a Monte Carlo simulation"
+"Follow the architecture in backend/supabase-backend-architecture/supabase-backend-architecture.mdc"
+"Apply the design system from web-design/elegant-typography-warm-minimalist/elegant-typography-warm-minimalist.mdc"
 ```
 
 #### Method 2: Open Files in Cursor
@@ -268,9 +307,9 @@ cd Cursor-Cheat-Sheet
 ```
 
 Then reference files by their relative path:
-- `quant-finance-engine.mdc`
-- `backend/supabase-backend-architecture.mdc`
-- `engines/decision-logic-engine.mdc`
+- `quant-finance-engine/quant-finance-engine.mdc`
+- `backend/supabase-backend-architecture/supabase-backend-architecture.mdc`
+- `engines/decision-logic-engine/decision-logic-engine.mdc`
 
 #### Option 2: Copy Specific Files
 
@@ -318,9 +357,9 @@ If the repository is in a known location, you can reference files by their full 
 # 1. You want to build a financial analysis dashboard
 # 2. Reference the relevant files in Cursor:
 
-"Use quant-finance-engine.mdc for the Monte Carlo simulation,
- web-design/data-driven-cyber-ui.mdc for the UI,
- and backend/supabase-backend-architecture.mdc for data storage"
+"Use quant-finance-engine/quant-finance-engine.mdc for the Monte Carlo simulation,
+ web-design/elegant-typography-warm-minimalist/elegant-typography-warm-minimalist.mdc for the UI,
+ and backend/supabase-backend-architecture/supabase-backend-architecture.mdc for data storage"
 
 # 3. Cursor will read all three files and apply their patterns
 ```
@@ -341,10 +380,21 @@ If the repository is in a known location, you can reference files by their full 
 
 When adding new guides:
 
-1. Place files in the appropriate category folder
-2. Use descriptive, kebab-case filenames
-3. Update this README with the new file
-4. Follow the existing file format conventions
+1. Create a new folder in the appropriate category folder
+2. Use descriptive, kebab-case folder names
+3. Place the `.mdc` file inside the folder (named `[folder-name].mdc`)
+4. Create a `README.md` file in the folder with guide overview and usage instructions
+5. Update this README with the new guide
+6. Follow the existing file format conventions
+
+### Folder Structure Template
+
+```
+category/
+  └── new-guide-name/
+      ├── new-guide-name.mdc
+      └── README.md
+```
 
 ---
 
@@ -363,7 +413,9 @@ This repository contains architectural patterns, guides, and reference materials
 
 **Last Updated:** January 2025
 
-**Total Files:** 60+ architecture guides, rules, and components
+**Total Files:** 80+ architecture guides, rules, and components
 
-**Categories:** 8 organised folders covering AI, Backend, Engines, Web Design, Science & Maths, APIs, Development Tools, Databases, and Quantitative Finance
+**Categories:** 9 organised folders covering AI, Backend, Engines, Web Design, Web Design Templates, Science & Maths, APIs, Development Tools, Quantitative Finance, and Paper-to-MDC conversion tools
+
+**Structure:** Each guide is organized in its own folder with a README.md for easy navigation and understanding
 

@@ -1,0 +1,12 @@
+{
+  "status": "pending",
+  "colors": {
+    "primary": [],
+    "secondary": [],
+    "accent": [],
+    "background": [],
+    "text": []
+  },
+  "note": "Run browser automation script to extract color palette"
+}
+

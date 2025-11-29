@@ -1,0 +1,471 @@
+# Scientific Paper to MDC Conversion Rules
+
+## Overview
+This document provides comprehensive guidelines for converting scientific papers (PDFs) about coding techniques and building methods into MDC cheat sheets. These rules ensure complete paper coverage, accurate extraction, and proper file organization.
+
+**CRITICAL PROTOCOL:** When processing a scientific paper, you MUST follow these rules in strict order. No shortcuts. Every section of the paper must be read and processed.
+
+---
+
+## Phase 1: Complete Paper Reading Protocol
+
+### MANDATORY Multi-Pass Reading Strategy
+
+You MUST perform three complete passes through the entire paper before creating any MDC content. This ensures nothing is missed.
+
+#### Pass 1: Full Paper Structure Scan
+**Objective:** Understand the complete structure and organization of the paper.
+
+**Actions Required:**
+1. Read the entire paper from beginning to end without stopping
+2. Identify all major sections:
+   - Title, Authors, Abstract
+   - Introduction
+   - Related Work / Background
+   - Methodology / Approach
+   - Implementation Details
+   - Results / Evaluation
+   - Discussion / Analysis
+   - Conclusion / Future Work
+   - References
+3. Note any appendices, supplementary materials, or code listings
+4. Identify the paper's primary focus (coding technique, architecture pattern, algorithm, etc.)
+5. Document the paper's structure in a temporary outline
+
+**Verification:** You must be able to list all sections and their approximate locations before proceeding.
+
+#### Pass 2: Section-by-Section Detailed Extraction
+**Objective:** Extract all technical content, code examples, algorithms, and key concepts.
+
+**Actions Required:**
+1. Go through each section systematically
+2. For each section, extract:
+   - **Key concepts and definitions**
+   - **Algorithms and pseudocode** (convert to readable format)
+   - **Code examples** (identify programming language)
+   - **Mathematical formulas** (preserve in LaTeX format)
+   - **Diagrams/figures descriptions** (detailed text descriptions)
+   - **Performance metrics and benchmarks**
+   - **Implementation details and patterns**
+   - **Best practices mentioned**
+   - **Limitations and assumptions**
+   - **Related techniques referenced**
+3. Mark any code blocks with their language
+4. Note any tables and extract their data
+5. Capture all technical terminology and definitions
+
+**Verification:** Every section must have extracted content. If a section appears empty, re-read it.
+
+#### Pass 3: Cross-Reference Validation
+**Objective:** Ensure completeness and identify relationships between sections.
+
+**Actions Required:**
+1. Cross-reference all code examples mentioned in text with actual code blocks
+2. Verify all algorithms are captured with their complete logic
+3. Check that all mathematical formulas are extracted
+4. Ensure all performance metrics are documented
+5. Validate that all referenced techniques are noted
+6. Confirm all implementation patterns are captured
+7. Check for any "TODO" or "future work" items that might be relevant
+8. Verify no section was skipped or partially read
+
+**Verification Checklist:**
+- [ ] All sections read completely
+- [ ] All code examples extracted with language tags
+- [ ] All algorithms documented
+- [ ] All formulas in LaTeX format
+- [ ] All performance metrics captured
+- [ ] All implementation details noted
+- [ ] All best practices extracted
+- [ ] All limitations documented
+- [ ] All references to other techniques captured
+
+**CRITICAL:** If ANY item in the checklist is unchecked, you MUST go back and complete it before proceeding to Phase 2.
+
+---
+
+## Phase 2: MDC Structure Template
+
+### Standard MDC Format for Paper-Derived Content
+
+Every MDC created from a scientific paper MUST follow this structure:
+
+```markdown
+---
+alwaysApply: false
+---
+
+# [Paper Title - Key Technique/Concept]
+
+## Paper Metadata
+- **Title:** [Full paper title]
+- **Authors:** [Author names]
+- **Year:** [Publication year]
+- **DOI/URL:** [If available]
+- **Source:** [Conference/Journal name if available]
+
+## Abstract / Summary
+[Concise summary of the paper's main contribution and findings]
+
+## Key Concepts and Techniques
+[Bullet points or paragraphs covering the main concepts introduced]
+
+## Methodology and Algorithms
+[Detailed explanation of the approach, including:]
+- Algorithm descriptions
+- Pseudocode or step-by-step processes
+- Key design decisions
+- Theoretical foundations
+
+## Implementation Patterns
+[Practical implementation guidance:]
+- Architecture patterns
+- Design patterns used
+- Data structures recommended
+- System organization approaches
+
+## Code Examples and Snippets
+[All code from the paper, properly formatted:]
+
+\`\`\`[language]
+[Code example 1]
+\`\`\`
+
+\`\`\`[language]
+[Code example 2]
+\`\`\`
+
+[Continue for all code examples...]
+
+## Mathematical Foundations
+[All formulas and mathematical content in LaTeX:]
+
+$$
+[Formula 1]
+$$
+
+$$
+[Formula 2]
+$$
+
+## Best Practices and Recommendations
+[Extracted best practices, recommendations, and guidelines from the paper]
+
+## Performance Metrics and Benchmarks
+[Any performance data, benchmarks, or evaluation results mentioned]
+
+## Limitations and Assumptions
+[Documented limitations, assumptions, and constraints]
+
+## Related Techniques and References
+[Other techniques mentioned in the paper and how they relate]
+
+## Practical Applications
+[Real-world applications, use cases, and scenarios where this technique applies]
+
+## Implementation Checklist
+[Step-by-step checklist for implementing the technique]
+
+## References
+[Key references from the paper that are relevant for further reading]
+```
+
+---
+
+## Phase 3: Content Extraction Rules
+
+### Mandatory Extraction Requirements
+
+#### 1. Extract ALL Sections
+You MUST extract content from:
+- Abstract
+- Introduction (including motivation and problem statement)
+- Related Work / Background
+- Methodology (complete, not summarized)
+- Implementation Details (all technical specifics)
+- Results / Evaluation (all metrics, benchmarks, comparisons)
+- Code Examples (every single code block)
+- Algorithms (complete logic, not abbreviated)
+- Conclusions (all findings and future directions)
+- Appendices (if present)
+
+#### 2. Preserve Mathematical Formulas
+- Convert all mathematical notation to LaTeX format
+- Use `$$` for block equations
+- Use `$` for inline equations
+- Preserve all subscripts, superscripts, and special symbols
+- Include equation numbers if present
+- Document what each variable represents
+
+#### 3. Capture Code Snippets
+- Extract EVERY code block from the paper
+- Identify the programming language (Python, Java, C++, JavaScript, etc.)
+- Preserve code formatting and indentation
+- Include comments from the code
+- Note the context where each code example appears
+- If code is incomplete, note that and describe what it should do
+
+#### 4. Extract Diagrams/Figures Descriptions
+- Provide detailed text descriptions of all diagrams
+- Explain what the diagram illustrates
+- Note relationships shown in diagrams
+- Describe data flow if applicable
+- Include any labels or annotations from figures
+
+#### 5. Note Performance Metrics and Benchmarks
+- Extract all numerical performance data
+- Include units of measurement
+- Note experimental setup
+- Document comparisons with other methods
+- Capture any statistical significance information
+
+#### 6. Document Assumptions and Limitations
+- Extract all stated assumptions
+- Note any limitations mentioned
+- Document constraints or prerequisites
+- Include any caveats or warnings
+
+---
+
+## Phase 4: File Placement Logic
+
+### Topic Analysis and Folder Mapping
+
+After extracting all content, analyze the paper's primary topic and map it to the appropriate folder:
+
+#### Topic Analysis Steps:
+1. Identify primary keywords from:
+   - Paper title
+   - Abstract
+   - Main methodology section
+   - Implementation details
+2. Determine the dominant category
+3. Select the appropriate folder
+
+#### Folder Mapping Rules:
+
+**`ai/`** - Use for:
+- Machine learning techniques
+- AI algorithms and models
+- Neural network architectures
+- Natural language processing methods
+- Computer vision techniques
+- AI integration patterns
+
+**`engines/`** - Use for:
+- System architectures
+- Engine designs (game engines, rendering engines, etc.)
+- Core system components
+- Framework architectures
+- Platform architectures
+
+**`backend/`** - Use for:
+- Backend patterns and architectures
+- Database design techniques
+- API design patterns
+- Server-side architectures
+- Data processing pipelines
+- Authentication/authorization systems
+
+**`development-tools/`** - Use for:
+- Development methodologies
+- Code organization techniques
+- Testing strategies
+- Debugging techniques
+- Build and deployment patterns
+- Development workflows
+
+**`science-maths/`** - Use for:
+- Mathematical algorithms
+- Computational methods
+- Statistical techniques
+- Numerical methods
+- Scientific computing patterns
+- Data analysis methods
+
+**`apis-integration/`** - Use for:
+- API integration patterns
+- Third-party service integration
+- API design principles
+- Integration architectures
+- Service communication patterns
+
+**`web-design/`** - Use for:
+- Frontend techniques
+- UI/UX patterns
+- Web design methodologies
+- Client-side architectures
+- User interface patterns
+- Frontend frameworks
+
+#### Folder and File Naming Convention:
+- **Folder Name:** Convert paper title to lowercase, replace spaces with hyphens, remove special characters, max 50 characters
+  - Example: `attention-mechanism-transformer`
+- **MDC Filename:** Same as folder name with `.mdc` extension
+  - Example: `attention-mechanism-transformer.mdc`
+- **Folder Structure:** Each MDC gets its own folder within the appropriate category folder
+  - Example: `ai/attention-mechanism-transformer/attention-mechanism-transformer.mdc`
+  - Example: `ai/attention-mechanism-transformer/README.md`
+
+---
+
+## Phase 5: Base MDC Creation
+
+### Creating the Base MDC Folder and Files
+
+**CRITICAL:** Each MDC must be created in its own dedicated folder with both the MDC file and a README.md file.
+
+1. **Create Folder Structure:**
+   - Create a new folder within the determined category folder (e.g., `ai/`, `engines/`, etc.)
+   - Folder name should be based on paper title (lowercase, hyphens, max 50 chars)
+   - Example: `ai/attention-mechanism-transformer/`
+
+2. **Create MDC File:**
+   - Place the MDC file inside the new folder
+   - Filename should match folder name with `.mdc` extension
+   - Example: `ai/attention-mechanism-transformer/attention-mechanism-transformer.mdc`
+
+3. **Populate MDC Content:**
+   - Follow the MDC Structure Template exactly
+   - Fill in all sections with extracted content
+   - Ensure all code examples are properly formatted
+   - Verify all formulas are in LaTeX
+   - Include all performance metrics
+   - Document all best practices
+
+4. **Create README.md:**
+   - Create a README.md file in the same folder as the MDC
+   - The README must explain:
+     - **What it is:** Description of the MDC and its purpose
+     - **How it works:** Explanation of the extraction process and content structure
+     - **How to use it when building:** Clear instructions on referencing and using the MDC in Cursor
+   - Include paper metadata (title, authors, year)
+   - List key concepts
+   - Provide usage examples for Cursor
+   - Include quick start guide
+
+5. **Quality Check:**
+   - Verify completeness against Pass 3 checklist
+   - Ensure proper markdown formatting
+   - Check code block syntax
+   - Validate LaTeX formulas
+   - Confirm folder structure is correct
+   - Verify README.md is complete and helpful
+
+---
+
+## Phase 6: Editing Related MDCs
+
+### Updating Existing MDCs
+
+After creating the base MDC, you MUST:
+
+1. **Identify Related MDCs:**
+   - Search for existing MDCs that cover related topics
+   - Look for MDCs that could benefit from the new paper's content
+   - Identify MDCs that reference similar techniques
+
+2. **Update Related MDCs:**
+   For each related MDC found:
+   - Add cross-reference to the new base MDC
+   - Add new techniques from the paper if relevant
+   - Enhance existing patterns with new insights
+   - Add additional code examples if applicable
+   - Update best practices section
+   - Add to "Related Techniques" section
+
+3. **Update Format:**
+   - Add a "See Also" section pointing to the new base MDC
+   - Integrate new content seamlessly
+   - Maintain consistency with existing MDC style
+   - Don't duplicate content, but add relevant connections
+
+---
+
+## Quality Assurance Checklist
+
+Before finalizing any MDC creation, verify:
+
+### Completeness
+- [ ] All sections of the paper have been read
+- [ ] All code examples extracted
+- [ ] All algorithms documented
+- [ ] All formulas captured
+- [ ] All performance metrics included
+- [ ] All best practices extracted
+- [ ] All limitations documented
+
+### Accuracy
+- [ ] Code examples are correctly formatted
+- [ ] Formulas are accurate and in LaTeX
+- [ ] Technical terms are correctly used
+- [ ] Performance metrics are accurate
+- [ ] References are correct
+
+### Organization
+- [ ] Folder is in the correct category folder
+- [ ] Folder name follows convention
+- [ ] MDC filename follows convention
+- [ ] README.md exists and is complete
+- [ ] Content follows MDC template
+- [ ] Sections are properly organized
+- [ ] Cross-references are added
+
+### Formatting
+- [ ] Markdown syntax is correct
+- [ ] Code blocks have language tags
+- [ ] LaTeX formulas render correctly
+- [ ] Headers are properly nested
+- [ ] Lists are properly formatted
+
+---
+
+## Common Pitfalls to Avoid
+
+### DO NOT:
+- Skip sections because they seem "less important"
+- Summarize when you should extract verbatim
+- Ignore appendices or supplementary materials
+- Create MDC before completing all three reading passes
+- Place file in wrong folder due to incomplete topic analysis
+- Forget to update related MDCs
+- Miss code examples embedded in text
+- Skip mathematical formulas
+- Ignore performance metrics
+- Create duplicate content without cross-referencing
+
+### DO:
+- Read every word of the paper
+- Extract complete code examples
+- Preserve all technical details
+- Document all assumptions
+- Cross-reference related content
+- Verify completeness multiple times
+- Ask for clarification if paper is unclear
+- Take time to understand complex sections
+
+---
+
+## Python Tool Integration
+
+When using the provided Python tools:
+
+1. **Use `pdf_extractor.py`** to extract text from PDF files
+2. **Use `content_organizer.py`** to structure the extracted content
+3. **Use `paper_processor.py`** for the complete pipeline
+
+However, **DO NOT rely solely on automated extraction**. You MUST still:
+- Read the extracted content thoroughly
+- Verify accuracy of extraction
+- Fill in any gaps from automated processing
+- Ensure complete coverage
+
+The Python tools are aids, not replacements for thorough reading.
+
+---
+
+## Final Reminder
+
+**THE GOLDEN RULE:** If you're unsure whether you've captured everything, you haven't. Go back and read the paper again. A complete MDC is a comprehensive cheat sheet that someone could use to understand and implement the technique without reading the original paper. If your MDC doesn't achieve that, it's incomplete.
+
+**Remember:** You are creating a "Source of Truth" document. It must be complete, accurate, and comprehensive. There are no shortcuts.

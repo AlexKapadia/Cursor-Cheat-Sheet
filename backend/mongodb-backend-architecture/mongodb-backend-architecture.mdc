@@ -1,0 +1,1083 @@
+# MongoDB Backend Architecture: Source of Truth
+
+**SaaS Application Architecture**  
+**Data Layer:** MongoDB | **Auth Layer:** Supabase
+
+---
+
+## ⚠️ CRITICAL ARCHITECTURE PRINCIPLES
+
+### The "Flexible Tenant Isolation" Rule
+
+1. **Application-Level Security:** Unlike Postgres RLS, we must enforce security in the API Middleware. Every query must be scoped to either:
+   - **Organization-owned:** `organizationId` (for team SaaS, collaboration tools)
+   - **User-owned:** `userId` (for individual shops, personal apps)
+
+2. **The "Supabase-Mongo" Bridge:** 
+   - Supabase is used **strictly** for Authentication (JWTs)
+   - MongoDB is used for **all** user data and business logic
+   - Never store business data in Supabase tables
+
+3. **Compound Indexing:** Performance is dead without indexes. Every schema must have compound indexes:
+   - **With org:** `{ organizationId: 1, ... }` (for organization-owned resources)
+   - **Without org:** `{ userId: 1, ... }` (for user-owned resources)
+
+---
+
+## PHASE 1: DOCUMENT SCHEMAS
+
+### 1. Identity & Tenancy (The Core)
+
+#### User Collection
+
+**Purpose:** Maps Supabase Auth users to MongoDB documents. Uses Supabase UUID as `_id`.
+
+```typescript
+// Mongoose Schema
+const UserSchema = new Schema({
+  _id: {
+    type: String,
+    required: true,
+    // CRITICAL: This must match Supabase Auth User UUID
+    // Do NOT use auto-generated ObjectId
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    lowercase: true,
+    trim: true,
+  },
+  currentOrgId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Organization',
+    // Tracks the user's active organization context
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
+}, {
+  _id: false, // Disable auto _id generation
+  timestamps: true,
+});
+
+// Indexes
+UserSchema.index({ email: 1 }, { unique: true });
+UserSchema.index({ currentOrgId: 1 });
+```
+
+**Prisma Schema Alternative:**
+```prisma
+model User {
+  id          String   @id // Supabase UUID
+  email       String   @unique
+  currentOrgId String? // Organization ObjectId as String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  memberships Member[]
+  
+  @@index([email])
+  @@index([currentOrgId])
+}
+```
+
+---
+
+#### Organization Collection
+
+**Purpose:** Represents a tenant workspace with subscription and limits.
+
+```typescript
+// Mongoose Schema
+const OrganizationSchema = new Schema({
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  subscription: {
+    plan: {
+      type: String,
+      enum: ['free', 'starter', 'pro', 'enterprise'],
+      default: 'free',
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ['active', 'canceled', 'past_due', 'trialing'],
+      default: 'active',
+      required: true,
+    },
+    stripeId: {
+      type: String,
+      sparse: true, // Allow null for free plans
+    },
+    currentPeriodEnd: {
+      type: Date,
+    },
+  },
+  limits: {
+    maxProjects: {
+      type: Number,
+      default: 1,
+    },
+    maxStorageGB: {
+      type: Number,
+      default: 1,
+    },
+    aiCredits: {
+      type: Number,
+      default: 0,
+    },
+    maxMembers: {
+      type: Number,
+      default: 1,
+    },
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
+}, {
+  timestamps: true,
+});
+
+// Indexes
+OrganizationSchema.index({ 'subscription.stripeId': 1 }, { sparse: true });
+OrganizationSchema.index({ 'subscription.status': 1 });
+```
+
+**Prisma Schema Alternative:**
+```prisma
+model Organization {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  subscription Subscription
+  limits    Limits
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  members   Member[]
+  projects  Project[]
+  
+  @@index([subscription.status])
+}
+
+type Subscription {
+  plan              String
+  status            String
+  stripeId          String?
+  currentPeriodEnd  DateTime?
+}
+
+type Limits {
+  maxProjects   Int
+  maxStorageGB  Int
+  aiCredits     Int
+  maxMembers    Int
+}
+```
+
+---
+
+#### Member Collection
+
+**Purpose:** Junction table for User-Organization relationships with roles.
+
+```typescript
+// Mongoose Schema
+const MemberSchema = new Schema({
+  userId: {
+    type: String,
+    required: true,
+    ref: 'User',
+    // References User._id (Supabase UUID)
+  },
+  orgId: {
+    type: Schema.Types.ObjectId,
+    required: true,
+    ref: 'Organization',
+  },
+  role: {
+    type: String,
+    enum: ['owner', 'admin', 'editor', 'viewer'],
+    default: 'viewer',
+    required: true,
+  },
+  invitedBy: {
+    type: String,
+    ref: 'User',
+  },
+  joinedAt: {
+    type: Date,
+    default: Date.now,
+  },
+}, {
+  timestamps: true,
+});
+
+// CRITICAL: Compound unique index prevents duplicate memberships
+MemberSchema.index({ userId: 1, orgId: 1 }, { unique: true });
+
+// Performance indexes
+MemberSchema.index({ orgId: 1, role: 1 });
+MemberSchema.index({ userId: 1 });
+```
+
+**Prisma Schema Alternative:**
+```prisma
+model Member {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   // Supabase UUID
+  orgId     String   @db.ObjectId
+  role      String
+  invitedBy String?
+  joinedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user         User         @relation(fields: [userId], references: [id])
+  organization Organization @relation(fields: [orgId], references: [id])
+  
+  @@unique([userId, orgId])
+  @@index([orgId, role])
+  @@index([userId])
+}
+```
+
+---
+
+### 2. Business Data (Example Resource)
+
+#### Project Collection
+
+**Purpose:** Example business resource demonstrating flexible ownership pattern. Supports both user-owned (`orgId = null`) and organization-owned (`orgId IS NOT NULL`) data.
+
+```typescript
+// Mongoose Schema
+const ProjectSchema = new Schema({
+  userId: {
+    type: String,
+    required: true,
+    ref: 'User',
+    // Always required: tracks the owner (user or org member)
+  },
+  orgId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Organization',
+    // OPTIONAL: NULL for user-owned, set for organization-owned
+    // Validation: Either orgId is set OR userId owns directly
+  },
+  title: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  description: {
+    type: String,
+  },
+  data: {
+    type: Schema.Types.Mixed,
+    // Flexible JSON structure for project-specific data
+  },
+  createdBy: {
+    type: String,
+    required: true,
+    ref: 'User',
+  },
+  status: {
+    type: String,
+    enum: ['draft', 'active', 'archived'],
+    default: 'draft',
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
+}, {
+  timestamps: true,
+});
+
+// Validation: Ensure either orgId is set OR userId owns directly
+ProjectSchema.pre('save', function(next) {
+  if (!this.orgId && !this.userId) {
+    return next(new Error('Either orgId or userId must be set'));
+  }
+  next();
+});
+
+// CRITICAL: Compound indexes for both ownership patterns
+// For organization-owned queries
+ProjectSchema.index({ orgId: 1, _id: 1 }, { sparse: true }); // sparse: only index when orgId exists
+ProjectSchema.index({ orgId: 1, status: 1 }, { sparse: true });
+ProjectSchema.index({ orgId: 1, createdAt: -1 }, { sparse: true });
+// For user-owned queries
+ProjectSchema.index({ userId: 1, _id: 1 });
+ProjectSchema.index({ userId: 1, status: 1 });
+ProjectSchema.index({ userId: 1, createdAt: -1 });
+// For queries that might need both
+ProjectSchema.index({ createdBy: 1, orgId: 1 }, { sparse: true });
+```
+
+**Prisma Schema Alternative:**
+```prisma
+model Project {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String   // Always required
+  orgId       String?  @db.ObjectId // Optional
+  title       String
+  description String?
+  data        Json
+  createdBy   String
+  status      String   @default("draft")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  organization Organization? @relation(fields: [orgId], references: [id])
+  
+  @@index([orgId, id])
+  @@index([orgId, status])
+  @@index([orgId, createdAt(sort: Desc)])
+  @@index([userId, id])
+  @@index([userId, status])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([createdBy, orgId])
+}
+```
+
+---
+
+## PHASE 2: AUTHENTICATION SYNC (THE BRIDGE)
+
+### 1. The "Sync" Webhook
+
+**Purpose:** Synchronize Supabase Auth events with MongoDB User collection.
+
+#### Next.js API Route: `/api/auth/hook`
+
+```typescript
+// app/api/auth/hook/route.ts (Next.js App Router)
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { connectDB, User, Organization, Member } from '@/lib/mongodb';
+
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY! // Service key for admin operations
+);
+
+// Verify webhook signature from Supabase
+async function verifyWebhookSignature(
+  request: NextRequest,
+  payload: string
+): Promise<boolean> {
+  const signature = request.headers.get('x-supabase-signature');
+  // Implement signature verification logic
+  // Supabase sends HMAC SHA256 signature
+  return true; // Simplified - implement actual verification
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const payload = await request.text();
+    
+    // Verify webhook signature
+    const isValid = await verifyWebhookSignature(request, payload);
+    if (!isValid) {
+      return NextResponse.json(
+        { error: 'Invalid signature' },
+        { status: 401 }
+      );
+    }
+
+    const event = JSON.parse(payload);
+    
+    // Handle user creation event
+    if (event.type === 'INSERT' && event.table === 'auth.users') {
+      const supabaseUser = event.record;
+      
+      await connectDB();
+      
+      // Create User document with Supabase UUID as _id
+      const user = new User({
+        _id: supabaseUser.id, // CRITICAL: Use Supabase UUID
+        email: supabaseUser.email,
+      });
+      await user.save();
+      
+      // NOTE: Organizations are NOT auto-created. Users can create them later if needed.
+      // For apps that require organizations, create them in your onboarding flow.
+      // For individual shops/personal apps, users can work without organizations.
+      
+      return NextResponse.json({
+        success: true,
+        userId: user._id,
+      });
+    }
+    
+    // Handle user deletion event
+    if (event.type === 'DELETE' && event.table === 'auth.users') {
+      const supabaseUserId = event.old_record.id;
+      
+      await connectDB();
+      
+      // Soft delete or hard delete based on business logic
+      // Option 1: Hard delete
+      await User.findByIdAndDelete(supabaseUserId);
+      
+      // Option 2: Soft delete (recommended)
+      // await User.findByIdAndUpdate(supabaseUserId, { deletedAt: new Date() });
+      
+      return NextResponse.json({ success: true });
+    }
+    
+    return NextResponse.json({ message: 'Event not handled' }, { status: 200 });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+```
+
+#### Supabase Webhook Configuration
+
+1. Go to Supabase Dashboard → Database → Webhooks
+2. Create new webhook on `auth.users` table
+3. Set trigger events: `INSERT`, `UPDATE`, `DELETE`
+4. Set webhook URL: `https://yourdomain.com/api/auth/hook`
+5. Add secret header for signature verification
+
+---
+
+### 2. The "Context" Middleware
+
+**Purpose:** Verify JWT, extract user context, and enforce tenant access.
+
+#### Helper Function: `getTenantContext`
+
+```typescript
+// lib/middleware/tenant-context.ts
+import { createClient } from '@supabase/supabase-js';
+import { connectDB, Member, User } from '@/lib/mongodb';
+import { NextRequest } from 'next/server';
+
+interface TenantContext {
+  userId: string;
+  orgId: string | null; // null for user-owned resources
+  role: string | null; // null when orgId is null
+  user: any;
+}
+
+export async function getTenantContext(
+  request: NextRequest
+): Promise<TenantContext> {
+  // 1. Extract and verify Supabase JWT
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    throw new Error('Missing or invalid authorization header');
+  }
+
+  const token = authHeader.substring(7);
+  const supabase = createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_ANON_KEY!
+  );
+
+  const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(token);
+  
+  if (error || !supabaseUser) {
+    throw new Error('Invalid or expired token');
+  }
+
+  const userId = supabaseUser.id;
+
+  await connectDB();
+
+  // 2. Get organization ID from header or query param (optional)
+  const orgId = request.headers.get('x-organization-id') || 
+                request.nextUrl.searchParams.get('orgId');
+
+  // 3. If orgId provided, verify user has access to this organization
+  let role: string | null = null;
+  if (orgId) {
+    const member = await Member.findOne({
+      userId: userId,
+      orgId: orgId,
+    });
+
+    if (!member) {
+      throw new Error('403 Forbidden: User does not have access to this organization');
+    }
+    role = member.role;
+  }
+  // If no orgId, user is working with their own data (user-owned pattern)
+
+  // 4. Get user document
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new Error('User not found in database');
+  }
+
+  return {
+    userId,
+    orgId: orgId || null,
+    role,
+    user,
+  };
+}
+```
+
+#### API Route Middleware Wrapper
+
+```typescript
+// lib/middleware/with-tenant.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { getTenantContext } from './tenant-context';
+
+export function withTenant(
+  handler: (req: NextRequest, context: TenantContext) => Promise<NextResponse>
+) {
+  return async (req: NextRequest) => {
+    try {
+      const context = await getTenantContext(req);
+      return await handler(req, context);
+    } catch (error: any) {
+      if (error.message.includes('403') || error.message.includes('Forbidden')) {
+        return NextResponse.json(
+          { error: 'Forbidden: Access denied' },
+          { status: 403 }
+        );
+      }
+      if (error.message.includes('Invalid') || error.message.includes('expired')) {
+        return NextResponse.json(
+          { error: 'Unauthorized' },
+          { status: 401 }
+        );
+      }
+      return NextResponse.json(
+        { error: error.message || 'Internal server error' },
+        { status: 500 }
+      );
+    }
+  };
+}
+```
+
+#### Usage in API Routes
+
+```typescript
+// app/api/projects/route.ts
+import { withTenant } from '@/lib/middleware/with-tenant';
+import { Project } from '@/lib/mongodb';
+import { NextRequest, NextResponse } from 'next/server';
+
+export const GET = withTenant(async (req: NextRequest, context) => {
+  // Build query based on ownership pattern
+  const query: any = { userId: context.userId };
+  if (context.orgId) {
+    // Organization-owned: filter by orgId
+    query.orgId = context.orgId;
+  } else {
+    // User-owned: orgId must be null
+    query.orgId = null;
+  }
+  
+  const projects = await Project.find(query)
+    .sort({ createdAt: -1 })
+    .limit(100);
+  
+  return NextResponse.json({ projects });
+});
+
+export const POST = withTenant(async (req: NextRequest, context) => {
+  const body = await req.json();
+  
+  // CRITICAL: Always set userId and orgId from context, never from request body
+  const project = new Project({
+    ...body,
+    userId: context.userId, // Always set
+    orgId: context.orgId || null, // Set from context (null for user-owned)
+    createdBy: context.userId,
+  });
+  
+  await project.save();
+  
+  return NextResponse.json({ project }, { status: 201 });
+});
+```
+
+---
+
+## PHASE 3: TIERED PRICING & FEATURE GATING
+
+### 1. Storing Limits (Embedded on Organization)
+
+**Principle:** Store limits directly on the Organization document for fast lookups. No joins required.
+
+```typescript
+// Example Organization document structure
+{
+  "_id": ObjectId("..."),
+  "name": "Acme Corp",
+  "subscription": {
+    "plan": "pro",
+    "status": "active",
+    "stripeId": "sub_xxx",
+    "currentPeriodEnd": ISODate("2024-12-31")
+  },
+  "limits": {
+    "maxProjects": 50,
+    "maxStorageGB": 100,
+    "aiCredits": 1000,
+    "maxMembers": 10
+  }
+}
+```
+
+### 2. Feature Gating Helper
+
+```typescript
+// lib/features/check-limits.ts
+import { Organization } from '@/lib/mongodb';
+
+interface LimitCheck {
+  allowed: boolean;
+  reason?: string;
+  current?: number;
+  limit?: number;
+}
+
+export async function checkProjectLimit(orgId: string | null, userId: string): Promise<LimitCheck> {
+  // User-owned projects don't have limits (or implement user-level limits if needed)
+  if (!orgId) {
+    return { allowed: true }; // No limits for user-owned resources
+  }
+
+  const org = await Organization.findById(orgId);
+  if (!org) {
+    return { allowed: false, reason: 'Organization not found' };
+  }
+
+  const currentCount = await Project.countDocuments({ orgId });
+  const limit = org.limits.maxProjects;
+
+  if (currentCount >= limit) {
+    return {
+      allowed: false,
+      reason: 'Project limit reached',
+      current: currentCount,
+      limit,
+    };
+  }
+
+  return { allowed: true, current: currentCount, limit };
+}
+
+export async function checkStorageLimit(
+  orgId: string,
+  additionalGB: number
+): Promise<LimitCheck> {
+  const org = await Organization.findById(orgId);
+  if (!org) {
+    return { allowed: false, reason: 'Organization not found' };
+  }
+
+  // Calculate current storage usage (implement based on your storage tracking)
+  const currentStorage = await calculateStorageUsage(orgId);
+  const limit = org.limits.maxStorageGB;
+
+  if (currentStorage + additionalGB > limit) {
+    return {
+      allowed: false,
+      reason: 'Storage limit exceeded',
+      current: currentStorage,
+      limit,
+    };
+  }
+
+  return { allowed: true, current: currentStorage, limit };
+}
+
+export async function checkAICredits(orgId: string, credits: number): Promise<LimitCheck> {
+  const org = await Organization.findById(orgId);
+  if (!org) {
+    return { allowed: false, reason: 'Organization not found' };
+  }
+
+  if (org.limits.aiCredits < credits) {
+    return {
+      allowed: false,
+      reason: 'Insufficient AI credits',
+      current: org.limits.aiCredits,
+      limit: credits,
+    };
+  }
+
+  return { allowed: true, current: org.limits.aiCredits };
+}
+```
+
+### 3. Usage in API Routes
+
+```typescript
+// app/api/projects/route.ts
+export const POST = withTenant(async (req: NextRequest, context) => {
+  // Check limits before creating (only for organization-owned projects)
+  if (context.orgId) {
+    const limitCheck = await checkProjectLimit(context.orgId, context.userId);
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        { 
+          error: limitCheck.reason,
+          current: limitCheck.current,
+          limit: limitCheck.limit,
+        },
+        { status: 403 }
+      );
+    }
+  }
+  // User-owned projects don't have limits (or implement user-level limits if needed)
+
+  const body = await req.json();
+  const project = new Project({
+    ...body,
+    userId: context.userId,
+    orgId: context.orgId || null,
+    createdBy: context.userId,
+  });
+  
+  await project.save();
+  
+  return NextResponse.json({ project }, { status: 201 });
+});
+```
+
+### 4. Subscription Plan Definitions
+
+```typescript
+// lib/subscriptions/plans.ts
+export const SUBSCRIPTION_PLANS = {
+  free: {
+    maxProjects: 1,
+    maxStorageGB: 1,
+    aiCredits: 0,
+    maxMembers: 1,
+  },
+  starter: {
+    maxProjects: 5,
+    maxStorageGB: 10,
+    aiCredits: 100,
+    maxMembers: 3,
+  },
+  pro: {
+    maxProjects: 50,
+    maxStorageGB: 100,
+    aiCredits: 1000,
+    maxMembers: 10,
+  },
+  enterprise: {
+    maxProjects: -1, // Unlimited
+    maxStorageGB: -1,
+    aiCredits: -1,
+    maxMembers: -1,
+  },
+};
+
+// Update organization limits when subscription changes
+export async function updateOrganizationLimits(
+  orgId: string,
+  plan: keyof typeof SUBSCRIPTION_PLANS
+) {
+  const limits = SUBSCRIPTION_PLANS[plan];
+  
+  await Organization.findByIdAndUpdate(orgId, {
+    'subscription.plan': plan,
+    limits: limits,
+  });
+}
+```
+
+---
+
+## PHASE 4: QUERY PATTERNS & BEST PRACTICES
+
+### 1. Always Scope by Ownership Pattern
+
+```typescript
+// ✅ CORRECT: Filter by orgId if organization-owned
+if (context.orgId) {
+  const projects = await Project.find({ 
+    orgId: context.orgId,
+    status: 'active' 
+  });
+} else {
+  // ✅ CORRECT: Filter by userId if user-owned
+  const projects = await Project.find({ 
+    userId: context.userId,
+    orgId: null, // Explicitly check for user-owned
+    status: 'active' 
+  });
+}
+
+// ✅ CORRECT: Unified query pattern
+const query: any = { userId: context.userId };
+if (context.orgId) {
+  query.orgId = context.orgId;
+} else {
+  query.orgId = null;
+}
+const projects = await Project.find({ ...query, status: 'active' });
+
+// ❌ WRONG: Missing ownership filter
+const projects = await Project.find({ status: 'active' });
+```
+
+### 2. Use Compound Indexes for Queries
+
+```typescript
+// Query pattern: orgId + status (organization-owned)
+// Index: { orgId: 1, status: 1 } (sparse)
+if (context.orgId) {
+  const activeProjects = await Project.find({
+    orgId: context.orgId,
+    status: 'active',
+  }).sort({ createdAt: -1 });
+}
+
+// Query pattern: userId + status (user-owned)
+// Index: { userId: 1, status: 1 }
+if (!context.orgId) {
+  const activeProjects = await Project.find({
+    userId: context.userId,
+    orgId: null,
+    status: 'active',
+  }).sort({ createdAt: -1 });
+}
+
+// Query pattern: orgId + date range (organization-owned)
+// Index: { orgId: 1, createdAt: -1 } (sparse)
+if (context.orgId) {
+  const recentProjects = await Project.find({
+    orgId: context.orgId,
+    createdAt: { $gte: startDate, $lte: endDate },
+  });
+}
+```
+
+### 3. Aggregation Pipelines with Tenant Isolation
+
+```typescript
+// Always start aggregation with $match on ownership pattern
+const matchStage: any = { userId: context.userId };
+if (context.orgId) {
+  matchStage.orgId = context.orgId;
+} else {
+  matchStage.orgId = null;
+}
+
+const stats = await Project.aggregate([
+  { $match: matchStage }, // CRITICAL: First stage - ownership filter
+  { $group: {
+    _id: '$status',
+    count: { $sum: 1 },
+    totalSize: { $sum: '$size' },
+  }},
+]);
+```
+
+### 4. Update Operations
+
+```typescript
+// Always include ownership pattern in update queries
+const updateQuery: any = { 
+  _id: projectId,
+  userId: context.userId, // Always include userId
+};
+if (context.orgId) {
+  updateQuery.orgId = context.orgId; // Include orgId if organization-owned
+} else {
+  updateQuery.orgId = null; // Explicitly check for user-owned
+}
+
+await Project.updateOne(
+  updateQuery, // Prevent cross-tenant/user updates
+  { $set: { title: newTitle } }
+);
+```
+
+---
+
+## PHASE 5: SECURITY CHECKLIST
+
+### ✅ Mandatory Security Practices
+
+- [ ] **Every query** includes ownership filter (`orgId` OR `userId` with `orgId = null`)
+- [ ] **Every update** includes ownership pattern in where clause
+- [ ] **Every delete** includes ownership pattern in where clause
+- [ ] **JWT verification** happens in middleware before any DB access
+- [ ] **Member relationship** verified before granting org access (if `orgId` provided)
+- [ ] **Compound indexes** exist for both ownership patterns
+- [ ] **Webhook signature** verified for Supabase events
+- [ ] **User input** never trusted for `orgId` or `userId` (always from context)
+
+### 🔒 Security Anti-Patterns to Avoid
+
+```typescript
+// ❌ NEVER: Trust orgId or userId from request body
+const { orgId, userId, ...data } = req.body;
+await Project.create({ orgId, userId, ...data });
+
+// ✅ ALWAYS: Use orgId and userId from verified context
+await Project.create({ 
+  userId: context.userId, 
+  orgId: context.orgId || null, 
+  ...data 
+});
+
+// ❌ NEVER: Query without ownership filter
+await Project.findById(id);
+
+// ✅ ALWAYS: Include ownership pattern in query
+const query: any = { _id: id, userId: context.userId };
+if (context.orgId) {
+  query.orgId = context.orgId;
+} else {
+  query.orgId = null;
+}
+await Project.findOne(query);
+```
+
+---
+
+## PHASE 6: PERFORMANCE OPTIMIZATION
+
+### Index Strategy Summary
+
+```typescript
+// User Collection
+UserSchema.index({ email: 1 }, { unique: true });
+UserSchema.index({ currentOrgId: 1 });
+
+// Organization Collection
+OrganizationSchema.index({ 'subscription.stripeId': 1 }, { sparse: true });
+OrganizationSchema.index({ 'subscription.status': 1 });
+
+// Member Collection
+MemberSchema.index({ userId: 1, orgId: 1 }, { unique: true });
+MemberSchema.index({ orgId: 1, role: 1 });
+MemberSchema.index({ userId: 1 });
+
+// Project Collection (Example)
+// Organization-owned indexes (sparse: only when orgId exists)
+ProjectSchema.index({ orgId: 1, _id: 1 }, { sparse: true });
+ProjectSchema.index({ orgId: 1, status: 1 }, { sparse: true });
+ProjectSchema.index({ orgId: 1, createdAt: -1 }, { sparse: true });
+// User-owned indexes
+ProjectSchema.index({ userId: 1, _id: 1 });
+ProjectSchema.index({ userId: 1, status: 1 });
+ProjectSchema.index({ userId: 1, createdAt: -1 });
+// Cross-pattern indexes
+ProjectSchema.index({ createdBy: 1, orgId: 1 }, { sparse: true });
+```
+
+### Query Performance Tips
+
+1. **Start compound indexes with ownership field** - `orgId` (sparse) for org-owned, `userId` for user-owned
+2. **Use sparse indexes** for `orgId` fields (only index documents where `orgId` exists)
+3. **Use projection** to limit returned fields: `.select('title status')`
+4. **Use pagination** for large result sets: `.skip(offset).limit(limit)`
+5. **Monitor slow queries** using MongoDB profiler
+6. **Use `explain()`** to verify index usage
+
+---
+
+## PHASE 7: ENVIRONMENT VARIABLES
+
+```env
+# Supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# MongoDB
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/dbname?retryWrites=true&w=majority
+
+# Webhook Security
+WEBHOOK_SECRET=your-webhook-secret
+```
+
+---
+
+## SUMMARY
+
+This architecture provides:
+
+1. **Secure Multi-Tenancy:** Application-level isolation with mandatory `orgId` scoping
+2. **Auth Bridge:** Seamless sync between Supabase Auth and MongoDB data
+3. **Performance:** Compound indexes optimized for tenant-scoped queries
+4. **Feature Gating:** Embedded limits on Organization documents for fast checks
+5. **Scalability:** MongoDB's flexible schema supports rapid feature development
+
+**Remember:** The tenant isolation rule is non-negotiable. Every query, update, and delete must be scoped to either:
+- **Organization-owned:** `organizationId` verified through middleware (user must be member)
+- **User-owned:** `userId` verified through middleware (user owns directly)
+
+---
+
+## 🎯 WHEN TO USE ORGANIZATIONS VS INDIVIDUAL OWNERSHIP
+
+### Use Individual Ownership (`orgId = null`) when:
+
+- **Building a simple shop** with individual sellers (e.g., Etsy-style marketplace)
+- **Creating a personal productivity app** where users manage their own data
+- **Users don't need to collaborate** or share resources
+- **Each user manages their own resources independently** (e.g., personal todo lists, individual portfolios)
+- **Building a B2C product** where users are consumers, not teams
+- **You want the simplest possible architecture** without team features
+
+**Example Use Cases:**
+- Personal finance tracker
+- Individual seller marketplace
+- Personal blog platform
+- Individual portfolio sites
+- Personal note-taking app
+
+### Use Organizations (`orgId IS NOT NULL`) when:
+
+- **Building a team collaboration tool** (e.g., project management, team chat)
+- **Multiple users need to share resources** (e.g., shared documents, team calendars)
+- **You need team billing/subscriptions** (Stripe customer per organization)
+- **You need role-based permissions within teams** (admin, member, viewer)
+- **Building a B2B SaaS product** where companies are the customers
+- **Resources belong to a company/team**, not individual users
+
+**Example Use Cases:**
+- Team project management tool
+- Company knowledge base
+- Team calendar/scheduling
+- Enterprise SaaS products
+- Multi-user dashboards
+
+### Hybrid Approach:
+
+- **Allow both patterns!** Some resources can be user-owned, others org-owned
+- **Let users choose** when creating resources (e.g., "Create personal project" vs "Create team project")
+- **Support migration** from individual to organization (set `orgId` when user joins/creates org)
+- **Use the same collection schema** with optional `orgId` - middleware handles both automatically

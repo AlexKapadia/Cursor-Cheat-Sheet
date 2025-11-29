@@ -1,0 +1,2140 @@
+---
+alwaysApply: false
+---
+
+# Elegant Typography Warm Minimalist - Website Design System
+
+## Website Metadata
+- **Source URL:** https://www.lusano.com/
+- **Design Style:** Elegant Typography Warm Minimalist
+- **Primary Framework:** Next.js
+- **CSS Framework:** Custom CSS
+- **Analysis Date:** 2025-11-29
+- **Pages Analyzed:** 17
+- **Total Components:** 25+
+
+## Design Overview
+
+Lusano's website embodies an elegant, minimalist design system that prioritizes typography and warm, earthy tones. The design is characterized by a sophisticated brown color palette ranging from deep chocolate to warm beige, creating a luxurious, heirloom-quality aesthetic. The typography system uses EB Garamond, a classic serif font, throughout the site, emphasizing elegance and timelessness. The layout is clean and spacious, with generous white space allowing content and product imagery to breathe. The design system emphasizes subtle animations, smooth transitions, and a sophisticated user experience that reflects the brand's commitment to quality craftsmanship.
+
+## Design System Fundamentals
+
+### Color Palette
+
+**Primary Colors:**
+- Primary Brown: `#4a2214` / `var(--brown)` (usage: primary text, backgrounds, main brand color)
+- Brown 2: `#6f402d` / `var(--brown-2)` (usage: secondary elements, accents)
+- Brown 3: `#88583c` / `var(--brown-3)` (usage: tertiary elements, subtle backgrounds)
+- Brown 4: `#bc9b7c` / `var(--brown-4)` (usage: light accents, borders)
+- Brown 5: `#d7c6b3` / `var(--brown-5)` (usage: lightest brown, subtle backgrounds)
+
+**Neutral Colors:**
+- Background: `#f7f4ef` / `var(--offwhite)` (usage: primary background, light theme)
+- Surface: `#f7f4ef` (usage: card backgrounds, surfaces)
+- Text Primary: `#4a2214` / `var(--brown)` (usage: primary text in light theme)
+- Text Secondary: `#6f402d` / `var(--brown-2)` (usage: secondary text)
+- Border: `#bc9b7c` / `var(--brown-4)` (usage: borders, dividers)
+- Black: `#000` / `var(--black)` (usage: dark overlays, emphasis)
+
+**Theme Colors:**
+- Light Theme Foreground: `var(--theme-fg)` = `var(--brown)`
+- Light Theme Background: `var(--theme-bg)` = `var(--offwhite)`
+- Light Theme Foreground Invert: `var(--theme-fg-invert)` = `var(--offwhite)`
+- Light Theme Background Invert: `var(--theme-bg-invert)` = `var(--brown)`
+- Dark Theme Foreground: `var(--theme-fg)` = `var(--offwhite)`
+- Dark Theme Background: `var(--theme-bg)` = `var(--brown)`
+- Dark Theme Foreground Invert: `var(--theme-fg-invert)` = `var(--brown)`
+- Dark Theme Background Invert: `var(--theme-bg-invert)` = `var(--offwhite)`
+
+**Semantic Colors:**
+- Success: N/A (not explicitly defined)
+- Error: N/A (not explicitly defined)
+- Warning: N/A (not explicitly defined)
+- Info: N/A (not explicitly defined)
+
+**Gradients:**
+```css
+/* Backdrop blur gradient for navigation */
+background: rgba(74, 34, 20, 0.15);
+backdrop-filter: blur(1.5rem);
+-webkit-backdrop-filter: blur(1.5rem);
+```
+
+**Opacity Variations:**
+- Brown overlays: `rgba(74, 34, 20, 0.15)`, `rgba(0, 0, 0, 0.5)`, `rgba(0, 0, 0, 0.15)`
+- Element opacity: `0.2`, `0.4`, `0.5` (for inactive states, hover effects)
+
+### Typography System
+
+**Font Families:**
+- Primary: `EB Garamond, serif` (usage: all text content, headings, body, UI elements)
+- Secondary: `swiper-icons` (usage: icon font for carousel controls)
+- Monospace: N/A
+
+**Type Scale:**
+
+**Mobile Typography:**
+```css
+/* Base font size */
+html {
+  font-size: 10px;
+}
+
+body {
+  font-size: 1.6rem; /* 16px */
+  line-height: 1.3;
+}
+
+/* Small text */
+--font-size-sm: 1.2rem; /* 12px */
+line-height: 1.3;
+
+/* Base text */
+--font-size-base: 1.2rem; /* 12px */
+line-height: 1.3;
+
+/* Large text */
+--font-size-lg: 1.4rem; /* 14px */
+line-height: 1.3;
+
+/* Display text */
+--font-size-display: 4.8rem; /* 48px */
+line-height: 1;
+```
+
+**Desktop Typography (min-width: 967px):**
+```css
+/* Base text */
+--font-size-base: 1.4rem; /* 14px */
+line-height: 1.3;
+
+/* Large text */
+--font-size-lg: 1.4rem; /* 14px */
+line-height: 1.3;
+
+/* Display text */
+--font-size-display: 5rem; /* 50px */
+line-height: 1;
+
+/* Hero title */
+--font-size-hero: 3.6rem; /* 36px */
+line-height: 1;
+```
+
+**Line Heights:**
+```css
+--line-height-tight: 1;
+--line-height-normal: 1.3;
+--line-height-relaxed: 1.5;
+```
+
+**Font Weights:**
+- Regular: `400` (usage: all text, headings, body)
+- No other weights used (single weight design system)
+
+**Font Styles:**
+- Normal: Default for most text
+- Italic: `font-style: italic` (usage: navigation labels, product indices, emphasis)
+
+**Letter Spacing:**
+- Default: Normal (no explicit letter-spacing defined)
+
+### Spacing System
+
+```css
+:root {
+  /* Gutter spacing */
+  --gutter: 2.1rem; /* 21px - primary spacing unit */
+  
+  /* Page gutter (responsive) */
+  --page-gutter: 1.5rem; /* 15px - mobile */
+  
+  /* Section spacing */
+  --section-spacing: 12rem; /* 120px - mobile */
+  
+  /* Product page specific */
+  --product-page-center-width: 36vw;
+  --product-page-right-width: 19vw;
+  --product-page-left-width: 25vw;
+  --product-page-ui-top-padding: 5.7rem;
+  --gallery-top-offset: [calculated];
+  --next-item-height: [calculated];
+}
+
+@media (min-width: 967px) {
+  :root {
+    --page-gutter: 2.1rem; /* 21px - desktop */
+    --section-spacing: 26rem; /* 260px - desktop */
+  }
+}
+```
+
+**Spacing Scale:** The spacing system uses rem units with a base of 10px (html font-size). Primary spacing units are:
+- `--gutter`: 2.1rem (21px) - primary spacing unit
+- `--page-gutter`: 1.5rem (15px) mobile, 2.1rem (21px) desktop - page margins
+- `--section-spacing`: 12rem (120px) mobile, 26rem (260px) desktop - vertical section spacing
+
+**Common Spacing Values:**
+- `0.3rem` (3px) - tight spacing
+- `0.5rem` (5px) - small spacing
+- `0.7rem` (7px) - medium-small spacing
+- `1rem` (10px) - base unit
+- `1.2rem` (12px) - small-medium spacing
+- `1.4rem` (14px) - medium spacing
+- `1.6rem` (16px) - medium-large spacing
+- `1.8rem` (18px) - large spacing
+- `2rem` (20px) - extra large spacing
+- `2.1rem` (21px) - gutter spacing
+- `2.2rem` (22px) - section spacing
+- `2.3rem` (23px) - large section spacing
+- `2.4rem` (24px) - extra large section spacing
+- `2.7rem` (27px) - hero spacing
+- `2.9rem` (29px) - hero spacing
+- `3rem` (30px) - large spacing
+- `3.2rem` (32px) - extra large spacing
+- `3.7rem` (37px) - section spacing
+- `4rem` (40px) - large section spacing
+- `5rem` (50px) - hero spacing
+- `5.7rem` (57px) - UI top padding
+- `6rem` (60px) - large section spacing
+- `7rem` (70px) - hero spacing
+- `8rem` (80px) - extra large section spacing
+- `9rem` (90px) - gallery spacing
+- `12rem` (120px) - section spacing (mobile)
+- `26rem` (260px) - section spacing (desktop)
+
+### Border Radius System
+
+```css
+:root {
+  --border-radius: 0.5rem; /* 5px - primary border radius */
+}
+
+/* Navigation bar border radius */
+--border-radius: 0.5rem;
+```
+
+**Border Radius Values:**
+- Small: `0.5rem` (5px) - primary border radius for navigation, cards
+- No other border radius values used (minimal rounded corners)
+
+### Shadow System
+
+```css
+/* No explicit box shadows defined in the design system */
+/* Shadows are achieved through opacity and backdrop filters */
+```
+
+**Shadow Usage:**
+- No traditional box shadows used
+- Depth achieved through:
+  - Backdrop blur effects: `backdrop-filter: blur(1.5rem)`
+  - Opacity variations: `opacity: 0.2`, `opacity: 0.4`, `opacity: 0.5`
+  - Background color overlays: `rgba(74, 34, 20, 0.15)`
+
+## Layout Systems
+
+### Grid System
+
+```css
+/* Main Container */
+.container {
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0 var(--page-gutter);
+}
+
+/* Product Gallery Grid */
+.product-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-column-gap: 1.8rem;
+  grid-row-gap: 3rem;
+  padding-top: var(--gallery-top-offset);
+  padding-bottom: 5rem;
+}
+
+@media (min-width: 967px) {
+  .product-gallery-grid {
+    grid-template-columns: repeat(5, 1fr);
+    column-gap: 8rem;
+    row-gap: 9rem;
+  }
+}
+
+/* Home Product Panning Grid */
+.home-product-panning-grid {
+  display: grid;
+  grid-template: var(--grid-template);
+  grid-gap: 2rem;
+  gap: 2rem;
+}
+
+@media (min-width: 967px) {
+  .home-product-panning-grid {
+    gap: 3rem;
+    padding: 8rem;
+  }
+}
+
+/* About Hero Grid */
+.about-hero-inner {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 967px) {
+  .about-hero-inner {
+    display: grid;
+    grid-template-columns: 24.5rem 1fr 24.5rem;
+    justify-content: space-between;
+  }
+}
+```
+
+### Breakpoints
+
+```css
+/* Mobile First Approach */
+
+/* Mobile */
+/* Base styles apply from 0px */
+
+/* Tablet/Desktop */
+@media (min-width: 967px) {
+  /* Desktop styles */
+}
+
+/* No other explicit breakpoints defined */
+```
+
+**Breakpoint Values:**
+- Mobile: `0px - 966px` (base styles)
+- Desktop: `967px+` (tablet and desktop)
+
+**Breakpoint Usage:**
+- Single breakpoint at `967px` separates mobile from tablet/desktop
+- Mobile-first approach: base styles for mobile, enhanced styles for desktop
+
+## Component Library
+
+### Buttons
+
+**Line Button (Primary Interactive Element):**
+```css
+.line-button {
+  border: none;
+  cursor: pointer;
+  background-color: transparent;
+  padding: 0;
+  text-align: inherit;
+  letter-spacing: inherit;
+  font-size: inherit;
+  text-transform: inherit;
+  display: inline-flex;
+  width: max-content;
+  --line-width: 0.05em;
+}
+
+.line-button-inner {
+  display: grid;
+  grid-template-areas: "a";
+  position: relative;
+  overflow: hidden;
+  padding-bottom: var(--line-width);
+}
+
+.line-button-label {
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1.1;
+  grid-area: a;
+  color: var(--theme-fg);
+  transition: color 0.8s;
+  transform: translateY(120%);
+  opacity: 0;
+}
+
+.line-button-line {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  height: var(--line-width);
+  background-color: var(--theme-fg);
+  transform: translateX(-105%) scaleX(0);
+  transform-origin: left;
+  transition: background-color 0.8s;
+  opacity: 0;
+}
+
+/* Active state */
+.line-button.is-active .line-button-label {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.line-button.is-active .line-button-line {
+  transform: translateX(0);
+  opacity: 1;
+}
+```
+
+**Navigation Toggle Button:**
+```css
+.nav-toggle-button {
+  border: none;
+  cursor: pointer;
+  background-color: transparent;
+  padding: 0 var(--side-padding);
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 95%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: max-content;
+  display: grid;
+  grid-template-areas: "a";
+  align-items: center;
+}
+
+@media (max-width: 967px) {
+  .nav-toggle-button {
+    left: auto;
+    right: 0;
+  }
+}
+
+.nav-hamburger-icon,
+.nav-x-icon {
+  width: 1rem;
+  grid-area: a;
+  color: var(--theme-fg);
+  transition: color 0.8s;
+}
+
+.nav-x-icon {
+  opacity: 0;
+}
+```
+
+**Product Gallery Toggle Buttons:**
+```css
+.product-gallery-toggle-button {
+  font-family: EB Garamond, serif;
+  font-weight: 400;
+  font-size: 1.2rem;
+  line-height: 1.3;
+  color: var(--theme-fg);
+  transition: opacity 0.8s, color 0.8s;
+  opacity: 0.5;
+  position: relative;
+}
+
+@media (min-width: 967px) {
+  .product-gallery-toggle-button {
+    font-size: 1.4rem;
+  }
+}
+
+.product-gallery-toggle-button:after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: 1px;
+  background-color: var(--theme-fg);
+  opacity: 0;
+  transition: opacity 0.8s;
+}
+
+.product-gallery-toggle-button.is-active,
+.product-gallery-toggle-button.is-active:after {
+  opacity: 1;
+}
+```
+
+**Inquire Button:**
+```css
+.inquire-button {
+  border: none;
+  cursor: pointer;
+  background-color: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 2.8rem;
+  background-color: var(--theme-bg-invert);
+  transform: translateY(105%);
+}
+
+.inquire-button-text {
+  font-family: EB Garamond, serif;
+  font-weight: 400;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--theme-fg-invert);
+  position: relative;
+  z-index: 2;
+}
+
+.inquire-button-bg-hover {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  background-color: var(--theme-fg-invert);
+  opacity: 0.1;
+  transform: translateY(105%);
+  transition: transform 0.25s;
+}
+
+@media (pointer: fine) {
+  .inquire-button:hover .inquire-button-bg-hover {
+    transform: translateY(0);
+  }
+}
+```
+
+### Cards
+
+**Product Card (Grid View):**
+```css
+.product-card-grid {
+  position: relative;
+  transition: opacity 0.25s;
+  background-color: var(--bg-color);
+}
+
+.product-card-grid.not-in-filter {
+  opacity: 0.2;
+}
+
+@media (pointer: fine) {
+  .product-card-grid:hover {
+    opacity: 1;
+  }
+}
+
+.product-card-grid[data-orientation="portrait"] {
+  aspect-ratio: var(--product-portrait-aspect); /* 0.9083969466 */
+}
+
+.product-card-grid[data-orientation="landscape"] {
+  aspect-ratio: var(--product-landscape-aspect); /* 1.487394958 */
+}
+
+.product-card-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-card-info {
+  margin-top: 0.9rem;
+  display: flex;
+  gap: 2rem;
+  color: var(--theme-fg);
+  transition: color 0.8s;
+  opacity: 0;
+}
+
+.product-card-number {
+  font-family: EB Garamond, serif;
+  font-weight: 400;
+  font-size: 1.2rem;
+  line-height: 1;
+  font-style: italic;
+}
+
+.product-card-title {
+  font-family: EB Garamond, serif;
+  font-weight: 400;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+```
+
+**Product Card (List View):**
+```css
+.product-card-list {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100svh;
+}
+
+.product-card-list:not(:first-child) {
+  margin-top: var(--top-margin);
+}
+
+.product-card-list-image-container {
+  position: relative;
+  display: flex;
+  height: 100%;
+  width: auto;
+  transition: opacity 0.25s;
+  z-index: 2;
+}
+
+.product-card-list-image-container.not-in-filter {
+  opacity: 0.2;
+}
+
+@media (pointer: fine) {
+  .product-card-list-image-container:hover {
+    opacity: 1;
+  }
+}
+
+.product-card-list-image-container[data-orientation="portrait"] {
+  aspect-ratio: var(--product-portrait-aspect);
+}
+
+.product-card-list-image-container[data-orientation="landscape"] {
+  aspect-ratio: var(--product-landscape-aspect);
+}
+
+.product-card-list-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 1 !important;
+}
+```
+
+### Forms
+
+**Input Fields:**
+```css
+/* No explicit form input styles found in the design system */
+/* Forms appear to use minimal styling, likely relying on browser defaults */
+```
+
+**Form Interactions:**
+- Forms are minimal and not prominently featured in the design
+- Focus states would use default browser styles or minimal custom styling
+
+### Navigation
+
+**Main Navigation:**
+```css
+.navigation {
+  z-index: 107;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.navigation-logo-link {
+  display: block;
+  position: absolute;
+  left: var(--page-gutter);
+  top: var(--gutter);
+}
+
+.navigation-logo {
+  width: 5.5rem;
+  color: var(--theme-fg);
+  transition: fill 0.8s, color 0.8s;
+}
+
+.navigation-bar {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--gutter) * 0.5);
+  transform: translateX(-50%);
+  max-width: 23rem;
+}
+
+@media (min-width: 967px) {
+  .navigation-bar {
+    top: var(--gutter);
+    max-width: 18rem;
+  }
+}
+
+.navigation-clock {
+  position: absolute;
+  right: var(--page-gutter);
+  top: var(--gutter);
+}
+```
+
+**Navigation Bar:**
+```css
+.nav-bar {
+  width: 100%;
+  display: block;
+  color: var(--theme-fg);
+  position: relative;
+  border-radius: var(--border-radius);
+  --border-radius: 0.5rem;
+  --side-padding: 0.9rem;
+}
+
+.nav-bar-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--border-radius);
+  transition: background-color 0.8s, opacity 0.8s;
+}
+
+.nav-bar[data-theme="dark"] .nav-bar-bg {
+  background-color: var(--theme-bg-invert);
+  opacity: 0.2;
+}
+
+.nav-bar[data-theme="light"] .nav-bar-bg {
+  background-color: var(--theme-bg);
+  opacity: 0.4;
+}
+
+.nav-bar-blur {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(74, 34, 20, 0.15);
+  backdrop-filter: blur(1.5rem);
+  -webkit-backdrop-filter: blur(1.5rem);
+  border-radius: var(--border-radius);
+}
+
+.nav-bar-active-link-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  height: 2.5rem;
+}
+
+.nav-bar-active-link-label {
+  font-family: EB Garamond, serif;
+  font-weight: 400;
+  font-size: 1.2rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  grid-area: a;
+  height: 100%;
+  transition: color 0.8s;
+  margin-top: 0.1rem;
+  font-style: italic;
+  width: 100%;
+  text-align: center;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+@media (max-width: 967px) {
+  .nav-bar-active-link-label {
+    justify-content: flex-end;
+    padding-right: 3rem;
+  }
+}
+
+.nav-bar-dropdown-container {
+  padding: 0 var(--side-padding);
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-bar-nav-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-bar-line {
+  width: 100%;
+  height: 1px;
+  background-color: var(--theme-fg);
+  pointer-events: none;
+}
+
+.nav-bar-nav-item {
+  width: 100%;
+  margin-top: -1px;
+}
+
+.nav-bar-nav-item-link {
+  font-family: EB Garamond, serif;
+  font-weight: 400;
+  font-size: 1.2rem;
+  line-height: 1;
+  font-style: italic;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.7rem;
+  padding: 0.7rem 0 0.4rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-bar-nav-item-link.active {
+  opacity: 0.5;
+}
+
+.nav-bar-nav-item-label,
+.nav-bar-nav-item-count {
+  display: block;
+}
+```
+
+**Mobile Menu:**
+```css
+.mobile-menu {
+  /* Navigation bar adapts for mobile */
+  /* Toggle button moves to right on mobile */
+}
+
+@media (max-width: 967px) {
+  .nav-toggle-button {
+    left: auto;
+    right: 0;
+  }
+  
+  .nav-bar-active-link-label {
+    justify-content: flex-end;
+    padding-right: 3rem;
+  }
+}
+```
+
+### Modals/Dialogs
+
+**Zoom Image Modal:**
+```css
+.zoom-image {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 108;
+  pointer-events: none;
+  background-color: transparent;
+  transition: background-color 0.3s;
+}
+
+.zoom-image.zoom-image-open {
+  pointer-events: auto;
+}
+
+.zoom-image.window-is-taller.zoom-image-open {
+  background-color: var(--black);
+}
+
+.zoom-image-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.zoom-image-container {
+  width: 100%;
+  position: relative;
+  aspect-ratio: var(--product-portrait-aspect);
+  opacity: 0;
+}
+
+.zoom-image-open .zoom-image-container {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.zoom-image-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 1 !important;
+}
+
+.zoom-image-close {
+  font-family: EB Garamond, serif;
+  font-weight: 400;
+  font-size: 1.2rem;
+  line-height: 1;
+  position: absolute;
+  top: var(--page-gutter);
+  left: var(--page-gutter);
+  z-index: 2;
+}
+```
+
+**Product Gallery View Modal:**
+```css
+.product-gallery-view {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 106;
+  pointer-events: none;
+  overflow: hidden;
+  --image-width: 17.7rem;
+}
+
+@media (max-width: 967px) {
+  .product-gallery-view {
+    --image-width: 7.5rem;
+  }
+  
+  .product-gallery-view[data-image-count="5"] {
+    --image-width: 6.5rem;
+  }
+}
+
+.product-gallery-view.product-gallery-images-open {
+  pointer-events: auto;
+}
+
+.product-gallery-view-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--offwhite);
+  opacity: 0;
+  z-index: 1;
+}
+
+.product-gallery-view-top-content {
+  position: absolute;
+  top: var(--page-gutter);
+  padding: 0 var(--page-gutter);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  z-index: 3;
+}
+
+.product-gallery-view-close-button {
+  font-family: EB Garamond, serif;
+  font-weight: 400;
+  font-size: 1.2rem;
+  line-height: 1.3;
+}
+
+@media (min-width: 967px) {
+  .product-gallery-view-close-button {
+    font-size: 1.4rem;
+  }
+}
+
+.product-gallery-view-list {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  gap: 0.7rem;
+  z-index: 3;
+}
+
+@media (max-width: 967px) {
+  .product-gallery-view-list {
+    gap: 0.3rem;
+  }
+}
+
+.product-gallery-view-image-container {
+  width: var(--image-width);
+  position: relative;
+  aspect-ratio: var(--product-portrait-aspect);
+  opacity: 0;
+}
+
+.product-gallery-view-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 1;
+}
+```
+
+### Loading Indicators
+
+**Preloader:**
+```css
+.preloader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 109;
+  color: var(--theme-fg-invert);
+  height: 100svh;
+}
+
+.preloader path {
+  stroke-width: 0.2px;
+  stroke: var(--theme-fg-invert);
+  fill: transparent;
+}
+
+.preloader-bg {
+  z-index: 1;
+  background-color: var(--theme-bg-invert);
+  transform-origin: top;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.preloader-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.preloader-middle {
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+  align-items: center;
+  gap: 1rem;
+}
+
+.preloader-middle [data-p] {
+  font-family: EB Garamond, serif;
+  font-weight: 400;
+  font-size: 1.2rem;
+  line-height: 1.3;
+  margin: 0;
+}
+
+@media (min-width: 967px) {
+  .preloader-middle [data-p] {
+    font-size: 1.4rem;
+  }
+}
+
+.preloader-middle-logo {
+  width: 1.8rem;
+}
+
+.preloader-bottom-left {
+  position: absolute;
+  bottom: var(--gutter);
+  left: var(--gutter);
+}
+
+.preloader-bottom-middle {
+  position: absolute;
+  bottom: var(--gutter);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.preloader-bottom-middle-logo {
+  width: 6rem;
+}
+
+.preloader-bottom-right {
+  position: absolute;
+  bottom: var(--gutter);
+  right: var(--gutter);
+}
+```
+
+**Image Loading:**
+```css
+.sanity-image {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.sanity-image.loaded {
+  opacity: 1;
+}
+
+.sanity-image.disable-loaded-opacity {
+  opacity: 1;
+  transition: none;
+}
+```
+
+## Animations and Transitions
+
+### CSS Transitions
+
+```css
+/* Standard Transitions */
+.transition {
+  transition: [property] [duration] [timing-function];
+}
+
+/* Color Transitions */
+.color-transition {
+  transition: color 0.8s;
+}
+
+.fill-transition {
+  transition: fill 0.8s, color 0.8s;
+}
+
+/* Background Transitions */
+.background-transition {
+  transition: background-color 0.8s, opacity 0.8s;
+}
+
+/* Opacity Transitions */
+.opacity-transition {
+  transition: opacity 0.25s;
+}
+
+.opacity-transition-slow {
+  transition: opacity 0.8s;
+}
+
+/* Transform Transitions */
+.transform-transition {
+  transition: transform 0.25s;
+}
+
+/* Common Transition Durations */
+--transition-fast: 0.25s;
+--transition-normal: 0.3s;
+--transition-slow: 0.8s;
+```
+
+**Common Transition Patterns:**
+```css
+/* Navigation transitions */
+.nav-element {
+  transition: color 0.8s;
+}
+
+/* Button hover transitions */
+.button {
+  transition: opacity 0.25s, color 0.8s;
+}
+
+/* Image loading transitions */
+.image {
+  transition: opacity 0.3s;
+}
+
+/* Modal transitions */
+.modal {
+  transition: background-color 0.3s;
+}
+```
+
+### CSS Animations
+
+```css
+/* Blur In Animation */
+@keyframes blur-in {
+  0% {
+    opacity: 1;
+    filter: blur(2.5rem);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+.blur-in {
+  animation: blur-in [duration] [timing-function];
+}
+
+/* Swiper Preloader Spin */
+@keyframes swiper-preloader-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.swiper-lazy-preloader {
+  animation: swiper-preloader-spin 1s linear infinite;
+}
+```
+
+### Scroll Animations
+
+**Text Line Animations:**
+```css
+.animated-text-lines {
+  opacity: 0;
+}
+
+.animated-text-lines.rendered {
+  opacity: 1;
+}
+
+[data-to-animate="lines"] .animated-text-lines-line-inner {
+  transform: translateY(115%);
+  display: block;
+}
+
+.animated-text-lines.has-finishes-animated[data-to-animate="lines"] .animated-text-lines-line-inner {
+  transform: none;
+}
+
+[data-to-animate="chars"] .animated-text-lines-char,
+[data-to-animate="words"] .animated-text-lines-word {
+  transform: translateY(115%);
+}
+```
+
+**Scroll-Triggered Reveals:**
+- Text lines animate in from bottom (translateY(115%))
+- Characters and words can animate individually
+- Animation triggered by scroll position or intersection observer
+
+### Page Transitions
+
+**Page Transition Mask:**
+```css
+.page-transition {
+  display: block;
+  min-height: 100svh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.page-transition[data-page-is-active="true"] {
+  position: relative;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.page-transition-mask {
+  width: 100%;
+  height: 100svh;
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bg);
+  clip-path: polygon(0 var(--y), 100% var(--y), 100% 100%, 0 100%);
+  --y: 100%;
+}
+
+[data-page-is-active="true"] .page-transition-mask {
+  height: auto;
+  overflow: visible;
+  --y: 0%;
+}
+
+.page-transition-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--black);
+  z-index: 10;
+  opacity: 0;
+  pointer-events: none;
+}
+```
+
+**Product Page Transition:**
+```css
+.page-transition[data-animation-type="product"] .page-transition-mask {
+  clip-path: none;
+  background-color: transparent;
+}
+
+.page-transition[data-animation-type="product"] .page-transition-overlay {
+  opacity: 0 !important;
+}
+```
+
+### Micro-interactions
+
+**Hover Effects:**
+```css
+/* Product card hover */
+@media (pointer: fine) {
+  .product-card:hover {
+    opacity: 1;
+  }
+  
+  .product-card.not-in-filter:hover {
+    opacity: 1;
+  }
+}
+
+/* Navigation item hover */
+@media (pointer: fine) {
+  .nav-item:hover {
+    opacity: 0.5;
+  }
+}
+
+/* Filter button hover */
+@media (pointer: fine) {
+  .filter-button:hover {
+    opacity: 1;
+  }
+}
+```
+
+**Click Interactions:**
+- Buttons use transform animations for feedback
+- Line buttons animate underline on activation
+- Toggle buttons switch between hamburger and X icon
+
+## Page Layouts
+
+### Homepage Layout
+
+**Structure:**
+```css
+.homepage {
+  min-height: 100svh;
+  background-color: var(--theme-bg);
+  color: var(--theme-fg);
+}
+
+/* Home Product List Section */
+.home-product-list {
+  height: 100svh;
+  width: 100%;
+  position: relative;
+}
+
+/* Home Product Panning Container */
+.home-product-panning-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  overflow: hidden;
+}
+
+.home-product-panning-grid {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) !important;
+  width: 100%;
+  aspect-ratio: var(--ratio);
+}
+
+@media (max-width: 967px) {
+  .home-product-panning-grid {
+    height: 100%;
+  }
+}
+
+[data-window-scale="taller"] .home-product-panning-grid {
+  height: 100%;
+}
+```
+
+**Homepage Components:**
+- Navigation (fixed top)
+- Home Product List (full viewport height)
+- Product Gallery Navigation (fixed positioning)
+- Product Gallery (grid or list view)
+
+### Product Page Layout
+
+**Desktop Product Page:**
+```css
+.product-page-desktop {
+  min-height: 100svh;
+  background-color: var(--offwhite);
+  width: 100%;
+  padding-top: 6rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.product-page-desktop-images {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+  width: var(--product-page-center-width); /* 36vw */
+  margin: 0 auto;
+}
+
+.product-page-desktop-image-container {
+  width: 100%;
+  position: relative;
+  opacity: 0.00001;
+}
+
+.product-page-desktop-image-container[data-orientation="portrait"] {
+  aspect-ratio: var(--product-portrait-aspect);
+}
+
+.product-page-desktop-image-container[data-orientation="landscape"] {
+  aspect-ratio: var(--product-landscape-aspect);
+}
+
+.product-page-desktop-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+```
+
+**Product Page UI Elements:**
+```css
+/* Left Side UI */
+.product-page-ui-left {
+  position: fixed;
+  z-index: 103;
+  left: 0;
+  top: 0;
+  width: var(--product-page-left-width); /* 25vw */
+  height: 100svh;
+  padding: var(--product-page-ui-top-padding) var(--page-gutter) var(--page-gutter);
+  color: var(--brown);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Right Side UI */
+.product-page-ui-right {
+  z-index: 102;
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: var(--product-page-right-width); /* 19vw */
+  height: auto;
+  padding: 0 var(--page-gutter) var(--page-gutter) 0;
+  color: var(--brown);
+}
+
+@media (max-width: 967px) {
+  .product-page-ui-right {
+    position: static;
+    width: 100%;
+    padding: 0;
+  }
+}
+```
+
+**Mobile Product Page:**
+```css
+.product-page-mobile-inner {
+  padding: 5rem var(--page-gutter);
+}
+
+.product-page-mobile-top-content {
+  min-height: 100svh;
+}
+
+.product-page-mobile-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.2rem;
+}
+
+.product-page-mobile-slider-container {
+  margin-bottom: 1.2rem;
+  clip-path: polygon(0 var(--left-y), 100% var(--right-y), 100% 100%, 0 100%);
+  overflow: hidden;
+  position: relative;
+  --left-y: 100%;
+  --right-y: 100%;
+}
+```
+
+### About Page Layout
+
+```css
+.about-hero {
+  color: var(--offwhite);
+  padding: 5rem var(--page-gutter) var(--page-gutter);
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 967px) {
+  .about-hero {
+    min-height: 100svh;
+    padding: 7rem var(--page-gutter) var(--page-gutter);
+  }
+}
+
+.about-hero-inner {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 967px) {
+  .about-hero-inner {
+    display: grid;
+    grid-template-columns: 24.5rem 1fr 24.5rem;
+    justify-content: space-between;
+  }
+}
+```
+
+## User Flows and Navigation
+
+### Primary User Flows
+
+1. **Homepage to Product Page Flow:**
+   - User lands on homepage
+   - Sees product grid/list view
+   - Clicks on product card
+   - Page transitions with mask animation
+   - Product page loads with images and details
+
+2. **Product Gallery Navigation Flow:**
+   - User views product gallery
+   - Can toggle between grid and list view
+   - Can filter products by category
+   - Can switch between light and dark theme
+   - Scrolls through products
+
+3. **Product Detail Flow:**
+   - User views product images
+   - Can zoom into product images
+   - Can view product specifications
+   - Can inquire about product
+   - Can navigate to next product
+
+4. **Navigation Menu Flow:**
+   - User clicks navigation toggle
+   - Dropdown menu animates in
+   - User selects page
+   - Page transitions with mask animation
+   - New page loads
+
+### Navigation Structure
+
+**Main Navigation:**
+- Logo (left, fixed)
+- Navigation bar (center, fixed)
+- Clock (right, fixed)
+- Toggle button (left/right depending on breakpoint)
+
+**Navigation Menu Items:**
+- Home
+- Products (with count)
+- About
+- Contact/Email
+- Instagram link
+
+**Footer Navigation:**
+- Email link
+- Instagram link
+- Logo (center)
+
+### Link Patterns
+
+**Internal Links:**
+- Use same typography as body text
+- Italic style for navigation items
+- Underline on hover/active states
+- Smooth color transitions
+
+**External Links:**
+- Same styling as internal links
+- Opens in same window
+
+**CTA Links:**
+- Inquire button with background color
+- Hover effect with background overlay
+- Transform animation on reveal
+
+## Responsive Design Patterns
+
+### Mobile (< 967px)
+
+**Layout Changes:**
+- Single column layouts
+- Full-width containers
+- Reduced spacing
+- Stacked navigation elements
+- Mobile menu pattern
+- Product slider instead of grid
+
+**Typography:**
+- Smaller font sizes (1.2rem base)
+- Tighter line heights
+- Reduced display sizes
+
+**Components:**
+- Mobile product page layout
+- Mobile navigation pattern
+- Touch-optimized interactions
+- Swiper carousel for product images
+
+**Spacing:**
+- `--page-gutter: 1.5rem` (15px)
+- `--section-spacing: 12rem` (120px)
+- Reduced padding throughout
+
+### Tablet/Desktop (≥ 967px)
+
+**Layout Changes:**
+- Multi-column grids
+- Fixed sidebars for product pages
+- Centered content areas
+- Expanded navigation
+- Grid view for products
+
+**Typography:**
+- Larger font sizes (1.4rem base)
+- Larger display sizes (5rem)
+- More generous line heights
+
+**Components:**
+- Desktop product page layout
+- Desktop navigation pattern
+- Hover interactions enabled
+- Grid view for products
+
+**Spacing:**
+- `--page-gutter: 2.1rem` (21px)
+- `--section-spacing: 26rem` (260px)
+- Increased padding throughout
+
+## Loading States and Indicators
+
+### Page Load
+
+**Preloader:**
+- Full-screen preloader on initial load
+- Animated logo/icon
+- Background color transition
+- Text content in center
+- Logo in bottom positions
+- Smooth fade-out transition
+
+**Initial Render:**
+- Content fades in after preloader
+- Images load progressively
+- Text animates in from bottom
+
+### Content Loading
+
+**Image Loading:**
+- Images start with `opacity: 0`
+- Transition to `opacity: 1` when loaded
+- Smooth 0.3s transition
+- Background color shows during load
+
+**Lazy Loading:**
+- Images load as they enter viewport
+- Progressive enhancement
+- Smooth opacity transitions
+
+### Form Submission
+
+**Inquire Button:**
+- Button animates in from bottom
+- Hover state with background overlay
+- Loading state not explicitly defined
+
+## Interactive Behaviors
+
+### Hover Effects
+
+**Product Cards:**
+```css
+@media (pointer: fine) {
+  .product-card:hover {
+    opacity: 1;
+  }
+  
+  .product-card.not-in-filter:hover {
+    opacity: 1;
+  }
+}
+```
+
+**Navigation Items:**
+```css
+@media (pointer: fine) {
+  .nav-item:hover {
+    opacity: 0.5;
+  }
+}
+```
+
+**Filter Buttons:**
+```css
+@media (pointer: fine) {
+  .filter-button:hover {
+    opacity: 1;
+  }
+}
+```
+
+**Buttons:**
+```css
+@media (pointer: fine) {
+  .button:hover .button-bg-hover {
+    transform: translateY(0);
+  }
+}
+```
+
+### Click Interactions
+
+**Navigation Toggle:**
+- Hamburger icon transforms to X
+- Smooth icon transition
+- Dropdown animates in
+
+**Product Gallery Toggle:**
+- Grid/List view switches
+- Smooth transition between views
+- Active state indicator
+
+**Theme Toggle:**
+- Light/Dark theme switches
+- Color transitions (0.8s)
+- Background color changes
+
+### Scroll Behaviors
+
+**Smooth Scrolling:**
+- Custom scroll implementation (Lenis)
+- Smooth scroll behavior
+- Scroll-triggered animations
+
+**Scroll Animations:**
+- Text lines animate in on scroll
+- Images fade in on scroll
+- Product cards reveal on scroll
+
+**Sticky Elements:**
+- Navigation stays fixed
+- Product gallery controls stay fixed
+- Clock stays fixed
+
+### Form Interactions
+
+**Inquire Button:**
+- Hover effect with background overlay
+- Click triggers form/modal
+- Smooth transform animation
+
+## Implementation Guidelines
+
+### CSS Architecture
+
+**Naming Convention:**
+- BEM-like naming with component prefixes
+- Format: `ComponentName_ElementName__Modifier`
+- Example: `ProductGallery_ProductGallery__uhxQh`
+
+**CSS Organization:**
+- Component-based CSS
+- CSS Modules or styled-components
+- Global CSS variables in `:root`
+- Media queries at component level
+
+**CSS Variables:**
+- All colors use CSS variables
+- Spacing uses CSS variables
+- Theme switching via CSS variables
+- Responsive values via media queries
+
+### Component Structure
+
+**React/Next.js Components:**
+- Functional components
+- CSS Modules or styled-components
+- Props for theming and state
+- Data attributes for styling hooks
+
+**Component Patterns:**
+- Container/Inner pattern
+- Grid/List view pattern
+- Modal/Overlay pattern
+- Navigation/Dropdown pattern
+
+### Animation Performance
+
+**Best Practices:**
+- Use `transform` and `opacity` for animations
+- Avoid animating `width`, `height`, `top`, `left`
+- Use `will-change` sparingly
+- Hardware acceleration with `transform: translateZ(0)`
+- `backface-visibility: hidden` for 3D transforms
+
+**Performance Optimizations:**
+- CSS transitions over JavaScript animations
+- `requestAnimationFrame` for scroll animations
+- Intersection Observer for scroll triggers
+- Lazy loading for images
+
+### Accessibility Considerations
+
+**Focus States:**
+```css
+.link:focus {
+  outline: 2px solid var(--theme-fg);
+  outline-offset: 2px;
+}
+```
+
+**ARIA Patterns:**
+- Navigation landmarks
+- Button roles
+- Modal roles
+- Skip links
+
+**Keyboard Navigation:**
+- Tab order follows visual order
+- Enter/Space for button activation
+- Escape for modal close
+- Arrow keys for carousel navigation
+
+## Design Tokens
+
+```css
+:root {
+  /* Colors */
+  --black: #000;
+  --offwhite: #f7f4ef;
+  --brown: #4a2214;
+  --brown-2: #6f402d;
+  --brown-3: #88583c;
+  --brown-4: #bc9b7c;
+  --brown-5: #d7c6b3;
+  
+  /* Theme Colors */
+  --theme-fg: var(--brown);
+  --theme-bg: var(--offwhite);
+  --theme-fg-invert: var(--offwhite);
+  --theme-bg-invert: var(--brown);
+  
+  /* Spacing */
+  --gutter: 2.1rem;
+  --page-gutter: 1.5rem;
+  --section-spacing: 12rem;
+  
+  /* Product Dimensions */
+  --product-portrait-aspect: 0.9083969466;
+  --product-landscape-aspect: 1.487394958;
+  
+  /* Product Page Layout */
+  --product-page-center-width: 36vw;
+  --product-page-right-width: 19vw;
+  --product-page-left-width: 25vw;
+  --product-page-ui-top-padding: 5.7rem;
+  
+  /* Border Radius */
+  --border-radius: 0.5rem;
+  
+  /* Transitions */
+  --transition-fast: 0.25s;
+  --transition-normal: 0.3s;
+  --transition-slow: 0.8s;
+}
+
+@media (min-width: 967px) {
+  :root {
+    --page-gutter: 2.1rem;
+    --section-spacing: 26rem;
+  }
+}
+
+body[data-theme="dark"] {
+  --theme-fg: var(--offwhite);
+  --theme-bg: var(--brown);
+  --theme-fg-invert: var(--brown);
+  --theme-bg-invert: var(--offwhite);
+}
+
+body[data-theme="light"] {
+  --theme-fg: var(--brown);
+  --theme-bg: var(--offwhite);
+  --theme-fg-invert: var(--offwhite);
+  --theme-bg-invert: var(--brown);
+}
+```
+
+## Page-Specific Designs
+
+### Homepage
+
+**Layout Structure:**
+- Fixed navigation at top
+- Full-viewport product list section
+- Product gallery with grid/list toggle
+- Smooth scroll between sections
+
+**Components Used:**
+- Navigation component
+- Product Gallery component
+- Product Card components (grid/list)
+- Product Gallery Navigation component
+
+**Responsive Behavior:**
+- Mobile: Single column, list view default
+- Desktop: Multi-column grid, both views available
+
+### Product Page
+
+**Layout Structure:**
+- Fixed left sidebar (desktop)
+- Center image gallery
+- Fixed right sidebar with product info (desktop)
+- Mobile: Stacked layout with slider
+
+**Components Used:**
+- Product Image Gallery
+- Product Info Table
+- Product UI Left Side
+- Product UI Right Side
+- Zoom Image Modal
+- Product Gallery View Modal
+
+**Responsive Behavior:**
+- Mobile: Full-width slider, stacked info
+- Desktop: Three-column layout with fixed sidebars
+
+### About Page
+
+**Layout Structure:**
+- Full-viewport hero section
+- Three-column layout (desktop)
+- Image carousel
+- Text content sections
+
+**Components Used:**
+- About Hero component
+- Lifestyle Gallery component
+- Text content components
+
+**Responsive Behavior:**
+- Mobile: Stacked single column
+- Desktop: Three-column grid layout
+
+## Motion Graphics and Advanced Animations
+
+### Page Transition Animations
+
+**Mask Animation:**
+- Clip-path polygon animation
+- Smooth reveal from bottom
+- Background color transition
+- Product-specific transition variations
+
+### Text Animations
+
+**Line-by-Line Reveal:**
+- Text lines animate in from bottom
+- Character-by-character option
+- Word-by-word option
+- Smooth transform animations
+
+### Image Animations
+
+**Progressive Loading:**
+- Images fade in on load
+- Smooth opacity transitions
+- Background color during load
+
+**Zoom Animations:**
+- Image zoom on click
+- Smooth scale transitions
+- Modal overlay animation
+
+### Grid Animations
+
+**Product Grid:**
+- Items fade in on scroll
+- Filter transitions
+- Smooth opacity changes
+- Grid layout transitions
+
+## Design Patterns and Best Practices
+
+### Layout Patterns
+
+**Full-Viewport Sections:**
+- Hero sections use 100svh
+- Product sections use 100svh
+- Smooth scroll between sections
+
+**Fixed Positioning:**
+- Navigation always visible
+- Product controls always accessible
+- Clock always visible
+
+**Centered Content:**
+- Content centered with max-width
+- Responsive padding
+- Balanced white space
+
+### Component Patterns
+
+**Container/Inner Pattern:**
+- Outer container for positioning
+- Inner container for content
+- Consistent spacing
+
+**Grid/List Toggle:**
+- Two view modes
+- Smooth transition
+- State persistence
+
+**Modal/Overlay Pattern:**
+- Full-screen overlays
+- Smooth animations
+- Escape to close
+- Focus management
+
+### Animation Patterns
+
+**Fade In:**
+- Opacity 0 to 1
+- Smooth transitions
+- Scroll-triggered
+
+**Slide In:**
+- Transform translateY
+- Smooth transitions
+- Direction variations
+
+**Scale:**
+- Transform scale
+- Smooth transitions
+- Zoom effects
+
+## Implementation Checklist
+
+### Setup
+- [ ] Set up CSS variables/tokens
+- [ ] Configure typography system (EB Garamond)
+- [ ] Set up color palette (brown scale)
+- [ ] Configure spacing system (rem-based)
+- [ ] Set up theme switching (light/dark)
+
+### Components
+- [ ] Implement navigation component
+- [ ] Implement product gallery component
+- [ ] Implement product card components (grid/list)
+- [ ] Implement product page layout
+- [ ] Implement modal components
+- [ ] Implement button components
+- [ ] Implement preloader component
+
+### Responsive Design
+- [ ] Implement mobile layouts (< 967px)
+- [ ] Implement desktop layouts (≥ 967px)
+- [ ] Test at all breakpoints
+- [ ] Verify touch interactions
+- [ ] Verify hover interactions
+
+### Animations
+- [ ] Implement CSS transitions
+- [ ] Implement CSS animations
+- [ ] Implement scroll animations
+- [ ] Implement page transitions
+- [ ] Implement text animations
+- [ ] Implement image loading animations
+
+### Interactions
+- [ ] Implement hover effects
+- [ ] Implement click interactions
+- [ ] Implement scroll behaviors
+- [ ] Implement keyboard navigation
+- [ ] Implement focus states
+
+## Notes and Observations
+
+### Design Philosophy
+
+The Lusano design system embodies a sophisticated, minimalist aesthetic that prioritizes:
+1. **Typography Excellence**: EB Garamond serif font creates an elegant, timeless feel
+2. **Warm Color Palette**: Brown tones create a luxurious, heirloom-quality atmosphere
+3. **Generous Spacing**: Ample white space allows content to breathe
+4. **Subtle Animations**: Smooth, purposeful transitions enhance the user experience
+5. **Quality Craftsmanship**: Every detail reflects the brand's commitment to quality
+
+### Technical Observations
+
+1. **Single Breakpoint**: The design uses a single breakpoint at 967px, simplifying responsive implementation
+2. **CSS Variables**: Extensive use of CSS variables enables easy theming and maintenance
+3. **Theme Switching**: Light/dark theme support via CSS variable switching
+4. **Performance**: Optimized animations using transform and opacity
+5. **Accessibility**: Focus states and keyboard navigation support
+
+### Implementation Challenges
+
+1. **Complex Grid System**: The home product panning grid uses a complex CSS Grid template
+2. **Page Transitions**: Mask-based page transitions require careful clip-path management
+3. **Image Loading**: Progressive image loading with smooth transitions
+4. **Scroll Animations**: Text line animations require intersection observer implementation
+5. **Theme Switching**: Smooth theme transitions require careful CSS variable management
+
+### Special Considerations
+
+1. **Aspect Ratios**: Product images use specific aspect ratios (portrait: 0.9083969466, landscape: 1.487394958)
+2. **Viewport Units**: Use of `svh` (small viewport height) for mobile compatibility
+3. **Backdrop Filters**: Navigation uses backdrop-filter for glassmorphism effect
+4. **3D Transforms**: Some components use 3D transforms with perspective
+5. **Safari Compatibility**: Special handling for Safari browser (perspective: none)

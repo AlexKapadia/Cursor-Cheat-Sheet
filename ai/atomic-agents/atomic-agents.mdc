@@ -1,0 +1,919 @@
+# Atomic Agents: Building AI Agents Atomically
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Core Philosophy](#core-philosophy)
+3. [Installation and Setup](#installation-and-setup)
+4. [Core Concepts](#core-concepts)
+5. [Basic Usage](#basic-usage)
+6. [Advanced Features](#advanced-features)
+7. [Agent Configuration](#agent-configuration)
+8. [Tool Integration](#tool-integration)
+9. [Streaming and Async Operations](#streaming-and-async-operations)
+10. [Multi-Provider Support](#multi-provider-support)
+11. [Project Structure](#project-structure)
+12. [Examples and Use Cases](#examples-and-use-cases)
+13. [Best Practices](#best-practices)
+14. [Migration from v1.x to v2.0](#migration-from-v1x-to-v20)
+15. [API Reference](#api-reference)
+
+---
+
+## Overview
+
+**Atomic Agents** is a lightweight, modular Python framework for building AI agents and pipelines. It emphasizes:
+
+- **Modularity**: Build agents from composable, reusable components
+- **Predictability**: Clear input/output schemas and type safety
+- **Extensibility**: Easy to add custom tools and agents
+- **Control**: Fine-grained control over agent behavior
+- **Provider Agnosticism**: Works with any LLM provider supported by Instructor
+
+### Key Features
+
+- **Type-Safe Agents**: Generic type parameters for input/output schemas
+- **Schema-Driven Design**: Pydantic schemas for validation and documentation
+- **Streaming Support**: Real-time response streaming with `run_stream()` and `run_async_stream()`
+- **Hook System**: Comprehensive hooks for monitoring, error handling, and performance metrics
+- **Tool Ecosystem**: Atomic Forge provides pre-built tools (Calculator, SearXNG Search, YouTube Transcript Scraper)
+- **CLI Tool**: Atomic Assembler CLI for managing tools and components
+- **Multi-Provider**: Works with OpenAI, Ollama, Groq, Mistral, Cohere, Anthropic, Gemini, and more
+
+### Version Information
+
+**Current Version**: 2.2.2+ (as of November 2025)
+
+**Breaking Changes in v2.0**:
+- Cleaner imports: Eliminated `.lib` from import paths
+- Renamed classes: `BaseAgent` → `AtomicAgent`, `BaseAgentConfig` → `AgentConfig`
+- Better type safety with generic type parameters
+- Enhanced streaming with new methods
+- Improved module organization
+
+---
+
+## Core Philosophy
+
+### Atomic Design Principle
+
+Atomic Agents follows the principle of building complex systems from simple, atomic components:
+
+1. **Atomic Agents**: Single-purpose agents that do one thing well
+2. **Composable**: Agents can be chained and combined
+3. **Swappable**: Components can be replaced without breaking the system
+4. **Testable**: Each component can be tested independently
+
+### Design Goals
+
+- **Simplicity**: Minimal boilerplate, maximum clarity
+- **Flexibility**: Support multiple use cases without compromise
+- **Reliability**: Built-in error handling and retry mechanisms
+- **Observability**: Comprehensive logging and monitoring hooks
+
+---
+
+## Installation and Setup
+
+### Prerequisites
+
+- Python 3.8+
+- pip or uv (recommended)
+
+### Installation
+
+```bash
+# Using pip
+pip install atomic-agents
+
+# Using uv (recommended)
+uv pip install atomic-agents
+```
+
+### Local Development Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/BrainBlend-AI/atomic-agents.git
+cd atomic-agents
+
+# Install with uv
+uv sync
+
+# Install all workspace packages (examples and tools)
+uv sync --all-packages
+```
+
+### Dependencies
+
+Atomic Agents depends on:
+- **Instructor**: For structured outputs and provider abstraction
+- **Pydantic**: For schema validation and type safety
+- **OpenAI** (or other provider): For LLM access
+
+---
+
+## Core Concepts
+
+### AtomicAgent
+
+The `AtomicAgent` is the core class for creating AI agents. It's a generic class that takes input and output schemas:
+
+```python
+from atomic_agents import AtomicAgent, AgentConfig
+from pydantic import BaseModel, Field
+
+# Define input schema
+class UserQuery(BaseModel):
+    question: str = Field(..., description="User's question")
+
+# Define output schema
+class AgentResponse(BaseModel):
+    answer: str = Field(..., description="Agent's answer")
+    confidence: float = Field(..., description="Confidence score")
+
+# Create agent
+agent = AtomicAgent[UserQuery, AgentResponse](
+    config=AgentConfig(
+        client=instructor.from_openai(openai.OpenAI()),
+        model="gpt-4",
+    )
+)
+```
+
+### AgentConfig
+
+Configuration object for agents:
+
+```python
+from atomic_agents import AgentConfig
+from atomic_agents.context import SystemPromptGenerator
+
+config = AgentConfig(
+    client=instructor.from_openai(openai.OpenAI()),
+    model="gpt-4",
+    system_prompt_generator=SystemPromptGenerator(
+        background=["You are a helpful assistant."],
+        steps=["Analyze the question", "Provide an answer"],
+        output_instructions=["Be concise and accurate"],
+    ),
+    temperature=0.7,
+    max_tokens=1000,
+)
+```
+
+### SystemPromptGenerator
+
+Generates structured system prompts:
+
+```python
+from atomic_agents.context import SystemPromptGenerator
+
+prompt_generator = SystemPromptGenerator(
+    background=[
+        "You are an expert in data analysis.",
+        "You specialize in extracting insights from complex datasets."
+    ],
+    steps=[
+        "Receive the data query",
+        "Analyze the data structure",
+        "Extract relevant insights",
+        "Format the response"
+    ],
+    output_instructions=[
+        "Provide clear, actionable insights",
+        "Include relevant statistics",
+        "Use markdown formatting"
+    ],
+)
+```
+
+### Input/Output Schemas
+
+Schemas define the structure of agent inputs and outputs:
+
+```python
+from pydantic import BaseModel, Field
+from typing import List
+
+class QueryInput(BaseIOSchema):
+    """Input schema for query agent."""
+    instruction: str = Field(..., description="Instruction to generate queries for")
+    num_queries: int = Field(..., description="Number of queries to generate")
+
+class QueryOutput(BaseIOSchema):
+    """Output schema for query agent."""
+    queries: List[str] = Field(..., description="Generated search queries")
+```
+
+---
+
+## Basic Usage
+
+### Simple Chatbot
+
+```python
+from atomic_agents import AtomicAgent, AgentConfig
+from atomic_agents.context import SystemPromptGenerator
+from pydantic import BaseModel, Field
+import instructor
+import openai
+
+# Define schemas
+class UserMessage(BaseModel):
+    message: str = Field(..., description="User's message")
+
+class BotResponse(BaseModel):
+    response: str = Field(..., description="Bot's response")
+
+# Create agent
+agent = AtomicAgent[UserMessage, BotResponse](
+    config=AgentConfig(
+        client=instructor.from_openai(openai.OpenAI()),
+        model="gpt-4",
+        system_prompt_generator=SystemPromptGenerator(
+            background=["You are a helpful chatbot."],
+            steps=["Read the user message", "Generate a helpful response"],
+            output_instructions=["Be friendly and concise"],
+        ),
+    )
+)
+
+# Run agent
+result = agent.run(UserMessage(message="Hello, how are you?"))
+print(result.response)
+```
+
+### Custom Output Schema
+
+```python
+from atomic_agents import AtomicAgent, AgentConfig
+from pydantic import BaseModel, Field
+from typing import List
+
+class AnalysisInput(BaseModel):
+    text: str = Field(..., description="Text to analyze")
+
+class AnalysisOutput(BaseModel):
+    sentiment: str = Field(..., description="Sentiment: positive, negative, or neutral")
+    keywords: List[str] = Field(..., description="Key terms extracted")
+    summary: str = Field(..., description="Brief summary")
+
+agent = AtomicAgent[AnalysisInput, AnalysisOutput](
+    config=AgentConfig(
+        client=instructor.from_openai(openai.OpenAI()),
+        model="gpt-4",
+    )
+)
+
+result = agent.run(AnalysisInput(text="I love this product! It's amazing."))
+print(f"Sentiment: {result.sentiment}")
+print(f"Keywords: {result.keywords}")
+```
+
+---
+
+## Advanced Features
+
+### Streaming Responses
+
+```python
+# Synchronous streaming
+for chunk in agent.run_stream(UserMessage(message="Tell me a story")):
+    print(chunk.response, end="", flush=True)
+
+# Asynchronous streaming
+async for chunk in agent.run_async_stream(UserMessage(message="Tell me a story")):
+    print(chunk.response, end="", flush=True)
+```
+
+### Hooks System
+
+Hooks allow you to monitor and intercept agent execution:
+
+```python
+from atomic_agents.hooks import Hook
+
+class LoggingHook(Hook):
+    def on_start(self, input_data):
+        print(f"Agent started with input: {input_data}")
+    
+    def on_success(self, output_data):
+        print(f"Agent succeeded with output: {output_data}")
+    
+    def on_error(self, error):
+        print(f"Agent failed with error: {error}")
+
+agent = AtomicAgent[UserMessage, BotResponse](
+    config=AgentConfig(
+        client=instructor.from_openai(openai.OpenAI()),
+        model="gpt-4",
+        hooks=[LoggingHook()],
+    )
+)
+```
+
+### Retry Mechanisms
+
+```python
+from atomic_agents import AgentConfig
+
+config = AgentConfig(
+    client=instructor.from_openai(openai.OpenAI()),
+    model="gpt-4",
+    max_retries=3,
+    retry_delay=1.0,  # seconds
+)
+```
+
+### Error Handling
+
+```python
+try:
+    result = agent.run(UserMessage(message="Hello"))
+except Exception as e:
+    print(f"Error: {e}")
+    # Handle error appropriately
+```
+
+---
+
+## Agent Configuration
+
+### Complete Configuration Example
+
+```python
+from atomic_agents import AtomicAgent, AgentConfig
+from atomic_agents.context import SystemPromptGenerator
+
+config = AgentConfig(
+    # LLM Client (required)
+    client=instructor.from_openai(openai.OpenAI()),
+    
+    # Model name (required)
+    model="gpt-4",
+    
+    # System prompt generator
+    system_prompt_generator=SystemPromptGenerator(
+        background=["Context information"],
+        steps=["Step 1", "Step 2"],
+        output_instructions=["Format instructions"],
+    ),
+    
+    # Model parameters
+    temperature=0.7,
+    max_tokens=1000,
+    top_p=1.0,
+    frequency_penalty=0.0,
+    presence_penalty=0.0,
+    
+    # Retry configuration
+    max_retries=3,
+    retry_delay=1.0,
+    
+    # Hooks
+    hooks=[LoggingHook(), MetricsHook()],
+    
+    # Custom settings
+    timeout=30.0,  # seconds
+)
+```
+
+### Configuration Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `client` | Instructor Client | Required | LLM client instance |
+| `model` | str | Required | Model name/identifier |
+| `system_prompt_generator` | SystemPromptGenerator | None | System prompt generator |
+| `temperature` | float | 0.7 | Sampling temperature |
+| `max_tokens` | int | None | Maximum tokens to generate |
+| `top_p` | float | 1.0 | Nucleus sampling parameter |
+| `frequency_penalty` | float | 0.0 | Frequency penalty |
+| `presence_penalty` | float | 0.0 | Presence penalty |
+| `max_retries` | int | 0 | Maximum retry attempts |
+| `retry_delay` | float | 1.0 | Delay between retries (seconds) |
+| `hooks` | List[Hook] | [] | List of hooks to execute |
+| `timeout` | float | None | Request timeout (seconds) |
+
+---
+
+## Tool Integration
+
+### Using Atomic Forge Tools
+
+Atomic Forge provides pre-built tools that can be integrated with agents:
+
+```python
+from atomic_forge.tools.calculator import CalculatorTool
+from atomic_forge.tools.search import SearXNGSearchTool
+
+# Initialize tools
+calculator = CalculatorTool()
+search = SearXNGSearchTool()
+
+# Use tools in agent workflow
+# Tools can be chained by matching output schemas to input schemas
+```
+
+### Creating Custom Tools
+
+```python
+from atomic_agents.tools import BaseTool
+from pydantic import BaseModel, Field
+
+class WeatherInput(BaseModel):
+    location: str = Field(..., description="Location to get weather for")
+
+class WeatherOutput(BaseModel):
+    temperature: float = Field(..., description="Temperature in Celsius")
+    condition: str = Field(..., description="Weather condition")
+
+class WeatherTool(BaseTool[WeatherInput, WeatherOutput]):
+    def execute(self, input_data: WeatherInput) -> WeatherOutput:
+        # Implement weather API call
+        return WeatherOutput(temperature=22.5, condition="Sunny")
+```
+
+### Tool Chaining
+
+Tools can be chained by matching schemas:
+
+```python
+# Agent output schema matches tool input schema
+query_agent = AtomicAgent[QueryInput, SearXNGSearchTool.input_schema](
+    config=AgentConfig(...)
+)
+
+# Use output directly as tool input
+search_result = search_tool.execute(query_agent.run(query_input))
+```
+
+---
+
+## Streaming and Async Operations
+
+### Synchronous Streaming
+
+```python
+# Stream responses in real-time
+for chunk in agent.run_stream(input_data):
+    # Process chunk
+    print(chunk.response, end="", flush=True)
+```
+
+### Asynchronous Streaming
+
+```python
+import asyncio
+
+async def stream_agent():
+    async for chunk in agent.run_async_stream(input_data):
+        # Process chunk
+        print(chunk.response, end="", flush=True)
+
+asyncio.run(stream_agent())
+```
+
+### Async Execution
+
+```python
+# Run agent asynchronously
+result = await agent.run_async(input_data)
+```
+
+---
+
+## Multi-Provider Support
+
+Atomic Agents works with any provider supported by Instructor:
+
+### OpenAI
+
+```python
+import instructor
+import openai
+
+client = instructor.from_openai(openai.OpenAI())
+```
+
+### Ollama
+
+```python
+import instructor
+import ollama
+
+client = instructor.from_ollama(ollama.AsyncClient())
+```
+
+### Groq
+
+```python
+import instructor
+from groq import Groq
+
+client = instructor.from_groq(Groq())
+```
+
+### Anthropic (Claude)
+
+```python
+import instructor
+from anthropic import Anthropic
+
+client = instructor.from_anthropic(Anthropic())
+```
+
+### Mistral
+
+```python
+import instructor
+from mistralai import Mistral
+
+client = instructor.from_mistral(Mistral())
+```
+
+### Cohere
+
+```python
+import instructor
+import cohere
+
+client = instructor.from_cohere(cohere.Client())
+```
+
+### Google Gemini
+
+```python
+import instructor
+import google.generativeai as genai
+
+client = instructor.from_gemini(genai.GenerativeModel("gemini-pro"))
+```
+
+---
+
+## Project Structure
+
+Atomic Agents uses a monorepo structure:
+
+```
+atomic-agents/
+├── atomic-agents/          # Core library
+│   ├── __init__.py
+│   ├── agent.py            # AtomicAgent class
+│   ├── config.py           # AgentConfig class
+│   ├── context/            # Context management
+│   ├── hooks/              # Hook system
+│   ├── tools/              # Tool base classes
+│   └── connectors/         # Provider connectors
+│
+├── atomic-assembler/       # CLI tool
+│   ├── __init__.py
+│   └── cli.py              # Command-line interface
+│
+├── atomic-examples/        # Example projects
+│   ├── quickstart/         # Quickstart examples
+│   ├── hooks/              # Hooks system example
+│   ├── multimodal/        # Multimodal example
+│   ├── deep-research/     # Deep research example
+│   ├── orchestration/     # Orchestration example
+│   ├── rag-chatbot/       # RAG chatbot example
+│   ├── web-search/        # Web search example
+│   ├── youtube-summarizer/# YouTube summarizer
+│   └── youtube-to-recipe/ # YouTube to recipe
+│
+├── atomic-forge/           # Tool collection
+│   ├── calculator/        # Calculator tool
+│   ├── search/            # SearXNG search tool
+│   └── youtube/           # YouTube transcript tool
+│
+├── docs/                   # Documentation
+├── guides/                 # Guides and tutorials
+└── scripts/                # Utility scripts
+```
+
+---
+
+## Examples and Use Cases
+
+### Quickstart Examples
+
+Located in `atomic-examples/quickstart/quickstart/`:
+
+1. **Basic Chatbot**: Minimal chatbot example
+2. **Custom Chatbot**: Advanced example with custom system prompt
+3. **Custom Chatbot with Schema**: Example with custom output schema
+4. **Multi-Provider Chatbot**: Using different providers (Ollama, Groq)
+
+### Complete Examples
+
+1. **Hooks System**: Comprehensive demonstration of the hook system for monitoring, error handling, and performance metrics with intelligent retry mechanisms
+
+2. **Basic Multimodal**: Demonstrates how to analyze images with text, focusing on extracting structured information from nutrition labels using GPT-4 Vision capabilities
+
+3. **Deep Research**: Advanced example showing how to perform deep research tasks
+
+4. **Orchestration Agent**: Shows how to create an Orchestrator Agent that intelligently decides between using different tools (search or calculator) based on user input
+
+5. **RAG Chatbot**: A chatbot implementation using Retrieval-Augmented Generation (RAG) to provide context-aware responses
+
+6. **Web Search Agent**: An intelligent agent that performs web searches and answers questions based on the results
+
+7. **YouTube Summarizer**: An agent that extracts and summarizes knowledge from YouTube videos
+
+8. **YouTube to Recipe**: An example that extracts structured recipe information from cooking videos, demonstrating complex information extraction and structuring
+
+### Example: Query Generation Agent
+
+```python
+from atomic_agents import AtomicAgent, AgentConfig
+from atomic_agents.context import SystemPromptGenerator
+from atomic_forge.tools.search import SearXNGSearchTool
+from pydantic import BaseModel, Field
+from typing import List
+import instructor
+import openai
+
+# Define input schema
+class QueryAgentInput(BaseModel):
+    instruction: str = Field(..., description="Instruction to generate search queries for")
+    num_queries: int = Field(..., description="Number of queries to generate")
+
+# Initialize the query agent with output schema matching search tool input
+query_agent = AtomicAgent[QueryAgentInput, SearXNGSearchTool.input_schema](
+    config=AgentConfig(
+        client=instructor.from_openai(openai.OpenAI()),
+        model="gpt-4",
+        system_prompt_generator=SystemPromptGenerator(
+            background=[
+                "You are an intelligent query generation expert.",
+                "Your task is to generate a specified number of diverse and highly relevant queries based on a given instruction."
+            ],
+            steps=[
+                "Receive the instruction and the number of queries to generate.",
+                "Generate the queries in JSON format."
+            ],
+            output_instructions=[
+                "Ensure each query is unique and relevant.",
+                "Provide the queries in the expected schema."
+            ],
+        ),
+    )
+)
+
+# Use the agent
+result = query_agent.run(QueryAgentInput(
+    instruction="Find information about Python async programming",
+    num_queries=3
+))
+
+# Result can be directly used with SearXNGSearchTool
+search_tool = SearXNGSearchTool()
+search_results = search_tool.execute(result)
+```
+
+---
+
+## Best Practices
+
+### 1. Schema Design
+
+- **Use descriptive field names**: Make schemas self-documenting
+- **Provide field descriptions**: Help the LLM understand expected format
+- **Use appropriate types**: Leverage Pydantic's type system
+- **Validate inputs**: Let Pydantic handle validation
+
+```python
+class GoodSchema(BaseModel):
+    user_id: str = Field(..., description="Unique identifier for the user")
+    email: EmailStr = Field(..., description="User's email address")
+    age: int = Field(..., ge=0, le=120, description="User's age in years")
+```
+
+### 2. System Prompt Design
+
+- **Be specific**: Clearly define the agent's role and capabilities
+- **Provide context**: Include relevant background information
+- **Define steps**: Break down the task into clear steps
+- **Specify output format**: Tell the agent how to format responses
+
+### 3. Error Handling
+
+```python
+try:
+    result = agent.run(input_data)
+except ValidationError as e:
+    # Handle schema validation errors
+    print(f"Validation error: {e}")
+except Exception as e:
+    # Handle other errors
+    print(f"Error: {e}")
+```
+
+### 4. Performance Optimization
+
+- **Use streaming**: For long responses, use streaming to improve perceived performance
+- **Cache results**: Cache expensive operations when possible
+- **Batch requests**: When appropriate, batch multiple requests
+- **Monitor costs**: Track token usage and API costs
+
+### 5. Testing
+
+```python
+import pytest
+from atomic_agents import AtomicAgent, AgentConfig
+
+def test_agent_basic():
+    agent = AtomicAgent[InputSchema, OutputSchema](
+        config=AgentConfig(...)
+    )
+    result = agent.run(InputSchema(...))
+    assert result is not None
+    assert isinstance(result, OutputSchema)
+```
+
+### 6. Modularity
+
+- **Single responsibility**: Each agent should do one thing well
+- **Composability**: Design agents to be chained together
+- **Reusability**: Create reusable components and tools
+
+---
+
+## Migration from v1.x to v2.0
+
+### Import Changes
+
+**Before (v1.x)**:
+```python
+from atomic_agents.lib.agent import BaseAgent
+from atomic_agents.lib.config import BaseAgentConfig
+```
+
+**After (v2.0)**:
+```python
+from atomic_agents import AtomicAgent, AgentConfig
+```
+
+### Class Name Changes
+
+- `BaseAgent` → `AtomicAgent`
+- `BaseAgentConfig` → `AgentConfig`
+- Other classes may have been renamed - check the upgrade guide
+
+### Type Parameters
+
+v2.0 introduces generic type parameters:
+
+```python
+# v2.0
+agent = AtomicAgent[InputSchema, OutputSchema](config=...)
+```
+
+### Streaming Methods
+
+New streaming methods in v2.0:
+
+```python
+# Synchronous streaming
+for chunk in agent.run_stream(input_data):
+    ...
+
+# Asynchronous streaming
+async for chunk in agent.run_async_stream(input_data):
+    ...
+```
+
+### Upgrade Guide
+
+For detailed migration instructions, see the [UPGRADE_DOC.md](https://github.com/BrainBlend-AI/atomic-agents/blob/main/UPGRADE_DOC.md) in the repository.
+
+---
+
+## API Reference
+
+### AtomicAgent
+
+```python
+class AtomicAgent[InputSchema, OutputSchema]:
+    def __init__(self, config: AgentConfig) -> None
+    def run(self, input_data: InputSchema) -> OutputSchema
+    def run_async(self, input_data: InputSchema) -> Awaitable[OutputSchema]
+    def run_stream(self, input_data: InputSchema) -> Iterator[OutputSchema]
+    def run_async_stream(self, input_data: InputSchema) -> AsyncIterator[OutputSchema]
+```
+
+### AgentConfig
+
+```python
+class AgentConfig:
+    client: Any  # Instructor client
+    model: str
+    system_prompt_generator: Optional[SystemPromptGenerator] = None
+    temperature: float = 0.7
+    max_tokens: Optional[int] = None
+    top_p: float = 1.0
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
+    max_retries: int = 0
+    retry_delay: float = 1.0
+    hooks: List[Hook] = []
+    timeout: Optional[float] = None
+```
+
+### SystemPromptGenerator
+
+```python
+class SystemPromptGenerator:
+    def __init__(
+        self,
+        background: List[str],
+        steps: List[str],
+        output_instructions: List[str],
+    ) -> None
+```
+
+### BaseTool
+
+```python
+class BaseTool[InputSchema, OutputSchema]:
+    input_schema: Type[InputSchema]
+    output_schema: Type[OutputSchema]
+    
+    def execute(self, input_data: InputSchema) -> OutputSchema:
+        ...
+```
+
+### Hook
+
+```python
+class Hook:
+    def on_start(self, input_data: Any) -> None: ...
+    def on_success(self, output_data: Any) -> None: ...
+    def on_error(self, error: Exception) -> None: ...
+    def on_complete(self) -> None: ...
+```
+
+---
+
+## Additional Resources
+
+### Documentation
+
+- **Official Documentation**: [https://brainblend-ai.github.io/atomic-agents/](https://brainblend-ai.github.io/atomic-agents/)
+- **GitHub Repository**: [https://github.com/BrainBlend-AI/atomic-agents](https://github.com/BrainBlend-AI/atomic-agents)
+- **PyPI Package**: [https://pypi.org/project/atomic-agents/](https://pypi.org/project/atomic-agents/)
+
+### Video Resources
+
+- **Overview Video**: Learn about the framework's philosophy and design principles
+- **Quickstart Video**: Get started with code examples
+
+### Articles
+
+- **Medium Article**: Learn about the motivation and philosophy behind Atomic Agents
+
+### Community
+
+- **GitHub Issues**: Report bugs and request features
+- **GitHub Discussions**: Ask questions and share ideas
+- **Contributing Guide**: Learn how to contribute to the project
+
+---
+
+## Contributing
+
+We welcome contributions! Here are quick steps:
+
+1. Fork the repository
+2. Create a new branch (`git checkout -b feature-branch`)
+3. Make your changes
+4. Run tests (`uv run pytest --cov=atomic_agents atomic-agents`)
+5. Format your code (`uv run black atomic-agents atomic-assembler atomic-examples atomic-forge`)
+6. Lint your code (`uv run flake8 --extend-exclude=.venv atomic-agents atomic-assembler atomic-examples atomic-forge`)
+7. Commit your changes (`git commit -m 'Add some feature'`)
+8. Push to the branch (`git push origin feature-branch`)
+9. Open a pull request
+
+For full development setup and guidelines, refer to the Developer Guide in the repository.
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+## Summary
+
+Atomic Agents is a powerful, flexible framework for building AI agents with:
+
+- **Type-safe, schema-driven design** for predictable behavior
+- **Multi-provider support** through Instructor
+- **Composable architecture** for building complex systems
+- **Comprehensive tooling** with Atomic Forge and CLI
+- **Production-ready features** including streaming, hooks, and error handling
+
+Whether you're building simple chatbots or complex multi-agent systems, Atomic Agents provides the foundation you need to build reliable, maintainable AI applications.

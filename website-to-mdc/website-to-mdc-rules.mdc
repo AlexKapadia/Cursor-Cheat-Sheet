@@ -1,0 +1,1551 @@
+# Website to MDC Design Conversion Rules
+
+## CRITICAL PROTOCOL: COMPREHENSIVE DESIGN EXTRACTION MANDATE
+
+> **⚠️ ABSOLUTE REQUIREMENT:** This document is not optional. Every website MUST be processed with complete thoroughness. The resulting MDC must be so comprehensive that a developer could recreate the website design WITHOUT seeing the original website. Incomplete MDCs are unacceptable and must be redone.
+
+---
+
+## Table of Contents
+
+1. [Phase 1: Website Access and Discovery Protocol](#phase-1-website-access-and-discovery-protocol)
+2. [Phase 2: Multi-Pass Design Analysis Protocol](#phase-2-multi-pass-design-analysis-protocol)
+3. [Phase 3: Design Element Extraction](#phase-3-design-element-extraction)
+4. [Phase 4: MDC Structure Template](#phase-4-mdc-structure-template)
+5. [Phase 5: Design Style Naming Convention](#phase-5-design-style-naming-convention)
+6. [Phase 6: File Placement and Organization](#phase-6-file-placement-and-organization)
+7. [Phase 7: Base MDC Creation](#phase-7-base-mdc-creation)
+8. [Phase 8: README Generation](#phase-8-readme-generation)
+9. [Quality Assurance and Verification](#quality-assurance-and-verification)
+10. [Common Pitfalls and Solutions](#common-pitfalls-and-solutions)
+
+---
+
+## Phase 1: Website Access and Discovery Protocol
+
+### MANDATORY Website Analysis Strategy
+
+You MUST perform comprehensive website analysis using BOTH browser automation and web scraping. This ensures complete coverage of visual design, interactions, and code-level patterns.
+
+#### Step 1: Initial Website Analysis
+
+**Duration:** Complete initial analysis before proceeding.
+
+**Objective:** Understand the website structure, technology stack, and discover all pages.
+
+**Actions Required:**
+
+1. **URL Validation:**
+   - Verify URL is accessible
+   - Check for redirects
+   - Note final URL
+   - Check for authentication requirements
+   - Document any access limitations
+
+2. **Technology Detection:**
+   - Identify frontend framework (React, Vue, Angular, Next.js, etc.)
+   - Detect CSS framework (Tailwind, Bootstrap, Material UI, etc.)
+   - Identify JavaScript libraries
+   - Note build tools if detectable
+   - Document any design systems used
+
+3. **Sitemap Discovery:**
+   - Check for `sitemap.xml` at root
+   - Extract URLs from `robots.txt`
+   - Parse navigation menus (header, footer, sidebars)
+   - Follow internal links recursively
+   - Check for pagination patterns
+   - Identify dynamic routes
+   - Document all discovered pages
+
+4. **Page Inventory:**
+   - Create complete list of all discoverable pages
+   - Categorize pages (home, product, blog, contact, etc.)
+   - Note page relationships
+   - Document page hierarchy
+   - Identify template patterns
+
+**Verification Checklist for Step 1:**
+- [ ] URL is accessible
+- [ ] Technology stack identified
+- [ ] Sitemap or navigation structure discovered
+- [ ] Complete page inventory created
+- [ ] Page relationships documented
+
+**CRITICAL:** If you cannot check off ALL items, you MUST re-analyze until you can.
+
+#### Step 2: Browser Automation Setup
+
+**Objective:** Capture visual design, interactions, and responsive behavior.
+
+**Actions Required:**
+
+1. **Navigate to Each Page:**
+   - Load homepage first
+   - Navigate to each discovered page
+   - Wait for full page load
+   - Wait for any lazy-loaded content
+   - Document initial render states
+
+2. **Capture Accessibility Snapshots:**
+   - Capture DOM structure
+   - Document element hierarchy
+   - Note ARIA attributes
+   - Document semantic structure
+
+3. **Take Screenshots at Multiple Breakpoints:**
+   - Mobile: 320px, 375px, 414px
+   - Tablet: 768px, 1024px
+   - Desktop: 1280px, 1440px, 1920px
+   - Document layout changes at each breakpoint
+   - Capture component variations
+
+4. **Record Page Load Behavior:**
+   - Document loading animations
+   - Capture skeleton screens
+   - Note progressive loading patterns
+   - Document initial paint behavior
+
+5. **Document Initial Render States:**
+   - Note above-the-fold content
+   - Document hero sections
+   - Capture navigation states
+   - Document any animations on load
+
+**Verification Checklist for Step 2:**
+- [ ] All pages navigated
+- [ ] Screenshots captured at all breakpoints
+- [ ] Page load behavior documented
+- [ ] Initial render states captured
+
+#### Step 3: Web Scraping Setup
+
+**Objective:** Extract code-level design patterns, CSS, and JavaScript.
+
+**Actions Required:**
+
+1. **Extract HTML Structure:**
+   - Get complete HTML for each page
+   - Document semantic structure
+   - Note component patterns
+   - Identify reusable elements
+
+2. **Extract CSS:**
+   - Extract all inline styles
+   - Download all stylesheets
+   - Extract computed styles for key elements
+   - Document CSS custom properties (variables)
+   - Identify CSS framework usage
+   - Extract media queries
+
+3. **Extract JavaScript for Interactions:**
+   - Identify JavaScript files
+   - Document animation libraries
+   - Extract interaction handlers
+   - Note scroll-triggered behaviors
+   - Document form validation patterns
+
+4. **Identify CSS Frameworks/Libraries:**
+   - Detect Tailwind, Bootstrap, Material UI, etc.
+   - Note custom CSS architecture
+   - Document CSS naming conventions
+   - Identify utility class patterns
+
+5. **Document Asset Loading Patterns:**
+   - Note image loading strategies
+   - Document font loading
+   - Identify lazy loading patterns
+   - Document resource priorities
+
+**Verification Checklist for Step 3:**
+- [ ] HTML structure extracted
+- [ ] All CSS extracted (inline, stylesheets, computed)
+- [ ] JavaScript interactions identified
+- [ ] CSS frameworks detected
+- [ ] Asset loading patterns documented
+
+---
+
+## Phase 2: Multi-Pass Design Analysis Protocol
+
+### MANDATORY Multi-Pass Analysis Strategy
+
+You MUST perform **FOUR complete passes** through the website analysis. Each pass serves a specific purpose and must be completed in full before proceeding.
+
+#### Pass 1: Visual Structure Mapping
+
+**Duration:** Analyze visual hierarchy and layout structure for all pages.
+
+**Objective:** Map complete visual hierarchy and layout structure.
+
+**Actions Required:**
+
+1. **Layout Analysis:**
+   - Document grid systems (CSS Grid, Flexbox, custom)
+   - Identify container widths and max-widths
+   - Map column structures
+   - Document spacing systems (margins, padding, gaps)
+   - Identify breakpoint values
+   - Document layout patterns per page
+   - Note asymmetric vs symmetric layouts
+
+2. **Component Inventory:**
+   - List all visible components (buttons, cards, forms, modals, etc.)
+   - Document component hierarchy
+   - Identify reusable patterns
+   - Note component variations
+   - Document component relationships
+   - Identify component states
+
+3. **Typography System:**
+   - Extract all font families
+   - Document font sizes (all breakpoints)
+   - Extract line heights
+   - Document font weights
+   - Extract letter spacing
+   - Document text colors
+   - Identify heading hierarchy
+   - Document text alignment patterns
+   - Note text decoration usage
+
+4. **Color System:**
+   - Extract all color values (hex, rgb, hsl)
+   - Document color usage patterns
+   - Identify primary/secondary/accent colors
+   - Document background colors
+   - Extract gradient definitions
+   - Document color transitions
+   - Note color contrast ratios
+   - Document dark mode if present
+
+5. **Spacing System:**
+   - Document margin/padding scale
+   - Identify spacing units (px, rem, em, custom)
+   - Map spacing relationships
+   - Document gap values
+   - Note spacing consistency patterns
+
+6. **Visual Effects:**
+   - Document border styles and radii
+   - Extract shadow definitions
+   - Document opacity usage
+   - Note backdrop filters
+   - Document blur effects
+   - Extract gradient patterns
+
+**Verification Checklist for Pass 1:**
+- [ ] Complete layout structure mapped
+- [ ] All components inventoried
+- [ ] Typography system fully documented
+- [ ] Complete color palette extracted
+- [ ] Spacing system documented
+- [ ] Visual effects captured
+
+**CRITICAL:** If you cannot check off ALL items, you MUST re-analyze until you can.
+
+#### Pass 2: Interactive Elements and Behaviors
+
+**Duration:** Document all interactions, animations, and dynamic behaviors.
+
+**Objective:** Document all interactions, animations, and dynamic behaviors.
+
+**Actions Required:**
+
+1. **Interactive Elements:**
+   - Document all clickable elements
+   - Extract hover states (CSS and visual)
+   - Document focus states
+   - Extract active/pressed states
+   - Document disabled states
+   - Identify interactive patterns
+   - Test all interactive elements
+   - Document touch interactions (mobile)
+
+2. **Animations and Transitions:**
+   - Extract all CSS transitions (property, duration, timing-function)
+   - Document CSS animations (@keyframes)
+   - Identify JavaScript-driven animations
+   - Document animation triggers
+   - Extract easing functions
+   - Document animation durations
+   - Capture motion graphics
+   - Document animation delays
+   - Note animation iteration counts
+
+3. **Loading States:**
+   - Document loading indicators
+   - Extract skeleton screens
+   - Document loading animations
+   - Identify progressive loading patterns
+   - Document error states
+   - Note loading state transitions
+
+4. **Form Interactions:**
+   - Document form field states
+   - Extract validation patterns
+   - Document error message styles
+   - Identify input focus behaviors
+   - Document form submission flows
+   - Note form field animations
+   - Document success states
+
+5. **Navigation Patterns:**
+   - Document menu behaviors
+   - Extract dropdown animations
+   - Document mobile menu patterns
+   - Identify navigation transitions
+   - Document breadcrumb patterns
+   - Note active link states
+   - Document navigation hover effects
+
+6. **Modal and Dialog Patterns:**
+   - Document modal open/close animations
+   - Extract overlay styles
+   - Document modal content animations
+   - Note focus trap behaviors
+   - Document modal backdrop interactions
+
+**Verification Checklist for Pass 2:**
+- [ ] All interactive elements documented
+- [ ] All animations and transitions extracted
+- [ ] Loading states captured
+- [ ] Form interactions documented
+- [ ] Navigation patterns mapped
+- [ ] Modal patterns documented
+
+**CRITICAL:** Every interaction must be documented. If any interaction appears undocumented, you MUST re-analyze.
+
+#### Pass 3: Responsive Design Analysis
+
+**Duration:** Document design at all breakpoints for all pages.
+
+**Objective:** Document design at all breakpoints.
+
+**Actions Required:**
+
+1. **Breakpoint Detection:**
+   - Identify all media query breakpoints
+   - Test at standard sizes (320px, 375px, 414px, 768px, 1024px, 1280px, 1440px, 1920px)
+   - Document custom breakpoints
+   - Extract breakpoint values
+   - Note breakpoint naming (if any)
+
+2. **Responsive Layouts:**
+   - Document layout changes per breakpoint
+   - Extract responsive typography scales
+   - Document responsive spacing
+   - Identify component variations per breakpoint
+   - Document responsive navigation patterns
+   - Note container width changes
+   - Document column count changes
+
+3. **Mobile-Specific Patterns:**
+   - Document mobile menu patterns
+   - Extract touch interaction patterns
+   - Document mobile-specific components
+   - Identify mobile optimizations
+   - Note mobile navigation patterns
+   - Document mobile form patterns
+
+4. **Tablet-Specific Patterns:**
+   - Document tablet layout adaptations
+   - Note tablet navigation patterns
+   - Document tablet component variations
+
+5. **Desktop-Specific Patterns:**
+   - Document desktop layout features
+   - Note desktop navigation patterns
+   - Document desktop hover interactions
+   - Identify desktop-only components
+
+**Verification Checklist for Pass 3:**
+- [ ] All breakpoints identified
+- [ ] Layout changes documented per breakpoint
+- [ ] Typography scales extracted per breakpoint
+- [ ] Component variations documented per breakpoint
+- [ ] Mobile patterns captured
+- [ ] Tablet patterns captured
+- [ ] Desktop patterns captured
+
+**CRITICAL:** Every breakpoint must be tested and documented. Missing breakpoint data is unacceptable.
+
+#### Pass 4: Page Flow and Navigation Mapping
+
+**Duration:** Document complete user flows and page relationships.
+
+**Objective:** Document complete user flows and page relationships.
+
+**Actions Required:**
+
+1. **Navigation Structure:**
+   - Map all navigation menus
+   - Document footer links
+   - Identify internal link patterns
+   - Document breadcrumb usage
+   - Extract pagination patterns
+   - Note navigation hierarchy
+   - Document navigation styling
+
+2. **User Flows:**
+   - Document primary user journeys
+   - Map form submission flows
+   - Document checkout/purchase flows
+   - Identify authentication flows
+   - Document search flows
+   - Map multi-step processes
+   - Document flow transitions
+
+3. **Page Transitions:**
+   - Document page load animations
+   - Extract route transition patterns
+   - Document scroll behaviors
+   - Identify infinite scroll patterns
+   - Document modal/dialog patterns
+   - Note transition timing
+   - Document transition easing
+
+4. **Link Patterns:**
+   - Document internal vs external link styling
+   - Extract link hover effects
+   - Document visited link states
+   - Identify call-to-action patterns
+   - Note link animations
+   - Document link focus states
+
+5. **Content Relationships:**
+   - Map related content patterns
+   - Document content recommendations
+   - Identify content hierarchies
+   - Note content organization patterns
+
+**Verification Checklist for Pass 4:**
+- [ ] Complete navigation structure mapped
+- [ ] All user flows documented
+- [ ] Page transitions captured
+- [ ] Link patterns documented
+- [ ] Content relationships mapped
+
+**CRITICAL:** Every flow and navigation pattern must be documented. Incomplete flow documentation is unacceptable.
+
+---
+
+## Phase 3: Design Element Extraction
+
+### Extraction Principles
+
+1. **Extract Everything:** When in doubt, extract it. It's better to have too much than too little.
+2. **Preserve Accuracy:** Extract exact values. Don't approximate.
+3. **Maintain Context:** Always include context for extracted content.
+4. **Document Sources:** Note where each design element appears (page, component, breakpoint).
+5. **Preserve Relationships:** Maintain connections between related design elements.
+
+### Content Categories to Extract
+
+#### 1. Visual Design Elements
+
+**Layout Systems:**
+- Grid configurations (CSS Grid)
+- Flexbox patterns
+- Custom layout techniques
+- Container patterns
+- Column structures
+
+**Components:**
+- Buttons (all variants and states)
+- Cards (all variations)
+- Forms (all field types and states)
+- Modals/Dialogs
+- Tooltips
+- Dropdowns
+- Navigation menus
+- Breadcrumbs
+- Pagination
+- Tabs
+- Accordions
+- Carousels/Sliders
+- Tables
+- Lists
+- Badges
+- Alerts
+- Progress bars
+- Loading indicators
+
+**Typography:**
+- Font families (with fallbacks)
+- Font sizes (all breakpoints)
+- Font weights
+- Line heights
+- Letter spacing
+- Text colors
+- Text alignments
+- Text decorations
+- Heading hierarchy
+
+**Colors:**
+- Primary colors
+- Secondary colors
+- Accent colors
+- Neutral colors
+- Background colors
+- Text colors
+- Border colors
+- Semantic colors (success, error, warning, info)
+- Gradient definitions
+- Color usage patterns
+
+**Spacing:**
+- Margin scales
+- Padding scales
+- Gap values
+- Spacing units
+- Spacing relationships
+
+**Borders:**
+- Border styles
+- Border widths
+- Border radii
+- Border colors
+
+**Shadows:**
+- Box shadows (all variations)
+- Text shadows
+- Shadow usage patterns
+
+**Gradients:**
+- Linear gradients
+- Radial gradients
+- Conic gradients
+- Gradient usage patterns
+
+**Images:**
+- Image treatment patterns
+- Aspect ratios
+- Image sizing patterns
+- Image loading patterns
+
+**Icons:**
+- Icon styles
+- Icon sizes
+- Icon usage patterns
+- Icon libraries used
+
+#### 2. Interactive Design Elements
+
+**Hover States:**
+- All hover effects
+- Hover transitions
+- Hover color changes
+- Hover scale/transform effects
+- Hover shadow changes
+
+**Focus States:**
+- Focus indicators
+- Focus styles
+- Focus transitions
+- Focus outline patterns
+
+**Active States:**
+- Pressed/active button states
+- Active link states
+- Active tab states
+- Active navigation states
+
+**Disabled States:**
+- Disabled element styling
+- Disabled opacity
+- Disabled cursor patterns
+
+**Loading States:**
+- Spinners
+- Skeleton screens
+- Progress indicators
+- Loading animations
+- Progressive loading patterns
+
+**Error States:**
+- Error message styling
+- Error field styling
+- Error icon patterns
+
+**Success States:**
+- Success indicators
+- Success message styling
+- Success animations
+
+#### 3. Animation and Motion
+
+**CSS Transitions:**
+- All transition properties
+- Transition durations
+- Transition timing functions
+- Transition delays
+- Transition targets
+
+**CSS Animations:**
+- All @keyframe animations
+- Animation names
+- Animation durations
+- Animation timing functions
+- Animation iterations
+- Animation directions
+- Animation fill modes
+
+**JavaScript Animations:**
+- Animation libraries used
+- JavaScript animation patterns
+- Scroll-triggered animations
+- Interaction-triggered animations
+
+**Scroll Animations:**
+- Scroll-triggered effects
+- Parallax effects
+- Fade-in on scroll
+- Slide-in on scroll
+- Sticky elements
+
+**Page Transitions:**
+- Route change animations
+- Page load animations
+- Exit animations
+
+**Micro-interactions:**
+- Button click feedback
+- Form submission feedback
+- Toggle animations
+- Expand/collapse animations
+
+#### 4. Responsive Patterns
+
+**Breakpoints:**
+- All media query breakpoints
+- Breakpoint values
+- Breakpoint naming
+
+**Layout Changes:**
+- How layouts adapt per breakpoint
+- Container width changes
+- Column count changes
+- Component repositioning
+
+**Typography Scales:**
+- Responsive font sizing
+- Font size changes per breakpoint
+- Line height adjustments
+
+**Component Variations:**
+- Component changes per breakpoint
+- Component hiding/showing
+- Component stacking patterns
+
+**Navigation Adaptations:**
+- Mobile menu patterns
+- Tablet navigation patterns
+- Desktop navigation patterns
+
+---
+
+## Phase 4: MDC Structure Template
+
+### Complete MDC Template
+
+Every MDC MUST follow this structure. All sections must be populated. If a section doesn't apply, note "N/A" with explanation.
+
+```markdown
+---
+alwaysApply: false
+---
+
+# [Design Style Name] - Website Design System
+
+## Website Metadata
+- **Source URL:** [Original website URL]
+- **Design Style:** [Modern Minimalist / Bold Corporate / Playful Creative / etc.]
+- **Primary Framework:** [React / Vue / Next.js / etc. if detected]
+- **CSS Framework:** [Tailwind / Bootstrap / Custom / etc.]
+- **Analysis Date:** [Date of analysis]
+- **Pages Analyzed:** [Number of pages]
+- **Total Components:** [Number of unique components]
+
+## Design Overview
+[High-level description of the design style, aesthetic, and overall visual approach. Describe the "feel" and "personality" of the design.]
+
+## Design System Fundamentals
+
+### Color Palette
+**Primary Colors:**
+- Primary: `#hexcode` (usage: buttons, links, accents)
+- Secondary: `#hexcode` (usage: secondary actions)
+- Accent: `#hexcode` (usage: highlights, CTAs)
+
+**Neutral Colors:**
+- Background: `#hexcode`
+- Surface: `#hexcode`
+- Text Primary: `#hexcode`
+- Text Secondary: `#hexcode`
+- Border: `#hexcode`
+
+**Semantic Colors:**
+- Success: `#hexcode`
+- Error: `#hexcode`
+- Warning: `#hexcode`
+- Info: `#hexcode`
+
+**Gradients:**
+```css
+/* Gradient 1: [Description] */
+background: linear-gradient([direction], [colors]);
+```
+
+### Typography System
+**Font Families:**
+- Primary: [Font name] (usage: headings, body)
+- Secondary: [Font name] (usage: accents)
+- Monospace: [Font name] (usage: code)
+
+**Type Scale:**
+```css
+/* Desktop */
+--font-size-xs: [value];
+--font-size-sm: [value];
+--font-size-base: [value];
+--font-size-lg: [value];
+--font-size-xl: [value];
+--font-size-2xl: [value];
+--font-size-3xl: [value];
+/* ... continue for all sizes */
+```
+
+**Line Heights:**
+```css
+--line-height-tight: [value];
+--line-height-normal: [value];
+--line-height-relaxed: [value];
+```
+
+**Font Weights:**
+- Light: [value]
+- Regular: [value]
+- Medium: [value]
+- Semibold: [value]
+- Bold: [value]
+
+### Spacing System
+```css
+--spacing-0: 0;
+--spacing-1: [value];
+--spacing-2: [value];
+/* ... continue for all spacing values */
+```
+
+**Spacing Scale:** [Description of spacing relationships]
+
+### Border Radius System
+```css
+--radius-sm: [value];
+--radius-md: [value];
+--radius-lg: [value];
+--radius-full: [value];
+```
+
+### Shadow System
+```css
+/* Shadow 1: [Description] */
+box-shadow: [values];
+
+/* Shadow 2: [Description] */
+box-shadow: [values];
+```
+
+## Layout Systems
+
+### Grid System
+```css
+/* Main Container */
+.container {
+  max-width: [value];
+  margin: 0 auto;
+  padding: [value];
+}
+
+/* Grid Layout */
+.grid {
+  display: grid;
+  grid-template-columns: [columns];
+  gap: [value];
+}
+```
+
+### Breakpoints
+```css
+/* Mobile */
+@media (min-width: 320px) { /* ... */ }
+
+/* Tablet */
+@media (min-width: 768px) { /* ... */ }
+
+/* Desktop */
+@media (min-width: 1024px) { /* ... */ }
+
+/* Large Desktop */
+@media (min-width: 1440px) { /* ... */ }
+```
+
+## Component Library
+
+### Buttons
+**Primary Button:**
+```css
+.btn-primary {
+  /* Base styles */
+  background-color: [color];
+  color: [color];
+  padding: [value];
+  border-radius: [value];
+  font-weight: [value];
+  transition: [properties];
+}
+
+.btn-primary:hover {
+  /* Hover state */
+}
+
+.btn-primary:active {
+  /* Active state */
+}
+
+.btn-primary:disabled {
+  /* Disabled state */
+}
+```
+
+[Repeat for all button variants]
+
+### Cards
+**Card Component:**
+```css
+.card {
+  /* Base styles */
+  background: [color];
+  border-radius: [value];
+  padding: [value];
+  box-shadow: [value];
+}
+
+.card-header { /* ... */ }
+.card-body { /* ... */ }
+.card-footer { /* ... */ }
+```
+
+### Forms
+**Input Fields:**
+```css
+.input {
+  /* Base styles */
+  border: [value];
+  border-radius: [value];
+  padding: [value];
+  font-size: [value];
+}
+
+.input:focus {
+  /* Focus state */
+  outline: [value];
+  border-color: [color];
+}
+
+.input:invalid {
+  /* Error state */
+  border-color: [error-color];
+}
+```
+
+[Continue for all form elements]
+
+### Navigation
+**Main Navigation:**
+```css
+.nav {
+  /* Base styles */
+}
+
+.nav-link {
+  /* Link styles */
+}
+
+.nav-link:hover {
+  /* Hover state */
+}
+
+.nav-link.active {
+  /* Active state */
+}
+```
+
+**Mobile Menu:**
+```css
+.mobile-menu {
+  /* Mobile menu styles */
+  /* Include animation/transition */
+}
+```
+
+### Modals/Dialogs
+```css
+.modal {
+  /* Modal overlay */
+}
+
+.modal-content {
+  /* Modal content */
+  /* Include animation */
+}
+```
+
+### Loading Indicators
+```css
+.spinner {
+  /* Spinner animation */
+  animation: spin [duration] [timing-function] infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+```
+
+[Continue for all components]
+
+## Animations and Transitions
+
+### CSS Transitions
+```css
+/* Standard Transition */
+.transition {
+  transition: [property] [duration] [timing-function];
+}
+
+/* Common Transitions */
+.fade-in {
+  transition: opacity [duration] [timing-function];
+}
+```
+
+### CSS Animations
+```css
+@keyframes [animation-name] {
+  /* Keyframe definitions */
+}
+
+.animate-[name] {
+  animation: [name] [duration] [timing-function] [iteration];
+}
+```
+
+### Scroll Animations
+[Document scroll-triggered animations]
+
+### Page Transitions
+[Document route/page transition animations]
+
+## Page Layouts
+
+### Homepage Layout
+[Detailed layout structure with CSS]
+
+### [Page Name] Layout
+[Repeat for each page]
+
+## User Flows and Navigation
+
+### Primary User Flows
+1. **Flow Name**: [Description]
+   - Step 1: [Description with visual state]
+   - Step 2: [Description with visual state]
+   - [Continue...]
+
+### Navigation Structure
+- **Main Navigation**: [Structure]
+- **Footer Navigation**: [Structure]
+- **Breadcrumbs**: [Pattern if used]
+
+### Link Patterns
+- **Internal Links**: [Styling]
+- **External Links**: [Styling]
+- **CTA Links**: [Styling]
+
+## Responsive Design Patterns
+
+### Mobile (< 768px)
+[Layout changes, component variations, navigation patterns]
+
+### Tablet (768px - 1024px)
+[Layout changes, component variations]
+
+### Desktop (> 1024px)
+[Layout changes, component variations]
+
+## Loading States and Indicators
+
+### Page Load
+[Initial page load behavior, skeleton screens]
+
+### Content Loading
+[Loading indicators for async content]
+
+### Form Submission
+[Loading states during form submission]
+
+## Interactive Behaviors
+
+### Hover Effects
+[All hover effects documented with CSS]
+
+### Click Interactions
+[Click animations and feedback]
+
+### Scroll Behaviors
+[Scroll-triggered effects, parallax, etc.]
+
+### Form Interactions
+[Form validation, error states, success states]
+
+## Implementation Guidelines
+
+### CSS Architecture
+[How CSS is organized, naming conventions]
+
+### Component Structure
+[How components are structured]
+
+### Animation Performance
+[Best practices for animations]
+
+### Accessibility Considerations
+[Focus states, ARIA patterns, etc.]
+
+## Design Tokens
+
+```css
+:root {
+  /* Colors */
+  --color-primary: [value];
+  /* ... all color tokens */
+  
+  /* Typography */
+  --font-family-primary: [value];
+  /* ... all typography tokens */
+  
+  /* Spacing */
+  --spacing-unit: [value];
+  /* ... all spacing tokens */
+  
+  /* Shadows */
+  --shadow-sm: [value];
+  /* ... all shadow tokens */
+}
+```
+
+## Page-Specific Designs
+
+### [Page Name]
+**Layout Structure:**
+[Detailed layout description]
+
+**Components Used:**
+- Component 1: [Usage and styling]
+- Component 2: [Usage and styling]
+
+**Responsive Behavior:**
+[How this page adapts per breakpoint]
+
+[Repeat for all pages]
+
+## Motion Graphics and Advanced Animations
+
+### [Animation Name]
+**Description:** [What it does]
+**Trigger:** [When it activates]
+**CSS/JS:**
+```css
+/* CSS code */
+```
+
+```javascript
+// JavaScript code if applicable
+```
+
+[Repeat for all animations]
+
+## Design Patterns and Best Practices
+
+### Layout Patterns
+[Common layout patterns used]
+
+### Component Patterns
+[Reusable component patterns]
+
+### Animation Patterns
+[Common animation patterns]
+
+## Implementation Checklist
+
+### Setup
+- [ ] Set up CSS variables/tokens
+- [ ] Configure typography system
+- [ ] Set up color palette
+- [ ] Configure spacing system
+
+### Components
+- [ ] Implement button variants
+- [ ] Implement card components
+- [ ] Implement form elements
+- [ ] Implement navigation
+- [ ] [Continue for all components]
+
+### Responsive Design
+- [ ] Implement mobile layouts
+- [ ] Implement tablet layouts
+- [ ] Implement desktop layouts
+- [ ] Test at all breakpoints
+
+### Animations
+- [ ] Implement CSS transitions
+- [ ] Implement CSS animations
+- [ ] Implement scroll animations
+- [ ] Implement page transitions
+
+## Notes and Observations
+
+[Any additional observations about the design, implementation challenges, or special considerations]
+```
+
+---
+
+## Phase 5: Design Style Naming Convention
+
+### Naming Strategy
+
+The MDC filename should be based on the dominant design style characteristics. This makes it easy for users to identify and choose designs.
+
+**Format:** `[design-style]-[key-characteristic]-[additional-feature].mdc`
+
+**Naming Process:**
+
+1. **Analyze Design Style:**
+   - Identify primary aesthetic (Modern, Classic, Playful, Elegant, Bold, Minimalist)
+   - Note color approach (Vibrant, Muted, Monochrome, Gradient-heavy)
+   - Identify typography focus (Typography-focused, Mixed, Sans-serif dominant)
+   - Note layout style (Grid-heavy, Asymmetric, Centered, Full-width)
+   - Identify animation level (Static, Subtle, Animated, Motion-heavy)
+   - Note special effects (Glassmorphism, Neumorphism, 3D, Parallax)
+
+2. **Create Descriptive Name:**
+   - Combine 2-4 key characteristics
+   - Use lowercase with hyphens
+   - Keep it under 60 characters
+   - Make it instantly recognizable
+
+**Examples:**
+- `modern-minimalist-clean-lines.mdc`
+- `bold-corporate-gradient-hero.mdc`
+- `playful-creative-animated.mdc`
+- `elegant-typography-focused.mdc`
+- `dark-mode-glassmorphism.mdc`
+- `brutalist-bold-typography.mdc`
+- `vibrant-gradient-animated.mdc`
+- `minimalist-typography-centered.mdc`
+- `corporate-blue-professional.mdc`
+- `creative-illustration-playful.mdc`
+
+**Style Categories:**
+
+1. **Aesthetic**: Modern, Classic, Playful, Elegant, Bold, Minimalist, Brutalist, Retro, Futuristic
+2. **Color Approach**: Vibrant, Muted, Monochrome, Gradient-heavy, Dark-mode, Light-mode
+3. **Typography**: Typography-focused, Mixed, Sans-serif dominant, Serif dominant, Display fonts
+4. **Layout**: Grid-heavy, Asymmetric, Centered, Full-width, Card-based, Magazine-style
+5. **Animation Level**: Static, Subtle, Animated, Motion-heavy, Micro-interactions
+6. **Special Effects**: Glassmorphism, Neumorphism, 3D, Parallax, Particle effects, Video backgrounds
+
+---
+
+## Phase 6: File Placement and Organization
+
+### Folder Structure Rules
+
+1. **Create Dedicated Folder:**
+   - Each MDC gets its own folder
+   - Folder name matches MDC filename (without .mdc)
+   - Use lowercase, hyphens, max 60 chars
+
+2. **Folder Contents:**
+   - `[design-style-name].mdc` - The main MDC file
+   - `README.md` - Explanation and usage guide
+
+3. **Location:**
+   - All website design MDCs go in `web-design/` folder
+   - Structure: `web-design/[design-style-name]/`
+
+### Folder Structure Example
+
+```
+web-design/
+  └── modern-minimalist-clean-lines/
+      ├── modern-minimalist-clean-lines.mdc
+      └── README.md
+```
+
+### Naming Convention:
+- Convert to lowercase
+- Replace spaces with hyphens
+- Remove special characters
+- Limit to 60 characters
+- Remove trailing hyphens
+
+---
+
+## Phase 7: Base MDC Creation
+
+### MDC Generation Process
+
+1. **Create Folder:**
+   - Create folder in `web-design/` directory
+   - Use generated folder name based on design style
+
+2. **Create MDC File:**
+   - Create MDC file in folder
+   - Use generated filename based on design style
+
+3. **Populate Content:**
+   - Follow MDC template exactly
+   - Fill in all sections
+   - Use extracted content
+   - Maintain accuracy
+
+4. **Format Content:**
+   - Use proper markdown
+   - Format code blocks correctly
+   - Use proper headings
+   - Ensure all CSS is valid
+
+5. **Verify Completeness:**
+   - Check all sections populated
+   - Verify all content extracted
+   - Ensure nothing missing
+
+### Content Population Rules
+
+1. **Use Extracted Content:**
+   - Use content from extraction passes
+   - Maintain accuracy
+   - Preserve technical details
+
+2. **Organize Logically:**
+   - Follow template structure
+   - Group related content
+   - Maintain flow
+
+3. **Add Explanations:**
+   - Explain complex patterns
+   - Provide context
+   - Add implementation notes
+
+4. **Format Properly:**
+   - Use markdown correctly
+   - Format code with language tags
+   - Use proper lists and tables
+
+---
+
+## Phase 8: README Generation
+
+### README Content Requirements
+
+Every README MUST include:
+
+1. **What It Is:**
+   - Clear description of the design system
+   - What website it's from
+   - What design style it represents
+   - Purpose of the MDC
+
+2. **Design Style Characteristics:**
+   - Key visual characteristics
+   - Color palette overview
+   - Typography approach
+   - Layout patterns
+   - Animation style
+
+3. **How to Use When Building:**
+   - Method 1: Reference in Cursor Chat
+   - Method 2: Open in Cursor
+   - Method 3: Add to Cursor Rules
+   - Method 4: Use specific sections
+   - Examples for each method
+
+4. **Key Design Elements:**
+   - List of key design elements
+   - Brief explanations
+   - Usage patterns
+
+5. **Quick Start:**
+   - Steps to get started
+   - How to begin using the MDC
+   - Implementation approach
+
+6. **Contents:**
+   - What's in the MDC
+   - What sections are included
+   - What components are documented
+
+7. **Related Resources:**
+   - Link to original website
+   - Related design systems
+   - Additional resources
+
+---
+
+## Quality Assurance and Verification
+
+### Pre-Creation Checklist
+
+Before creating the MDC, verify:
+
+- [ ] All four analysis passes completed
+- [ ] Complete page inventory created
+- [ ] All design elements extracted
+- [ ] All components documented
+- [ ] All animations extracted
+- [ ] All interactions documented
+- [ ] All breakpoints captured
+- [ ] All user flows mapped
+- [ ] Design style identified
+
+### Post-Creation Checklist
+
+After creating the MDC, verify:
+
+- [ ] All template sections populated
+- [ ] All content accurate
+- [ ] All CSS properly formatted
+- [ ] All markdown correct
+- [ ] Folder structure correct
+- [ ] README complete
+- [ ] Design style name is descriptive
+
+### Completeness Verification
+
+1. **Content Completeness:**
+   - Every page represented
+   - Every component included
+   - Every animation documented
+   - Every interaction captured
+   - Every breakpoint documented
+
+2. **Technical Completeness:**
+   - All CSS code included
+   - All color values accurate
+   - All spacing values correct
+   - All breakpoints accurate
+   - All animations properly documented
+
+3. **Usability Completeness:**
+   - Can developer recreate design without seeing original?
+   - Are all design elements clear?
+   - Are all examples complete?
+   - Are all patterns explained?
+
+### Accuracy Verification
+
+1. **Content Accuracy:**
+   - All content matches website
+   - No misinterpretations
+   - No omissions
+   - No additions
+
+2. **Technical Accuracy:**
+   - CSS code correct
+   - Color values accurate
+   - Spacing values correct
+   - Breakpoints accurate
+
+3. **Formatting Accuracy:**
+   - Markdown correct
+   - Code formatting correct
+   - Tables correct
+
+---
+
+## Common Pitfalls and Solutions
+
+### Pitfall 1: Incomplete Page Coverage
+
+**Problem:** Not analyzing all pages.
+
+**Solution:**
+- Follow sitemap discovery protocol strictly
+- Use navigation menus to find all pages
+- Verify page inventory is complete
+- Test all discovered pages
+
+### Pitfall 2: Missing Interactive States
+
+**Problem:** Not documenting all interactive states.
+
+**Solution:**
+- Test all clickable elements
+- Document hover, focus, active, disabled states
+- Test on multiple devices
+- Verify all states are captured
+
+### Pitfall 3: Incomplete Animation Extraction
+
+**Problem:** Not extracting all animations.
+
+**Solution:**
+- Extract all CSS transitions
+- Extract all CSS animations
+- Identify JavaScript animations
+- Document all animation triggers
+- Test all interactions
+
+### Pitfall 4: Missing Breakpoints
+
+**Problem:** Not testing all breakpoints.
+
+**Solution:**
+- Test at standard breakpoints
+- Test at custom breakpoints
+- Document layout changes
+- Capture screenshots at all breakpoints
+
+### Pitfall 5: Incomplete Component Documentation
+
+**Problem:** Not documenting all component variations.
+
+**Solution:**
+- List all components
+- Document all variations
+- Document all states
+- Document responsive variations
+
+### Pitfall 6: Poor Design Style Naming
+
+**Problem:** MDC filename not descriptive.
+
+**Solution:**
+- Analyze design thoroughly
+- Identify key characteristics
+- Use descriptive naming convention
+- Make it instantly recognizable
+
+### Pitfall 7: Missing Context
+
+**Problem:** Content without context.
+
+**Solution:**
+- Always include context
+- Explain where design elements appear
+- Explain usage patterns
+- Add implementation notes
+
+### Pitfall 8: Inaccurate Extraction
+
+**Problem:** Misinterpreting or misrepresenting design.
+
+**Solution:**
+- Extract exact values
+- Verify against website
+- Don't add interpretations
+- Note any uncertainties
+
+---
+
+## Final Reminders
+
+### The Golden Rules
+
+1. **Completeness Over Speed:** It's better to take longer and be complete than to rush and miss design elements.
+
+2. **Accuracy Over Convenience:** Always verify accuracy, even if it's inconvenient.
+
+3. **Detail Over Summary:** Extract details, not summaries. The MDC should be comprehensive.
+
+4. **Understanding Over Extraction:** Don't just extract—understand. Understanding leads to better MDCs.
+
+5. **Design Over Content:** Focus on design patterns, not content. Content is placeholder.
+
+### Success Criteria
+
+An MDC is successful if:
+
+- A developer can recreate the website design without seeing the original website
+- All design elements are documented with code
+- All interactions and animations are captured
+- All responsive breakpoints are documented
+- All pages and flows are mapped
+- The design style is clearly identifiable from the filename
+- The MDC is comprehensive enough to build a pixel-perfect recreation
+
+### Remember
+
+You are creating a "Design System Reference" document. It must be:
+
+- **Complete:** Nothing important is missing
+- **Accurate:** Everything is correct
+- **Comprehensive:** Everything is detailed
+- **Actionable:** Developers can use it to build
+- **Reliable:** It can be trusted as the definitive design reference
+
+**There are no shortcuts. There are no acceptable compromises. The MDC must be incredibly comprehensive and detailed.**
+
+---
+
+## Appendix: Extraction Checklist
+
+Use this checklist for every website:
+
+### Website Analysis
+- [ ] URL validated and accessible
+- [ ] Technology stack identified
+- [ ] Sitemap/navigation discovered
+- [ ] Complete page inventory created
+- [ ] All pages navigated
+
+### Design Extraction
+- [ ] Pass 1: Visual structure mapped
+- [ ] Pass 2: Interactive elements documented
+- [ ] Pass 3: Responsive design analyzed
+- [ ] Pass 4: Page flows mapped
+
+### Content Extraction
+- [ ] Color palette extracted
+- [ ] Typography system documented
+- [ ] Spacing system captured
+- [ ] All components documented
+- [ ] All animations extracted
+- [ ] All interactions documented
+- [ ] All breakpoints captured
+- [ ] All user flows mapped
+
+### MDC Creation
+- [ ] Folder created
+- [ ] MDC file created
+- [ ] All sections populated
+- [ ] CSS properly formatted
+- [ ] Markdown correct
+- [ ] README created
+- [ ] Design style name is descriptive
+
+### Quality Assurance
+- [ ] Completeness verified
+- [ ] Accuracy verified
+- [ ] Formatting verified
+- [ ] Organization verified
+- [ ] Usability verified
+
+---
+
+**END OF RULES**
+
+Remember: These rules exist to ensure the creation of incredibly comprehensive, detailed MDCs that serve as complete design system references for recreating website designs. Follow them strictly, and the result will be a valuable resource for developers.

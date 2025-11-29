@@ -1,0 +1,1583 @@
+---
+alwaysApply: false
+---
+
+# Dark Cinematic Red Accent - Website Design System
+
+## Website Metadata
+- **Source URL:** https://www.netflix.com/gb/
+- **Design Style:** Dark Cinematic Red Accent
+- **Primary Framework:** React (detected via component structure)
+- **CSS Framework:** Custom CSS-in-JS (Emotion)
+- **Analysis Date:** 2025-11-29
+- **Pages Analyzed:** 1 (Homepage)
+- **Total Components:** 15+ (Header, Hero, Buttons, Cards, Navigation, Forms, etc.)
+
+## Design Overview
+
+Netflix UK features a dark, cinematic design system optimized for video content consumption. The design emphasizes a bold red accent color (#E50914) against deep black backgrounds, creating high contrast and visual impact. The typography uses a custom Netflix Sans Variable font with clean, modern styling. The layout is minimalist with focus on content, featuring gradient overlays on hero sections and smooth transitions throughout. The design is fully responsive with carefully crafted breakpoints that maintain visual hierarchy across all device sizes.
+
+## Design System Fundamentals
+
+### Color Palette
+
+**Primary Colors:**
+- Primary: `#E50914` (rgb(229,9,20)) - Usage: Primary buttons, brand elements, CTAs
+- Primary Hover: `#C11119` (rgb(193,17,25)) - Usage: Button hover states
+- Primary Active: `#99161D` (rgb(153,22,29)) - Usage: Button active/pressed states
+- Primary Disabled: `rgba(229,9,20,0.4)` - Usage: Disabled button states
+
+**Neutral Colors:**
+- Background: `#000000` (rgb(0,0,0)) - Usage: Main page background
+- Surface: `rgba(0,0,0,0.8)` - Usage: Overlays, modals
+- Text Primary: `#FFFFFF` (rgb(255,255,255)) - Usage: Primary text, headings
+- Text Secondary: `rgba(255,255,255,0.7)` - Usage: Secondary text, descriptions
+- Text Tertiary: `rgba(255,255,255,0.4)` - Usage: Disabled text, placeholders
+- Border: `rgba(0,0,0,0)` - Usage: Transparent borders (for button pseudo-elements)
+
+**Semantic Colors:**
+- Success: N/A (Not detected in homepage)
+- Error: N/A (Not detected in homepage)
+- Warning: N/A (Not detected in homepage)
+- Info: N/A (Not detected in homepage)
+
+**Secondary Button Colors:**
+- Secondary Background: `rgba(128,128,128,0.2)` - Usage: Secondary button base
+- Secondary Hover: `rgba(128,128,128,0.3)` - Usage: Secondary button hover
+- Secondary Active: `rgba(128,128,128,0.3)` - Usage: Secondary button active
+
+**Gradients:**
+```css
+/* Hero Background Gradient - Dark to darker with color stops */
+background: linear-gradient(
+  77.82deg,
+  #6f181d 0%,
+  #6f181d 50%,
+  #000000 50%,
+  #000000 100%
+);
+
+/* Hero Overlay Gradient - Purple to dark blue */
+background: linear-gradient(
+  77.82deg,
+  #482566 0%,
+  #161d52 99.51%
+);
+
+/* Alternative Hero Gradient - Blue to dark */
+background: linear-gradient(
+  77.82deg,
+  #192247 0%,
+  #210e17 99.08%
+);
+
+/* Alternative Hero Gradient Variant */
+background: linear-gradient(
+  77.82deg,
+  #192247 0%,
+  #210e17 96.86%
+);
+```
+
+### Typography System
+
+**Font Families:**
+- Primary: `"Netflix Sans Variable"` - Usage: All text (headings, body, UI)
+- Fallback Stack: `"Helvetica Neue", "Segoe UI", "Roboto", "Ubuntu", sans-serif` - Usage: System fallbacks
+
+**Font Loading:**
+```css
+@font-face {
+  font-family: "Netflix Sans Variable";
+  src: url("https://occ.a.nflxso.net/genc/hawkins/5.8.1/font/netflix-sans-core-variable-full.woff2") format("woff2"),
+       local("Helvetica Neue"),
+       local("Segoe UI"),
+       local("Roboto"),
+       local("Ubuntu");
+  unicode-range: [extensive unicode range];
+}
+```
+
+**Type Scale:**
+```css
+/* Mobile Base */
+--font-size-base: 1rem; /* 16px */
+--font-size-sm: 0.875rem; /* 14px */
+--font-size-lg: 1.125rem; /* 18px */
+
+/* Responsive Headings */
+/* Mobile: 1.125rem (18px) */
+/* Tablet (600px+): 1.125rem (18px) */
+/* Desktop (960px+): Larger sizes */
+/* Large Desktop (1280px+): Larger sizes */
+```
+
+**Line Heights:**
+```css
+--line-height-tight: 1.2;
+--line-height-normal: 1.5;
+--line-height-relaxed: 1.75;
+```
+
+**Font Weights:**
+- Light: 300 (if available in variable font)
+- Regular: 400
+- Medium: 500 - Usage: Headings, emphasized text
+- Semibold: 600 (if available)
+- Bold: 700 (if available)
+
+**Typography Examples:**
+```css
+/* Heading Style */
+.heading {
+  font-family: "Netflix Sans Variable", "Helvetica Neue", "Segoe UI", "Roboto", "Ubuntu", sans-serif;
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: rgb(255, 255, 255);
+  margin: 0;
+  padding: 0;
+}
+
+/* Body Text */
+.body-text {
+  font-family: "Netflix Sans Variable", "Helvetica Neue", "Segoe UI", "Roboto", "Ubuntu", sans-serif;
+  font-size: 1rem;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.7);
+}
+```
+
+### Spacing System
+
+**Spacing Scale:**
+Base unit appears to be rem-based with responsive scaling.
+
+```css
+/* Container Padding - Responsive */
+--padding-mobile: 1.5rem; /* 24px */
+--padding-tablet: 2rem; /* 32px - 600px+ */
+--padding-desktop: 5rem; /* 80px - 960px+ */
+--padding-large: 9.25rem; /* 148px - 1280px+ */
+--padding-xl: 22.125rem; /* 354px - 1920px+ */
+
+/* Component Spacing */
+--spacing-xs: 0.25rem; /* 4px */
+--spacing-sm: 0.5rem; /* 8px */
+--spacing-md: 1rem; /* 16px */
+--spacing-lg: 1.5rem; /* 24px */
+--spacing-xl: 2rem; /* 32px */
+
+/* Layout Spacing */
+--header-height-mobile: 5rem; /* 80px */
+--header-height-desktop: 5.5rem; /* 88px - 1280px+ */
+--container-max-width: 120rem; /* 1920px */
+```
+
+**Spacing Scale Description:**
+The spacing system uses rem units for scalability and maintains consistent relationships. Container padding scales dramatically at larger breakpoints to maintain visual balance on wide screens.
+
+### Border Radius System
+
+```css
+--radius-sm: 0.125rem; /* 2px */
+--radius-md: 0.25rem; /* 4px */
+--radius-lg: 0.5rem; /* 8px */
+--radius-full: 9999px; /* Full rounded */
+```
+
+**Note:** Buttons appear to use minimal or no border radius for a sharp, modern look.
+
+### Shadow System
+
+```css
+/* Button Shadow (via pseudo-element) */
+box-shadow: none; /* Buttons use pseudo-elements for borders */
+
+/* Card Shadow */
+box-shadow: [Not explicitly detected in homepage, likely minimal or none for dark theme];
+```
+
+**Note:** The dark theme minimizes shadows, relying on color contrast and gradients for depth.
+
+## Layout Systems
+
+### Grid System
+
+```css
+/* Main Container */
+.container {
+  max-width: 120rem; /* 1920px */
+  margin: 0 auto;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Responsive Container Padding */
+@media all {
+  .container {
+    padding: 0 1.5rem; /* Mobile */
+  }
+}
+
+@media all and (min-width: 600px) {
+  .container {
+    padding: 0 2rem; /* Tablet */
+  }
+}
+
+@media all and (min-width: 960px) {
+  .container {
+    padding: 0 5rem; /* Desktop */
+  }
+}
+
+@media all and (min-width: 1280px) {
+  .container {
+    padding: 0 9.25rem; /* Large Desktop */
+  }
+}
+
+@media all and (min-width: 1920px) {
+  .container {
+    padding: 0 22.125rem; /* Extra Large */
+  }
+}
+```
+
+### Flexbox Layout System
+
+```css
+/* Layout Container */
+.layout-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-direction: row;
+  column-spacing: 16px;
+  row-spacing: 0px;
+  width: calc(100% + 16px);
+  padding: 0px;
+}
+
+/* Responsive Flex Direction */
+.layout-container[data-responsive] {
+  --flex-direction-xs: column;
+  --flex-direction-s: row;
+  --flex-direction-m: row;
+  --flex-direction-l: row;
+  --flex-direction-xl: row;
+  
+  --align-items-xs: flex-start;
+  --align-items-s: center;
+  --align-items-m: center;
+  --align-items-l: center;
+  --align-items-xl: center;
+}
+```
+
+### Breakpoints
+
+```css
+/* Mobile First Approach */
+/* Base: 0px - 599px */
+
+/* Tablet */
+@media all and (min-width: 600px) {
+  /* Tablet styles */
+}
+
+/* Desktop */
+@media all and (min-width: 960px) {
+  /* Desktop styles */
+}
+
+/* Large Desktop */
+@media all and (min-width: 1280px) {
+  /* Large desktop styles */
+}
+
+/* Extra Large Desktop */
+@media all and (min-width: 1920px) {
+  /* Extra large desktop styles */
+}
+
+/* Reduced Motion Support */
+@media screen and (prefers-reduced-motion) {
+  /* Disable transitions for accessibility */
+  * {
+    transition: none !important;
+  }
+}
+```
+
+## Component Library
+
+### Buttons
+
+**Primary Button:**
+```css
+.btn-primary {
+  /* Base styles */
+  background-color: rgb(229, 9, 20); /* #E50914 */
+  color: rgb(255, 255, 255);
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0;
+  font-family: "Netflix Sans Variable", "Helvetica Neue", "Segoe UI", "Roboto", "Ubuntu", sans-serif;
+  font-weight: 500;
+  font-size: 1rem;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.2s cubic-bezier(0.32, 0.94, 0.6, 1);
+  
+  /* Pseudo-element for border effect */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1px solid rgba(0, 0, 0, 0);
+    pointer-events: none;
+  }
+}
+
+.btn-primary:hover {
+  background-color: rgb(193, 17, 25); /* #C11119 */
+  transition-timing-function: cubic-bezier(0.32, 0.94, 0.6, 1);
+  
+  &::after {
+    border-color: rgba(0, 0, 0, 0);
+  }
+}
+
+.btn-primary:active {
+  background-color: rgb(153, 22, 29); /* #99161D */
+  color: rgba(255, 255, 255, 0.7);
+  transition: none;
+  
+  &::after {
+    border-color: rgba(0, 0, 0, 0);
+  }
+}
+
+.btn-primary:disabled,
+.btn-primary[aria-disabled="true"] {
+  background-color: rgba(229, 9, 20, 0.4);
+  color: rgba(255, 255, 255, 0.4);
+  cursor: not-allowed;
+  opacity: 1;
+  
+  &::after {
+    border-color: rgba(0, 0, 0, 0);
+  }
+}
+
+/* Reduced motion support */
+@media screen and (prefers-reduced-motion) {
+  .btn-primary {
+    transition: none;
+  }
+}
+```
+
+**Secondary Button:**
+```css
+.btn-secondary {
+  /* Base styles */
+  background-color: rgba(128, 128, 128, 0.2);
+  color: rgb(255, 255, 255);
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0;
+  font-family: "Netflix Sans Variable", "Helvetica Neue", "Segoe UI", "Roboto", "Ubuntu", sans-serif;
+  font-weight: 500;
+  font-size: 1rem;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.2s cubic-bezier(0.32, 0.94, 0.6, 1);
+  
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1px solid rgba(0, 0, 0, 0);
+    pointer-events: none;
+  }
+}
+
+.btn-secondary:hover {
+  background-color: rgba(128, 128, 128, 0.3);
+  transition-timing-function: cubic-bezier(0.32, 0.94, 0.6, 1);
+  
+  &::after {
+    border-color: rgba(0, 0, 0, 0);
+  }
+}
+
+.btn-secondary:active {
+  background-color: rgba(128, 128, 128, 0.3);
+  color: rgba(255, 255, 255, 0.7);
+  transition: none;
+  
+  &::after {
+    border-color: rgba(0, 0, 0, 0);
+  }
+}
+
+.btn-secondary:disabled,
+.btn-secondary[aria-disabled="true"] {
+  background-color: rgba(128, 128, 128, 0.2);
+  color: rgba(255, 255, 255, 0.4);
+  cursor: not-allowed;
+  opacity: 1;
+  
+  &::after {
+    border-color: rgba(0, 0, 0, 0);
+  }
+}
+```
+
+### Cards
+
+**Hero Card:**
+```css
+.hero-card {
+  position: relative;
+  width: 100%;
+  max-width: 120rem;
+  margin: 0 auto;
+  z-index: 2;
+  box-sizing: border-box;
+}
+
+.hero-card-content {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  margin-top: 1.375em; /* Mobile */
+}
+
+@media all and (min-width: 600px) {
+  .hero-card-content {
+    margin-top: 1.875rem; /* Tablet */
+  }
+}
+
+@media all and (min-width: 960px) {
+  .hero-card-content {
+    margin-top: 1.25rem; /* Desktop */
+  }
+}
+
+@media all and (min-width: 1280px) {
+  .hero-card-content {
+    margin-top: 1.375rem; /* Large Desktop */
+  }
+}
+```
+
+**Content Card:**
+```css
+.content-card {
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.content-card-image {
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  transition: opacity 0.5s cubic-bezier(0.33, 0, 0, 1);
+}
+
+.content-card-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.8));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.content-card:hover .content-card-overlay {
+  opacity: 1;
+}
+```
+
+### Forms
+
+**Input Fields:**
+```css
+.input {
+  position: relative;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: rgb(255, 255, 255);
+  font-family: "Netflix Sans Variable", "Helvetica Neue", "Segoe UI", "Roboto", "Ubuntu", sans-serif;
+  font-size: 1rem;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.input:focus {
+  outline: none;
+  border-color: rgb(229, 9, 20);
+  background-color: rgba(0, 0, 0, 0.7);
+}
+
+.input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.input:invalid {
+  border-color: rgba(229, 9, 20, 0.6);
+}
+
+.input[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: rgba(0, 0, 0, 0.3);
+}
+```
+
+**Form Container:**
+```css
+.form-container {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.form-control-wrapper {
+  padding: 0;
+  position: relative;
+}
+
+.form-control-chrome {
+  border-style: solid;
+  transition: border-color 0.2s ease;
+}
+
+.form-control-wrapper input[aria-disabled="true"] ~ .form-control-chrome {
+  opacity: 1;
+}
+
+.form-control-wrapper > input[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+```
+
+### Navigation
+
+**Main Navigation Header:**
+```css
+.main-header {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 120rem;
+  height: 5rem; /* Mobile */
+  margin: 0 auto -7.5rem auto;
+  padding: 0 1.5rem; /* Mobile */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@media all and (min-width: 600px) {
+  .main-header {
+    padding: 0 2rem; /* Tablet */
+  }
+}
+
+@media all and (min-width: 960px) {
+  .main-header {
+    padding: 0 5rem; /* Desktop */
+  }
+}
+
+@media all and (min-width: 1280px) {
+  .main-header {
+    height: 5.5rem; /* Large Desktop */
+    padding: 0 9.25rem;
+  }
+}
+
+@media all and (min-width: 1920px) {
+  .main-header {
+    padding: 0 22.125rem; /* Extra Large */
+  }
+}
+```
+
+**Navigation Logo:**
+```css
+.nav-logo {
+  height: 2.5rem; /* 40px */
+  width: auto;
+  display: block;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.nav-logo:hover {
+  opacity: 0.8;
+}
+```
+
+**Navigation Links:**
+```css
+.nav-link {
+  color: rgb(255, 255, 255);
+  text-decoration: none;
+  font-family: "Netflix Sans Variable", "Helvetica Neue", "Segoe UI", "Roboto", "Ubuntu", sans-serif;
+  font-size: 0.875rem;
+  font-weight: 400;
+  padding: 0.5rem 1rem;
+  transition: color 0.2s ease;
+}
+
+.nav-link:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.nav-link.active {
+  font-weight: 500;
+  color: rgb(255, 255, 255);
+}
+```
+
+**Mobile Menu:**
+```css
+.mobile-menu {
+  display: none; /* Hidden on desktop */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.95);
+  z-index: 1000;
+  padding: 5rem 1.5rem 2rem;
+  overflow-y: auto;
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.32, 0.94, 0.6, 1);
+}
+
+.mobile-menu.open {
+  transform: translateX(0);
+}
+
+@media all and (max-width: 959px) {
+  .mobile-menu {
+    display: block;
+  }
+}
+```
+
+### Modals/Dialogs
+
+```css
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  opacity: 0;
+  transition: opacity 0.3s cubic-bezier(0.32, 0, 0, 1);
+}
+
+.modal-overlay.open {
+  opacity: 1;
+}
+
+.modal-content {
+  background-color: rgb(0, 0, 0);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0;
+  max-width: 41.8125rem; /* 669px */
+  width: 100%;
+  max-height: 90vh;
+  overflow-x: auto;
+  overflow-y: hidden;
+  position: relative;
+  opacity: 0;
+  transform: scale(0.88);
+  transition: opacity 100ms cubic-bezier(0.32, 0.94, 0.6, 1) 100ms,
+              transform 533ms cubic-bezier(0.32, 0.94, 0.6, 1) 4ms;
+}
+
+.modal-overlay.open .modal-content {
+  opacity: 1;
+  transform: scale(1);
+}
+```
+
+### Loading Indicators
+
+```css
+.spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: rgb(229, 9, 20);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Skeleton Loading */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+  border-radius: 0.25rem;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+```
+
+## Animations and Transitions
+
+### CSS Transitions
+
+```css
+/* Standard Transition */
+.transition {
+  transition: all 0.2s cubic-bezier(0.32, 0.94, 0.6, 1);
+}
+
+/* Button Transition */
+.btn-transition {
+  transition: background-color 0.2s cubic-bezier(0.32, 0.94, 0.6, 1);
+}
+
+/* Opacity Transition */
+.fade-transition {
+  transition: opacity 0.5s cubic-bezier(0.33, 0, 0, 1);
+}
+
+/* Transform Transition */
+.transform-transition {
+  transition: transform 533ms cubic-bezier(0.32, 0.94, 0.6, 1) 4ms,
+              opacity 100ms cubic-bezier(0.32, 0.94, 0.6, 1) 100ms;
+}
+```
+
+### CSS Animations
+
+```css
+/* Fade In Animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.5s cubic-bezier(0.33, 0, 0, 1) forwards;
+}
+
+/* Slide Up Animation */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-up {
+  animation: slideUp 0.5s cubic-bezier(0.32, 0.94, 0.6, 1) forwards;
+}
+
+/* Scale Animation */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.scale-in {
+  animation: scaleIn 533ms cubic-bezier(0.32, 0.94, 0.6, 1) forwards;
+}
+```
+
+### Scroll Animations
+
+```css
+/* Scroll Fade */
+.scroll-fade {
+  opacity: 0;
+  transform: translateY(2rem);
+  transition: opacity 0.6s cubic-bezier(0.32, 0.94, 0.6, 1),
+              transform 0.6s cubic-bezier(0.32, 0.94, 0.6, 1);
+}
+
+.scroll-fade.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+```
+
+### Page Transitions
+
+```css
+/* Page Transition Container */
+.page-transition {
+  position: relative;
+  overflow: hidden;
+}
+
+.page-transition-enter {
+  opacity: 0;
+  transform: translateX(1rem);
+}
+
+.page-transition-enter-active {
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 0.3s cubic-bezier(0.32, 0.94, 0.6, 1),
+              transform 0.3s cubic-bezier(0.32, 0.94, 0.6, 1);
+}
+
+.page-transition-exit {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.page-transition-exit-active {
+  opacity: 0;
+  transform: translateX(-1rem);
+  transition: opacity 0.3s cubic-bezier(0.32, 0.94, 0.6, 1),
+              transform 0.3s cubic-bezier(0.32, 0.94, 0.6, 1);
+}
+```
+
+## Page Layouts
+
+### Homepage Layout
+
+**Layout Structure:**
+```css
+.homepage {
+  background-color: #000000;
+  color: #FFFFFF;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Hero Section */
+.hero-section {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  min-height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.hero-background {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    77.82deg,
+    #6f181d 0%,
+    #6f181d 50%,
+    #000000 50%,
+    #000000 100%
+  );
+}
+
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    77.82deg,
+    #482566 0%,
+    #161d52 99.51%
+  );
+  opacity: 0.8;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  padding: 0 1.5rem;
+  max-width: 120rem;
+  margin: 0 auto;
+}
+
+/* Content Sections */
+.content-section {
+  width: 100%;
+  max-width: 120rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  position: relative;
+  z-index: 2;
+}
+
+@media all and (min-width: 600px) {
+  .content-section {
+    padding: 2rem 2rem;
+  }
+}
+
+@media all and (min-width: 960px) {
+  .content-section {
+    padding: 3rem 5rem;
+  }
+}
+
+@media all and (min-width: 1280px) {
+  .content-section {
+    padding: 4rem 9.25rem;
+  }
+}
+
+@media all and (min-width: 1920px) {
+  .content-section {
+    padding: 4rem 22.125rem;
+  }
+}
+```
+
+**Components Used:**
+- Header Navigation: Fixed header with logo and login button
+- Hero Section: Full-screen hero with gradient background and CTA
+- Content Rows: Horizontal scrolling content rows
+- Footer: Site links and information (if present)
+
+**Responsive Behavior:**
+- Mobile: Stacked layout, reduced padding, single column
+- Tablet: Increased padding, maintained single column
+- Desktop: Maximum padding, full-width content rows
+- Large Desktop: Extra padding for ultra-wide screens
+
+## User Flows and Navigation
+
+### Primary User Flows
+
+1. **Homepage to Sign In:**
+   - Step 1: User lands on homepage with hero section
+   - Step 2: User clicks "Sign In" button in header (top right)
+   - Step 3: Navigation to sign-in page (external flow)
+
+2. **Homepage to Get Started:**
+   - Step 1: User views hero section with main CTA
+   - Step 2: User clicks primary "Get Started" button
+   - Step 3: Navigation to sign-up flow (external flow)
+
+3. **Content Discovery:**
+   - Step 1: User scrolls through homepage
+   - Step 2: User views horizontal content rows
+   - Step 3: User hovers over content cards (if interactive)
+   - Step 4: User clicks content to view details (external flow)
+
+### Navigation Structure
+
+**Main Navigation:**
+- Logo (left): Links to homepage
+- Sign In Button (right): Primary action, red button style
+- Navigation appears to be minimal on homepage (content-focused design)
+
+**Footer Navigation:**
+- Not detected in homepage analysis (may be present on other pages)
+
+**Breadcrumbs:**
+- Not used on homepage
+
+### Link Patterns
+
+**Internal Links:**
+- Styling: Standard text links with white color
+- Hover: Slight opacity change
+- Active: Maintained white color
+
+**CTA Links (Buttons):**
+- Primary: Red background (#E50914), white text
+- Hover: Darker red (#C11119)
+- Active: Darkest red (#99161D)
+
+**External Links:**
+- Follow same patterns as internal links
+
+## Responsive Design Patterns
+
+### Mobile (< 600px)
+
+**Layout Changes:**
+- Container padding: 1.5rem (24px)
+- Header height: 5rem (80px)
+- Single column layout
+- Stacked content sections
+- Reduced font sizes where applicable
+
+**Component Variations:**
+- Buttons: Full-width or appropriately sized for mobile
+- Navigation: May use mobile menu pattern
+- Hero: Full viewport height, centered content
+
+**Navigation Adaptations:**
+- Minimal navigation visible
+- Mobile menu may be accessible via hamburger icon
+
+### Tablet (600px - 959px)
+
+**Layout Changes:**
+- Container padding: 2rem (32px)
+- Header height: 5rem (80px)
+- Maintained single column with increased spacing
+- Content rows begin to show more items
+
+**Component Variations:**
+- Buttons: Appropriate sizing for touch targets
+- Navigation: Expanded navigation options
+- Hero: Maintained full viewport approach
+
+### Desktop (960px - 1279px)
+
+**Layout Changes:**
+- Container padding: 5rem (80px)
+- Header height: 5rem (80px)
+- Full-width content rows
+- Multi-column layouts where applicable
+
+**Component Variations:**
+- Buttons: Standard desktop sizing
+- Navigation: Full navigation visible
+- Hero: Enhanced spacing and typography
+
+### Large Desktop (1280px - 1919px)
+
+**Layout Changes:**
+- Container padding: 9.25rem (148px)
+- Header height: 5.5rem (88px)
+- Maximum content width maintained
+- Enhanced spacing throughout
+
+**Component Variations:**
+- All components at optimal desktop sizing
+- Enhanced typography scales
+- Maximum visual hierarchy
+
+### Extra Large Desktop (1920px+)
+
+**Layout Changes:**
+- Container padding: 22.125rem (354px)
+- Header height: 5.5rem (88px)
+- Ultra-wide screen optimization
+- Maximum padding to prevent content from stretching too wide
+
+**Component Variations:**
+- All components maintain optimal proportions
+- Content centered with generous side margins
+
+## Loading States and Indicators
+
+### Page Load
+
+**Initial Page Load:**
+- Black background appears immediately
+- Content loads progressively
+- No skeleton screens detected (likely due to SSR/SSG)
+
+**Lazy Loading:**
+- Images and content may load as user scrolls
+- Smooth fade-in transitions for loaded content
+
+### Content Loading
+
+**Async Content:**
+- Spinner indicators for loading states
+- Smooth transitions when content appears
+- Opacity transitions: 0.5s cubic-bezier(0.33, 0, 0, 1)
+
+### Form Submission
+
+**Loading States:**
+- Button disabled state during submission
+- Loading spinner may appear
+- Form fields maintain state during submission
+
+## Interactive Behaviors
+
+### Hover Effects
+
+**Button Hover:**
+```css
+/* Primary Button Hover */
+.btn-primary:hover {
+  background-color: rgb(193, 17, 25); /* Darker red */
+  transition-timing-function: cubic-bezier(0.32, 0.94, 0.6, 1);
+}
+```
+
+**Link Hover:**
+```css
+.nav-link:hover {
+  color: rgba(255, 255, 255, 0.7); /* Slightly transparent */
+}
+```
+
+**Card Hover:**
+```css
+.content-card:hover {
+  transform: scale(1.05); /* If applicable */
+  transition: transform 0.3s ease;
+}
+```
+
+### Click Interactions
+
+**Button Active State:**
+```css
+.btn-primary:active {
+  background-color: rgb(153, 22, 29); /* Darkest red */
+  color: rgba(255, 255, 255, 0.7);
+  transition: none; /* Immediate feedback */
+}
+```
+
+**Click Feedback:**
+- Immediate color change on active
+- No transition delay for active state
+- Maintains visual feedback
+
+### Scroll Behaviors
+
+**Scroll-triggered Effects:**
+- Content fades in as user scrolls
+- Smooth opacity transitions
+- Transform animations for content appearance
+
+**Parallax Effects:**
+- Not explicitly detected, but gradient overlays create depth
+
+### Form Interactions
+
+**Form Validation:**
+- Invalid state: Border color changes to red tint
+- Focus state: Border highlights with primary red
+- Disabled state: Reduced opacity, not-allowed cursor
+
+**Error States:**
+- Border color: rgba(229, 9, 20, 0.6)
+- Visual feedback on invalid inputs
+
+**Success States:**
+- Not detected in homepage analysis
+
+## Implementation Guidelines
+
+### CSS Architecture
+
+**CSS-in-JS Approach:**
+- Uses Emotion (CSS-in-JS library)
+- Scoped styles via data-emotion attributes
+- Component-level styling
+- No global CSS conflicts
+
+**Naming Conventions:**
+- Class names: `default-ltr-iqcdef-cache-[hash]`
+- Data attributes: `data-uia`, `data-layout`, `data-emotion`
+- BEM-like structure in some components
+
+### Component Structure
+
+**Layout Components:**
+- Container: Main layout wrapper
+- Item: Flex/grid items
+- Wrapper: Nested layout containers
+
+**Component Hierarchy:**
+```
+App
+  └── BasicLayout
+      └── Netflix Sans Font Loaded
+          └── Locale Container
+              └── Hero Section
+              └── Content Sections
+```
+
+### Animation Performance
+
+**Best Practices:**
+- Use `transform` and `opacity` for animations (GPU accelerated)
+- Avoid animating `width`, `height`, `top`, `left`
+- Use `will-change` sparingly
+- Respect `prefers-reduced-motion`
+
+**Timing Functions:**
+- Standard: `cubic-bezier(0.32, 0.94, 0.6, 1)`
+- Smooth: `cubic-bezier(0.33, 0, 0, 1)`
+- Ease: Standard ease for simple transitions
+
+### Accessibility Considerations
+
+**Focus States:**
+- Visible focus indicators on interactive elements
+- Keyboard navigation support
+- ARIA attributes where applicable
+
+**Reduced Motion:**
+```css
+@media screen and (prefers-reduced-motion) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+```
+
+**Color Contrast:**
+- White text on black: Maximum contrast
+- Red buttons: High contrast
+- Disabled states: Reduced contrast but still visible
+
+**Semantic HTML:**
+- Proper heading hierarchy
+- ARIA labels for interactive elements
+- Semantic elements (header, main, etc.)
+
+## Design Tokens
+
+```css
+:root {
+  /* Colors - Primary */
+  --color-primary: rgb(229, 9, 20); /* #E50914 */
+  --color-primary-hover: rgb(193, 17, 25); /* #C11119 */
+  --color-primary-active: rgb(153, 22, 29); /* #99161D */
+  --color-primary-disabled: rgba(229, 9, 20, 0.4);
+  
+  /* Colors - Neutral */
+  --color-background: rgb(0, 0, 0); /* #000000 */
+  --color-surface: rgba(0, 0, 0, 0.8);
+  --color-text-primary: rgb(255, 255, 255); /* #FFFFFF */
+  --color-text-secondary: rgba(255, 255, 255, 0.7);
+  --color-text-tertiary: rgba(255, 255, 255, 0.4);
+  --color-border: rgba(0, 0, 0, 0);
+  
+  /* Colors - Secondary */
+  --color-secondary-bg: rgba(128, 128, 128, 0.2);
+  --color-secondary-hover: rgba(128, 128, 128, 0.3);
+  
+  /* Typography */
+  --font-family-primary: "Netflix Sans Variable", "Helvetica Neue", "Segoe UI", "Roboto", "Ubuntu", sans-serif;
+  --font-size-base: 1rem; /* 16px */
+  --font-size-sm: 0.875rem; /* 14px */
+  --font-size-lg: 1.125rem; /* 18px */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+  
+  /* Spacing - Container Padding */
+  --padding-mobile: 1.5rem; /* 24px */
+  --padding-tablet: 2rem; /* 32px */
+  --padding-desktop: 5rem; /* 80px */
+  --padding-large: 9.25rem; /* 148px */
+  --padding-xl: 22.125rem; /* 354px */
+  
+  /* Spacing - Component */
+  --spacing-xs: 0.25rem; /* 4px */
+  --spacing-sm: 0.5rem; /* 8px */
+  --spacing-md: 1rem; /* 16px */
+  --spacing-lg: 1.5rem; /* 24px */
+  --spacing-xl: 2rem; /* 32px */
+  
+  /* Layout */
+  --container-max-width: 120rem; /* 1920px */
+  --header-height-mobile: 5rem; /* 80px */
+  --header-height-desktop: 5.5rem; /* 88px */
+  
+  /* Border Radius */
+  --radius-sm: 0.125rem; /* 2px */
+  --radius-md: 0.25rem; /* 4px */
+  --radius-lg: 0.5rem; /* 8px */
+  --radius-full: 9999px;
+  
+  /* Transitions */
+  --transition-standard: 0.2s cubic-bezier(0.32, 0.94, 0.6, 1);
+  --transition-smooth: 0.5s cubic-bezier(0.33, 0, 0, 1);
+  --transition-transform: 533ms cubic-bezier(0.32, 0.94, 0.6, 1) 4ms;
+  
+  /* Breakpoints */
+  --breakpoint-tablet: 600px;
+  --breakpoint-desktop: 960px;
+  --breakpoint-large: 1280px;
+  --breakpoint-xl: 1920px;
+}
+```
+
+## Page-Specific Designs
+
+### Homepage
+
+**Layout Structure:**
+- Full viewport hero section with gradient background
+- Fixed header navigation
+- Content sections below hero
+- Horizontal scrolling content rows (if applicable)
+
+**Components Used:**
+- Header: Logo and Sign In button
+- Hero: Large hero section with gradient, heading, and CTA button
+- Content Rows: Horizontal scrolling content (if present)
+- Footer: Site information and links (if present)
+
+**Responsive Behavior:**
+- Mobile: Stacked, full-width hero, reduced padding
+- Tablet: Increased padding, maintained single column
+- Desktop: Maximum padding, full-width content
+- Large Desktop: Ultra-wide optimization with maximum padding
+
+## Motion Graphics and Advanced Animations
+
+### Hero Background Animation
+
+**Description:** Gradient background with potential subtle animation
+**Trigger:** Page load
+**CSS:**
+```css
+.hero-background {
+  background: linear-gradient(
+    77.82deg,
+    #6f181d 0%,
+    #6f181d 50%,
+    #000000 50%,
+    #000000 100%
+  );
+  /* Potential animation for gradient shift */
+}
+```
+
+### Content Fade-In Animation
+
+**Description:** Content sections fade in on scroll
+**Trigger:** Scroll position
+**CSS:**
+```css
+.content-fade-in {
+  opacity: 0;
+  transform: translateY(2rem);
+  transition: opacity 0.6s cubic-bezier(0.32, 0.94, 0.6, 1),
+              transform 0.6s cubic-bezier(0.32, 0.94, 0.6, 1);
+}
+
+.content-fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+```
+
+## Design Patterns and Best Practices
+
+### Layout Patterns
+
+**Full-Width Hero:**
+- Uses viewport height for maximum impact
+- Gradient overlays for depth
+- Centered content with responsive padding
+
+**Container Pattern:**
+- Maximum width: 120rem (1920px)
+- Centered with auto margins
+- Responsive padding scales dramatically
+
+**Flexbox Layout:**
+- Primary layout method
+- Responsive flex-direction changes
+- Alignment adapts per breakpoint
+
+### Component Patterns
+
+**Button Pattern:**
+- Pseudo-element for border effects
+- Smooth color transitions
+- Immediate active feedback
+- Disabled state with reduced opacity
+
+**Card Pattern:**
+- Transparent backgrounds
+- Overlay effects on hover
+- Smooth image transitions
+
+### Animation Patterns
+
+**Standard Transition:**
+- Duration: 0.2s - 0.5s
+- Timing: cubic-bezier(0.32, 0.94, 0.6, 1)
+- Properties: background-color, opacity, transform
+
+**Modal Animation:**
+- Scale and fade combination
+- Staggered timing (opacity 100ms, transform 533ms)
+- Smooth entrance and exit
+
+## Implementation Checklist
+
+### Setup
+- [x] Set up CSS variables/tokens
+- [x] Configure typography system
+- [x] Set up color palette
+- [x] Configure spacing system
+- [ ] Load Netflix Sans Variable font
+- [ ] Set up responsive breakpoints
+
+### Components
+- [ ] Implement button variants (primary, secondary)
+- [ ] Implement card components
+- [ ] Implement form elements
+- [ ] Implement navigation (header, mobile menu)
+- [ ] Implement hero section
+- [ ] Implement content sections
+- [ ] Implement modals/dialogs
+- [ ] Implement loading indicators
+
+### Responsive Design
+- [ ] Implement mobile layouts (< 600px)
+- [ ] Implement tablet layouts (600px - 959px)
+- [ ] Implement desktop layouts (960px - 1279px)
+- [ ] Implement large desktop layouts (1280px - 1919px)
+- [ ] Implement extra large desktop layouts (1920px+)
+- [ ] Test at all breakpoints
+
+### Animations
+- [ ] Implement CSS transitions
+- [ ] Implement CSS animations (fade, slide, scale)
+- [ ] Implement scroll animations
+- [ ] Implement page transitions
+- [ ] Add reduced motion support
+
+### Accessibility
+- [ ] Implement focus states
+- [ ] Add ARIA attributes
+- [ ] Test keyboard navigation
+- [ ] Verify color contrast
+- [ ] Test with screen readers
+- [ ] Implement reduced motion support
+
+## Notes and Observations
+
+### Design Characteristics
+
+1. **Dark Theme Dominance:**
+   - Pure black background creates high contrast
+   - Red accent provides strong visual hierarchy
+   - Minimal use of shadows (relies on color contrast)
+
+2. **Typography Focus:**
+   - Custom Netflix Sans Variable font is central to brand
+   - Clean, modern sans-serif approach
+   - Medium weight (500) for headings creates emphasis
+
+3. **Minimalist Navigation:**
+   - Homepage focuses on content, not navigation
+   - Single primary CTA (Sign In)
+   - Logo as home link
+
+4. **Gradient Usage:**
+   - Complex gradients on hero sections
+   - Creates depth without shadows
+   - Color transitions from red tones to dark blues/purples
+
+5. **Responsive Padding:**
+   - Dramatic padding scaling at larger breakpoints
+   - Prevents content from stretching too wide
+   - Maintains visual balance on ultra-wide screens
+
+6. **Animation Philosophy:**
+   - Smooth, subtle transitions
+   - Respects user preferences (reduced motion)
+   - Focus on content, not flashy animations
+
+### Implementation Challenges
+
+1. **Font Loading:**
+   - Netflix Sans Variable requires external font file
+   - Fallback stack is essential
+   - Consider font-display strategy
+
+2. **CSS-in-JS:**
+   - Original uses Emotion (CSS-in-JS)
+   - May need to convert to standard CSS or use similar approach
+   - Scoped styles prevent conflicts
+
+3. **Responsive Padding:**
+   - Very large padding values at XL breakpoints
+   - May need adjustment for different screen sizes
+   - Consider max-width constraints
+
+4. **Gradient Complexity:**
+   - Multiple gradient overlays
+   - Precise color stops and angles
+   - May need fine-tuning for exact match
+
+### Special Considerations
+
+1. **Video Content:**
+   - Design optimized for video thumbnails
+   - Horizontal scrolling patterns likely
+   - Hover states for content discovery
+
+2. **Performance:**
+   - Large font file may impact load time
+   - Consider font subsetting
+   - Optimize gradient rendering
+
+3. **Accessibility:**
+   - High contrast design is accessible
+   - Reduced motion support is implemented
+   - Keyboard navigation should be tested
+
+4. **Brand Consistency:**
+   - Netflix red (#E50914) is critical brand color
+   - Must maintain exact color values
+   - Typography is brand-defining

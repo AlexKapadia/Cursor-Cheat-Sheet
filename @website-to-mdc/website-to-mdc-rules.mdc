@@ -1,0 +1,251 @@
+---
+description: Comprehensive framework for converting websites to MDC format with multi-phase analysis
+globs: []
+alwaysApply: false
+---
+
+# Website to MDC Conversion Rules
+
+## Overview
+This document outlines a comprehensive methodology for analyzing websites and converting them into structured MDC (Markdown Cursor) format. The process involves multiple phases of discovery, analysis, and documentation.
+
+## Target Website
+- **URL**: `https://xx.wearemotto.com/`
+- **Status**: Protected by Cloudflare (requires JavaScript-enabled browser)
+- **Access Method**: Browser automation required (Puppeteer/Playwright)
+
+## Phase 1: Website Access and Discovery
+
+### 1.1 URL Validation
+- Verify URL accessibility
+- Check HTTP status codes
+- Identify protection mechanisms (Cloudflare, WAF, etc.)
+- Handle authentication if required
+
+### 1.2 Technology Detection
+- **Frontend Framework**: Detect React, Vue, Angular, Next.js, etc.
+- **CSS Framework**: Identify Tailwind, Bootstrap, Material-UI, etc.
+- **Build Tools**: Webpack, Vite, Parcel indicators
+- **Analytics**: Google Analytics, Segment, etc.
+- **CDN**: Cloudflare, CloudFront, etc.
+
+### 1.3 Sitemap Discovery
+- Check `/sitemap.xml`
+- Check `/robots.txt` for sitemap references
+- Analyze navigation structure
+- Identify all routes/pages
+- Map internal linking structure
+
+### 1.4 Page Inventory
+Create a comprehensive list of:
+- Homepage
+- All navigation pages
+- Dynamic routes
+- API endpoints (if accessible)
+- Static assets structure
+
+## Phase 2: Multi-Pass Design Analysis
+
+### Pass 1: Visual Structure Mapping
+- **Layout Hierarchy**: Document header, footer, sidebar, main content areas
+- **Grid Systems**: CSS Grid, Flexbox, custom grid implementations
+- **Typography**: Font families, sizes, weights, line heights, color schemes
+- **Color Palette**: Primary, secondary, accent colors, gradients
+- **Spacing System**: Margin/padding patterns, rhythm
+- **Component Structure**: Reusable UI components identified
+
+### Pass 2: Interactive Elements and Behaviors
+- **Buttons**: Styles, states (hover, active, disabled), variants
+- **Forms**: Input types, validation patterns, error states
+- **Navigation**: Menu types, dropdown behaviors, mobile menu
+- **Modals/Dialogs**: Trigger mechanisms, animations, close behaviors
+- **Tooltips**: Positioning, triggers, content patterns
+- **Accordions/Tabs**: Expand/collapse behaviors
+- **Carousels/Sliders**: Navigation controls, autoplay, indicators
+
+### Pass 3: Responsive Design Analysis
+- **Breakpoints**: Mobile, tablet, desktop breakpoints
+- **Mobile-First vs Desktop-First**: Approach identification
+- **Layout Changes**: How components adapt at different sizes
+- **Navigation Adaptation**: Mobile menu patterns
+- **Touch Interactions**: Swipe gestures, touch targets
+- **Viewport Meta Tags**: Configuration
+
+### Pass 4: Page Flow and Navigation Mapping
+- **User Journeys**: Primary paths through the site
+- **Navigation Patterns**: Breadcrumbs, pagination, filters
+- **State Management**: URL parameters, query strings, hash routing
+- **Transitions**: Page transitions, loading states
+- **Error Pages**: 404, 500, etc.
+
+## Phase 3: Design Element Extraction
+
+### Visual Patterns
+- **Icons**: Icon library (Font Awesome, Material Icons, custom SVG)
+- **Images**: Formats, optimization, lazy loading patterns
+- **Illustrations**: Style, placement, usage
+- **Shadows**: Elevation system, depth patterns
+- **Borders**: Radius patterns, border styles
+- **Backgrounds**: Patterns, gradients, overlays
+
+### Interactive Patterns
+- **Hover Effects**: Transitions, transforms, color changes
+- **Click Feedback**: Ripple effects, state changes
+- **Loading States**: Skeletons, spinners, progress indicators
+- **Empty States**: Placeholder content, call-to-action patterns
+- **Success/Error States**: Toast notifications, inline messages
+
+### Animation Patterns
+- **Transitions**: Duration, easing functions
+- **Keyframe Animations**: Entrance, exit, micro-interactions
+- **Scroll Animations**: Parallax, fade-in, reveal effects
+- **Performance**: GPU acceleration, will-change usage
+
+### Responsive Patterns
+- **Container Queries**: Usage and patterns
+- **Media Queries**: Breakpoint strategies
+- **Flexible Typography**: Fluid typography, clamp() usage
+- **Image Responsiveness**: srcset, sizes, picture elements
+
+## Phase 4: Code Structure Analysis
+
+### HTML Structure
+- Semantic HTML usage
+- Accessibility attributes (ARIA labels, roles)
+- Meta tags and SEO elements
+- Schema.org markup
+
+### CSS Architecture
+- **Methodology**: BEM, SMACSS, OOCSS, etc.
+- **Preprocessors**: Sass, Less, PostCSS
+- **CSS-in-JS**: Styled-components, Emotion, etc.
+- **Utility Classes**: Tailwind patterns, custom utilities
+- **Custom Properties**: CSS variables usage
+
+### JavaScript Patterns
+- **Framework Patterns**: Component structure, hooks, state management
+- **Event Handling**: Delegation, custom events
+- **API Integration**: Fetch patterns, error handling
+- **Performance**: Code splitting, lazy loading, memoization
+
+## Phase 5: Content Analysis
+
+### Content Structure
+- **Headings Hierarchy**: H1-H6 usage patterns
+- **Text Content**: Paragraphs, lists, blockquotes
+- **Media Content**: Images, videos, embeds
+- **Call-to-Actions**: Button text, placement, styling
+
+### SEO Elements
+- **Meta Tags**: Title, description, Open Graph
+- **Structured Data**: JSON-LD, microdata
+- **URL Structure**: Clean URLs, slugs
+- **Internal Linking**: Anchor text, link density
+
+## Phase 6: Performance Analysis
+
+### Metrics
+- **Core Web Vitals**: LCP, FID, CLS
+- **Load Times**: First paint, time to interactive
+- **Resource Sizes**: Images, scripts, stylesheets
+- **Network Requests**: API calls, third-party scripts
+
+### Optimization Patterns
+- **Image Optimization**: Formats, compression, lazy loading
+- **Code Splitting**: Route-based, component-based
+- **Caching Strategies**: Service workers, HTTP caching
+- **CDN Usage**: Asset delivery patterns
+
+## Phase 7: Accessibility Analysis
+
+### WCAG Compliance
+- **Color Contrast**: Text readability
+- **Keyboard Navigation**: Tab order, focus indicators
+- **Screen Reader Support**: ARIA labels, semantic HTML
+- **Alt Text**: Image descriptions
+
+### Inclusive Design
+- **Font Sizes**: Minimum readable sizes
+- **Touch Targets**: Minimum 44x44px
+- **Error Messages**: Clear, actionable feedback
+- **Form Labels**: Proper association
+
+## Phase 8: MDC File Generation
+
+### File Structure
+```
+@website-to-mdc/
+├── website-to-mdc-rules.mdc (this file)
+├── README.md
+├── analysis/
+│   ├── 01-discovery.md
+│   ├── 02-visual-structure.md
+│   ├── 03-interactive-elements.md
+│   ├── 04-responsive-design.md
+│   ├── 05-design-patterns.md
+│   ├── 06-code-structure.md
+│   ├── 07-content-analysis.md
+│   └── 08-performance-accessibility.md
+└── assets/
+    ├── screenshots/
+    ├── color-palette.json
+    └── typography-system.json
+```
+
+### MDC Format Guidelines
+- Use proper heading hierarchy
+- Include code blocks with language specification
+- Add metadata sections where applicable
+- Include visual references (screenshots, diagrams)
+- Document all design tokens (colors, spacing, typography)
+- Provide code examples for reusable patterns
+
+## Tools and Methods
+
+### Browser Automation
+For Cloudflare-protected sites:
+- **Puppeteer**: Headless Chrome automation
+- **Playwright**: Multi-browser automation
+- **Selenium**: Cross-browser testing
+
+### Analysis Tools
+- **Chrome DevTools**: Performance, accessibility, network analysis
+- **Lighthouse**: Performance, accessibility, SEO audits
+- **WAVE**: Accessibility evaluation
+- **WebPageTest**: Performance testing
+
+### Extraction Tools
+- **Puppeteer/Playwright**: HTML/CSS extraction
+- **Cheerio**: Server-side HTML parsing
+- **CSS Parser**: Style extraction and analysis
+- **Custom Scripts**: Pattern detection and documentation
+
+## Implementation Notes
+
+### Handling Protected Sites
+When encountering Cloudflare or similar protections:
+1. Use browser automation (Puppeteer/Playwright)
+2. Wait for JavaScript execution
+3. Handle challenge pages
+4. Maintain session cookies
+5. Respect rate limits
+
+### Best Practices
+- Document assumptions when direct access isn't possible
+- Include screenshots for visual reference
+- Version control all analysis files
+- Update analysis when site changes
+- Maintain privacy and security considerations
+
+## Next Steps
+
+1. **Set up browser automation** for Cloudflare-protected site
+2. **Execute Phase 1** discovery process
+3. **Proceed through phases** systematically
+4. **Generate structured MDC files** with findings
+5. **Create README** with navigation and overview
+
+---
+
+*Last Updated: 2025-11-29*
+*Status: Framework defined, awaiting browser automation setup for protected site access*

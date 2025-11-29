@@ -1,0 +1,1574 @@
+---
+alwaysApply: false
+---
+
+# Modern Tech Gradient Dark - Website Design System
+
+## Website Metadata
+- **Source URL:** https://n8n.io/
+- **Design Style:** Modern Tech Gradient Dark
+- **Primary Framework:** Nuxt.js
+- **CSS Framework:** Tailwind CSS
+- **Analysis Date:** 2025-11-29
+- **Pages Analyzed:** 1 (Homepage)
+- **Total Components:** 15+
+
+## Design Overview
+
+The n8n.io website features a sophisticated dark theme design with vibrant gradient overlays, glassmorphism effects, and a modern tech aesthetic. The design combines deep navy backgrounds with purple, violet, and orange gradient accents to create a premium, technical feel. The typography uses the custom Geomanist font family with tight letter spacing, and the layout emphasizes spacious sections with carefully orchestrated visual effects including backdrop blur, radial gradients, and animated glow effects.
+
+## Design System Fundamentals
+
+### Color Palette
+
+**Primary Colors:**
+- Primary Accent: `#ea4b71` (usage: brand color, links, loading indicator)
+- Secondary Purple: `#6b21ef` (usage: gradient accents, card glows)
+- Orange Accent: `#ff9b26` (usage: gradient accents, CTAs)
+- Violet Gradient: `#e768e6` to `#ff9b26` (usage: gradient text, highlights)
+
+**Neutral Colors:**
+- Background Deep: `#0e0918` (usage: main background)
+- Background Midnight: `#0c081c` (usage: card backgrounds)
+- Background Navy: `#0d0a19` (usage: surface backgrounds)
+- Surface Deep Navy: `#1f192a` / `rgb(31, 25, 42)` (usage: badge backgrounds)
+- Text Primary: `#ffffff` (usage: headings, primary text)
+- Text Secondary: `#c4bbd3` / `rgb(196, 187, 211)` (usage: body text, paragraphs)
+- Text Lavender Gray: `#faf9fbbf` / `rgba(250, 249, 251, 0.75)` (usage: secondary text)
+- Border: `rgba(255, 255, 255, 0.1)` / `#ffffff1a` (usage: borders, dividers)
+- Border Subtle: `rgba(255, 255, 255, 0.15)` / `border-white/15` (usage: subtle borders)
+
+**Gradient Colors:**
+- Purple Gradient: `#250055` to `#0019ff` (usage: card glow effects)
+- Orange-Purple Gradient: `#ff9b26` to `#6b21ef` (usage: card animations)
+- Pink-Orange Gradient: `#e768e6` to `#ff9b26` (usage: CTA text gradients)
+- Background Gradient: `#a13355` to `#5159d9` (usage: effect backgrounds)
+- Tab Gradient: `#e3a5724f` to `#5780e661` (usage: tab layer backgrounds)
+
+**Semantic Colors:**
+- Success: N/A (not explicitly defined)
+- Error: N/A (not explicitly defined)
+- Warning: N/A (not explicitly defined)
+- Info: N/A (not explicitly defined)
+
+**Gradients:**
+```css
+/* Hero Background Gradient */
+background: linear-gradient(180deg, #040307, transparent),
+            radial-gradient(90% 90% at 50% 20%, transparent 45%, rgba(14,9,24,.85) 70%, #0e0918 90%);
+
+/* Desktop Hero Background Gradient */
+@media (min-width: 768px) {
+  background: linear-gradient(90deg, #0e0918 3%, #0e091880 10%, #0e091800 25%, #0e091800 75%, #0e091880 90%, #0e0918 97%),
+              radial-gradient(120% 90% at 50% 15%, transparent 45%, rgba(14,9,24,.6) 85%, #0e0918 95%);
+}
+
+/* Card Glow Gradient */
+background: linear-gradient(to right, #250055, #0019ff);
+
+/* Orange-Purple Card Glow */
+background: linear-gradient(to bottom right, #ff9b26, #6b21ef);
+
+/* CTA Text Gradient */
+background-image: linear-gradient(270deg, #e768e6, #ff9b26);
+-webkit-background-clip: text;
+background-clip: text;
+color: transparent;
+
+/* Tab Layer Gradient */
+background: linear-gradient(116.91deg, #e3a5724f, #5780e661);
+```
+
+### Typography System
+
+**Font Families:**
+- Primary: `geomanist` (usage: all text, headings, body)
+  - Weights: 300 (Light), 400 (Regular), 500 (Medium)
+  - Styles: Normal, Italic
+- Secondary: `geomanist-book` (usage: headings, titles, emphasis)
+  - Weight: 400 (Regular)
+- Fallback: `ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji`
+
+**Type Scale:**
+```css
+/* Headline Sizes */
+--font-size-headline-xs: [responsive - mobile base];
+--font-size-headline-sm: [responsive - tablet];
+--font-size-headline-md: [responsive - desktop];
+--font-size-headline-lg: [responsive - large desktop];
+
+/* Body Text Sizes */
+--font-size-caption-large-regular: [responsive];
+--font-size-md: [medium text];
+--font-size-lg: [large text];
+--font-size-small-button-text: [button text];
+--font-size-large-button-text: [large button text];
+```
+
+**Line Heights:**
+```css
+--line-height-tight: 1.25em; /* Used in social proof text */
+--line-height-normal: 1.5em; /* Default */
+--line-height-relaxed: 150%; /* Used in content paragraphs */
+```
+
+**Font Weights:**
+- Light: 300
+- Regular: 400
+- Medium: 500
+
+**Letter Spacing:**
+```css
+--letter-spacing-tight: -0.02em; /* Used in titles */
+--letter-spacing-normal: 0.02em; /* Used in captions */
+--letter-spacing-button: 0.3px; /* Used in buttons */
+--letter-spacing-headline: -1.2px; /* Used in large headlines */
+```
+
+**Text Colors:**
+- Primary: `#ffffff` (white)
+- Secondary: `rgb(196, 187, 211)` / `#c4bbd3` (lavender gray)
+- Tertiary: `rgba(250, 249, 251, 0.75)` / `#faf9fbbf` (semi-transparent white)
+- Gradient Text: Uses `background-clip: text` with gradient backgrounds
+
+### Spacing System
+
+**Spacing Scale:**
+```css
+/* Padding/Margin Values (Tailwind-based) */
+--spacing-1: 0.25rem; /* 4px */
+--spacing-2: 0.5rem; /* 8px */
+--spacing-2.5: 0.625rem; /* 10px */
+--spacing-3: 0.75rem; /* 12px */
+--spacing-4: 1rem; /* 16px */
+--spacing-6: 1.5rem; /* 24px */
+--spacing-8: 2rem; /* 32px */
+--spacing-10: 2.5rem; /* 40px */
+--spacing-12: 3rem; /* 48px */
+--spacing-16: 4rem; /* 64px */
+
+/* Section Gaps */
+--section-gap-x: [responsive padding];
+--section-gap-x-md: [tablet padding];
+--section-gap-x-lg: [desktop padding];
+--section-gap-y: [responsive vertical padding];
+--section-gap-y-md: [tablet vertical padding];
+--section-gap-y-lg: [desktop vertical padding];
+```
+
+**Gap Values:**
+```css
+--gap-2: 0.5rem; /* 8px */
+--gap-4: 1rem; /* 16px */
+--gap-6: 1.5rem; /* 24px */
+--gap-8: 2rem; /* 32px */
+--gap-x-2.5: 0.625rem; /* 10px horizontal */
+```
+
+### Border Radius System
+
+```css
+--radius-sm: 0.5rem; /* 8px - used in submenu, gradient tiles */
+--radius-md: 1rem; /* 16px - used in cards, images */
+--radius-lg: 1.25rem; /* 20px - used in large cards */
+--radius-xl: 1.5rem; /* 24px - used in tab layers */
+--radius-2xl: 1.5rem; /* 24px - used in rounded corners */
+--radius-full: 100%; /* Full circle - used in badges, glow effects */
+--radius-custom-19: 19px; /* Custom - used in card wrappers */
+--radius-custom-20: 20px; /* Custom - used in card containers */
+--radius-custom-44: 44px; /* Custom - used in badges */
+```
+
+### Shadow System
+
+```css
+/* Card Shadow */
+box-shadow: inset 0 1px #ffffff1a, 0 0 1.8px #ffffff30;
+
+/* Badge Shadow - Dark */
+box-shadow: inset 0 0 #c4bbd3, 
+            0 4px 4px #0e091870, 
+            0 13px 16px -8px #000, 
+            inset 0 4px 12px #ffffff0d;
+
+/* Badge Shadow - Orange */
+box-shadow: inset 0 0 #c4bbd3, 
+            inset 0 4px 12px #ffffff0d;
+
+/* Gradient Tile Shadow */
+box-shadow: 0px 0px 8px 0px rgba(0, 0, 0, 0.26);
+
+/* Submenu Shadow */
+box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.5);
+
+/* Card Inner Shadow */
+box-shadow: inset -1px -1px #fff3, inset 1px 1px #ffffff4d;
+
+/* Tab Layer Shadow */
+box-shadow: inset 0 0.450581px #ffffff4d, 0 0 36.0465px #ffffff0f;
+```
+
+## Layout Systems
+
+### Grid System
+
+```css
+/* Main Container */
+.container {
+  max-width: var(--max-w-section-default);
+  margin: 0 auto;
+  padding: var(--section-gap-x);
+}
+
+/* Section Widths */
+--max-w-section-default: [default section width];
+--max-w-section-widest: [widest section width];
+--max-w-section-heading: [heading max width];
+
+/* Grid Layout */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--gap-8);
+}
+
+/* Responsive Grid */
+@media (min-width: 768px) {
+  .grid {
+    grid-template-columns: repeat(12, 1fr);
+    gap: var(--gap-6);
+  }
+}
+
+@media (min-width: 1024px) {
+  .grid {
+    grid-template-columns: repeat(12, 1fr);
+    gap: var(--gap-6);
+  }
+}
+```
+
+### Breakpoints
+
+```css
+/* Mobile First Approach */
+/* Base: < 640px (default) */
+
+/* Tablet */
+@media (min-width: 640px) { /* sm */ }
+
+@media (min-width: 768px) { /* md */
+  /* Tablet styles */
+}
+
+/* Desktop */
+@media (min-width: 1024px) { /* lg */
+  /* Desktop styles */
+}
+
+@media (min-width: 1280px) { /* xl */
+  /* Large desktop styles */
+}
+
+@media (min-width: 1536px) { /* 2xl */
+  /* Extra large desktop styles */
+}
+```
+
+## Component Library
+
+### Buttons
+
+**Primary Button:**
+```css
+.btn-primary {
+  /* Base styles */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  position: relative;
+  padding: 0 1.5rem; /* px-6 */
+  font-weight: 400; /* font-normal */
+  white-space: nowrap;
+  border-radius: 0.5rem; /* rounded-lg */
+  min-height: 39px; /* min-h-[39px] */
+  color: #ffffff;
+  letter-spacing: 0.3px; /* tracking-[.3px] */
+  font-family: geomanist-book, ui-sans-serif, system-ui, sans-serif;
+  font-size: var(--font-size-small-button-text);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  /* Hover state with shadow effect */
+  box-shadow: var(--effect-hover-shadow);
+}
+
+.btn-primary:active {
+  /* Active state */
+  transform: scale(0.98);
+}
+
+.btn-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+```
+
+**Secondary Button:**
+```css
+.btn-secondary {
+  /* Similar to primary but with different background */
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+```
+
+### Cards
+
+**Card Component with Gradient:**
+```css
+.card-anime {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  align-items: stretch;
+  border-radius: 20px;
+  background-repeat: no-repeat;
+}
+
+.card-wrapper {
+  position: relative;
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: stretch;
+  overflow: hidden;
+  border-radius: 19px;
+  padding: 1px;
+  background: rgba(13, 10, 25, 0.3); /* bg-shades-deep-navy/30 */
+}
+
+.card-inner {
+  position: relative;
+  z-index: 10;
+  height: 100%;
+  width: 100%;
+  border-radius: 19px;
+  background: rgba(12, 8, 28, 0.43); /* bg-[#0c081c6e] */
+  padding: 0;
+}
+
+/* Animated Glow Effect */
+.card-anime .animate {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 0;
+  display: block;
+  aspect-ratio: 1/1;
+  transform: translate(-50%, -50%);
+  border-radius: 100%;
+  background: linear-gradient(to bottom right, #250055, #0019ff);
+  opacity: 0;
+  filter: blur(60px);
+  will-change: transform, opacity;
+}
+
+.card-anime:hover .animate {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.2);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* Card Gradient Variants */
+.gradient--default {
+  background-image: 
+    radial-gradient(circle at 30% 140%, rgba(217, 126, 75, 0.3), transparent 37%),
+    radial-gradient(circle at 50% 310%, #0400ff26, #a2a68700 78%),
+    linear-gradient(transparent, #0d0a195e),
+    radial-gradient(circle at 50% -30%, #a85c5c33, #67454500),
+    radial-gradient(90% 10% at 50% 0, #a85c5c0d, #67454500 90%);
+}
+
+.gradient--blue {
+  background-image: 
+    radial-gradient(circle at 30% 140%, rgba(75, 153, 217, 0.33), transparent 37%),
+    radial-gradient(circle at 50% 310%, #0400ff26, #a2a68700 78%),
+    linear-gradient(transparent, #0d0a195e),
+    radial-gradient(circle at 50% -30%, #a85c5c33, #67454500),
+    radial-gradient(90% 10% at 50% 0, #a85c5c0d, #67454500 90%);
+}
+
+.gradient--dark {
+  background-image: 
+    radial-gradient(circle at 30% 140%, rgba(217, 126, 75, 0.3), transparent 37%),
+    radial-gradient(circle at 50% 310%, #0400ff26, #a2a68700 78%),
+    linear-gradient(transparent, #0d0a195e),
+    radial-gradient(90% 60% at 50% 0, #a85c5c33, #67454500),
+    radial-gradient(90% 10% at 50% 0, #a85c5c0d, #67454500 90%);
+}
+```
+
+**Card Content:**
+```css
+.card-content {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem; /* gap-4 */
+  padding: 2rem 2rem 2.5rem; /* px-8 py-10 */
+}
+
+@media (min-width: 768px) {
+  .card-content {
+    padding: 2.5rem 2.5rem 2.5rem; /* md:px-10 */
+  }
+}
+
+@media (min-width: 1024px) {
+  .card-content {
+    padding-top: 3rem; /* lg:pt-12 */
+  }
+}
+```
+
+### Forms
+
+**Input Fields:**
+```css
+.input {
+  /* Base styles */
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  background: rgba(13, 10, 25, 0.5);
+  color: #ffffff;
+  font-family: geomanist, ui-sans-serif, system-ui, sans-serif;
+  transition: all 0.2s ease;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #ea4b71;
+  box-shadow: 0 0 0 3px rgba(234, 75, 113, 0.1);
+}
+
+.input:invalid {
+  border-color: rgba(255, 0, 0, 0.5);
+}
+
+.input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+```
+
+### Navigation
+
+**Main Navigation:**
+```css
+.nav {
+  /* Base styles */
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.nav-link {
+  /* Link styles */
+  color: #ffffff;
+  text-decoration: none;
+  font-family: geomanist, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 1rem;
+  transition: color 0.2s ease;
+}
+
+.nav-link:hover {
+  color: #ea4b71;
+}
+
+.nav-link.active {
+  color: #ea4b71;
+  font-weight: 500;
+}
+```
+
+**Header Navigation:**
+```css
+header {
+  position: fixed;
+  top: 0;
+  z-index: 1000;
+  width: 100%;
+  padding: 0.25rem; /* p-1 */
+  transition: transform 0.3s ease;
+}
+
+.announcement-bar {
+  position: relative;
+  top: -0.25rem; /* -top-1 */
+  margin-left: -1rem; /* -mx-4 */
+  margin-right: -1rem;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 0.75rem 1.5rem; /* px-6 py-3 */
+  backdrop-filter: blur(50px);
+  -webkit-backdrop-filter: blur(50px);
+}
+```
+
+**Mobile Menu:**
+```css
+.mobile-menu {
+  /* Mobile menu styles */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  background: rgba(14, 9, 24, 0.95);
+  backdrop-filter: blur(20px);
+  z-index: 999;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+}
+
+.mobile-menu.open {
+  transform: translateX(0);
+}
+```
+
+### Modals/Dialogs
+
+```css
+.modal {
+  /* Modal overlay */
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal-content {
+  /* Modal content */
+  background: rgba(14, 9, 24, 0.95);
+  border-radius: 1rem;
+  padding: 2rem;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: modalFadeIn 0.3s ease;
+}
+
+@media (min-width: 1280px) {
+  .modal-content {
+    max-height: 90vh;
+  }
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+```
+
+### Loading Indicators
+
+```css
+.spinner {
+  /* Spinner animation */
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: #ea4b71;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Nuxt Loading Indicator */
+.nuxt-loading-indicator {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  pointer-events: none;
+  width: auto;
+  height: 3px;
+  opacity: 0;
+  background: #ea4b71;
+  background-size: Infinity% auto;
+  transform: scaleX(0%);
+  transform-origin: left;
+  transition: transform 0.1s, height 0.4s, opacity 0.4s;
+  z-index: 999999;
+}
+
+.nuxt-loading-indicator.loading {
+  opacity: 1;
+  transform: scaleX(100%);
+}
+```
+
+### Badges
+
+```css
+.badge {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem 0.25rem 0.25rem; /* py-1 pr-2.5 pl-1 */
+  border: 0.5px solid rgba(255, 255, 255, 0.1);
+  border-radius: 44px; /* rounded-[44px] */
+  background: rgb(31, 25, 42);
+  background-repeat: no-repeat;
+  transition-duration: 0.2s, 0.2s, 0.2s;
+  transition-property: all, color, opacity;
+  transition-timing-function: ease, ease, ease;
+}
+
+.badge--dark {
+  background-image: 
+    radial-gradient(circle closest-corner at 50% 160%, #8b5261, #fff0 67%),
+    linear-gradient(hsla(0, 0%, 100%, 0.18), transparent);
+  box-shadow: 
+    inset 0 0 #c4bbd3,
+    0 4px 4px #0e091870,
+    0 13px 16px -8px #000,
+    inset 0 4px 12px #ffffff0d;
+}
+
+.badge--orange {
+  background-image: 
+    radial-gradient(circle closest-corner at 50% 160%, #ec8961, #8a546f 67%),
+    linear-gradient(hsla(0, 0%, 100%, 0.18), transparent);
+  box-shadow: 
+    inset 0 0 #c4bbd3,
+    inset 0 4px 12px #ffffff0d;
+}
+
+.badge--flat {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+  border-width: 1px;
+  color: #ffffff;
+}
+```
+
+### Tabs
+
+```css
+.tabs-layer {
+  background: linear-gradient(116.91deg, #e3a5724f, #5780e661) no-repeat;
+  border: 1px solid hsla(0, 0%, 100%, 0.1);
+  border-radius: 24px;
+  box-shadow: 
+    inset 0 0.450581px #ffffff4d,
+    0 0 36.0465px #ffffff0f;
+  padding: 0.5rem;
+  position: relative;
+}
+
+.tabs-layer-wrapper {
+  border: 1px solid #000;
+  border-radius: 19px;
+  box-shadow: 
+    inset 0 1px #ffffff1a,
+    0 0 1.8px #ffffff30;
+}
+
+.tab {
+  /* Tab button */
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: #c4bbd3; /* text-shades-lavender-gray */
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab:hover {
+  color: #ffffff;
+}
+
+.tab.active {
+  color: #ffffff;
+}
+
+.tab-title {
+  font-size: 1rem; /* text-md */
+  font-weight: 400;
+}
+
+.tab-title strong {
+  font-weight: 400;
+  color: #ffffff;
+}
+```
+
+### Gradient Tiles
+
+```css
+.gradient-tile {
+  align-items: center;
+  background-color: rgba(13, 10, 25, 0.28); /* #0d0a1947 */
+  border-color: rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  border-width: 1px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  padding: 0.875rem;
+  row-gap: 1.5rem;
+  width: 100%;
+  box-shadow: 0px 0px 8px 0px rgba(0, 0, 0, 0.26);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  transition: all 0.3s ease;
+}
+
+.gradient-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0px 4px 16px 0px rgba(0, 0, 0, 0.4);
+}
+
+.gradient-tile-purple {
+  background: linear-gradient(135deg, rgba(139, 82, 97, 0.3), rgba(87, 80, 230, 0.38));
+}
+
+.gradient-tile-orange {
+  background: linear-gradient(135deg, rgba(236, 137, 97, 0.3), rgba(138, 84, 111, 0.38));
+}
+```
+
+## Animations and Transitions
+
+### CSS Transitions
+
+```css
+/* Standard Transition */
+.transition {
+  transition: all 0.2s ease;
+}
+
+/* Button Transition */
+.btn-primary {
+  transition: all 0.2s ease, box-shadow 0.3s ease;
+}
+
+/* Badge Transition */
+.badge {
+  transition-duration: 0.2s, 0.2s, 0.2s;
+  transition-property: all, color, opacity;
+  transition-timing-function: ease, ease, ease;
+}
+
+/* Card Glow Transition */
+.card-anime .animate {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* Gradient Opacity Transition */
+.github-badge {
+  transition-duration: 0.5s;
+  transition-property: --gradient-opacity;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+```
+
+### CSS Animations
+
+```css
+/* Gradient Glow Animation */
+@keyframes gradient-glow {
+  0% {
+    --gradient-glow-x: 100%;
+    --gradient-glow-y: 50%;
+  }
+  5% {
+    --gradient-glow-x: 100%;
+    --gradient-glow-y: 100%;
+  }
+  20% {
+    --gradient-glow-x: 0%;
+    --gradient-glow-y: 100%;
+  }
+  25% {
+    --gradient-glow-x: 0%;
+    --gradient-glow-y: 50%;
+  }
+  30% {
+    --gradient-glow-x: 0%;
+    --gradient-glow-y: 0%;
+  }
+  45% {
+    --gradient-glow-x: 100%;
+    --gradient-glow-y: 0%;
+  }
+  50% {
+    --gradient-glow-x: 100%;
+    --gradient-glow-y: 50%;
+  }
+  100% {
+    --gradient-glow-x: 100%;
+    --gradient-glow-y: 50%;
+  }
+}
+
+.animate-gradient-glow {
+  animation: gradient-glow 8s ease-in-out infinite;
+}
+
+/* Fade In Animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.5s ease-in;
+}
+
+/* Slide In Animation */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-in-up {
+  animation: slideInUp 0.5s ease-out;
+}
+```
+
+### Scroll Animations
+
+```css
+/* Parallax Effect */
+.parallax-wrapper {
+  perspective: 1000px;
+  perspective-origin: 50% 50%;
+}
+
+@media (min-width: 1024px) {
+  .parallax-wrapper > * {
+    height: 600px;
+    top: 7rem;
+  }
+}
+
+.parallax-wrapper--sticky > * {
+  position: sticky;
+}
+```
+
+### Page Transitions
+
+```css
+/* Nuxt Page Transition */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.page-enter-from,
+.page-leave-to {
+  opacity: 0;
+}
+```
+
+## Page Layouts
+
+### Homepage Layout
+
+**Hero Section:**
+```css
+.hero-section {
+  width: 100%;
+  padding: var(--section-gap-y) var(--section-gap-x);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-background {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #040307, transparent),
+              radial-gradient(90% 90% at 50% 20%, transparent 45%, rgba(14,9,24,.85) 70%, #0e0918 90%);
+  filter: brightness(110%);
+  z-index: -1;
+}
+
+@media (min-width: 768px) {
+  .hero-background {
+    background: linear-gradient(90deg, #0e0918 3%, #0e091880 10%, #0e091800 25%, #0e091800 75%, #0e091880 90%, #0e0918 97%),
+                radial-gradient(120% 90% at 50% 15%, transparent 45%, rgba(14,9,24,.6) 85%, #0e0918 95%);
+  }
+}
+
+.hero-content {
+  max-width: var(--max-w-section-default);
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+```
+
+**Section Layout:**
+```css
+.section {
+  width: 100%;
+  padding: var(--section-gap-y) var(--section-gap-x);
+}
+
+@media (min-width: 768px) {
+  .section {
+    padding: var(--section-gap-y-md) var(--section-gap-x-md);
+  }
+}
+
+@media (min-width: 1024px) {
+  .section {
+    padding: var(--section-gap-y-lg) var(--section-gap-x-lg);
+  }
+}
+
+.section-header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 3rem; /* mb-12 */
+  gap: 1rem; /* gap-y-4 */
+  align-items: center;
+}
+
+@media (min-width: 1024px) {
+  .section-header {
+    margin-bottom: 4rem; /* lg:mb-16 */
+  }
+}
+```
+
+## User Flows and Navigation
+
+### Primary User Flows
+
+1. **Homepage to Product Overview:**
+   - User lands on homepage
+   - Sees hero section with CTA "Get Started for free"
+   - Clicks CTA → navigates to signup/product page
+   - Alternative: Clicks "Talk to Sales" → navigates to contact/sales page
+
+2. **Navigation Flow:**
+   - User clicks main navigation menu items (Product, Use Cases, Docs, Community, Enterprise, Pricing)
+   - Dropdown menus appear with sub-navigation
+   - User selects sub-item → navigates to specific page
+
+3. **Tab Interaction Flow:**
+   - User sees tab buttons (IT Ops, Sec Ops, Dev Ops, Sales, You)
+   - User clicks tab → content changes with fade transition
+   - Image/video updates to match selected tab
+
+### Navigation Structure
+
+- **Main Navigation**: Horizontal menu with dropdowns
+  - Product (with submenu)
+  - Use Cases (with submenu)
+  - Docs (with submenu)
+  - Community (with submenu)
+  - Enterprise
+  - Pricing
+- **Header Actions**: 
+  - GitHub stars count (link)
+  - Sign in (link)
+  - Get Started (primary CTA button)
+- **Footer Navigation**: Links to various pages and resources
+
+### Link Patterns
+
+- **Internal Links**: White text, underline on hover
+- **External Links**: Same styling, opens in new tab
+- **CTA Links**: Primary button style with gradient hover effects
+- **Text Links**: Underlined, color change on hover
+
+## Responsive Design Patterns
+
+### Mobile (< 768px)
+
+**Layout Changes:**
+- Single column layout
+- Stacked navigation (hamburger menu)
+- Reduced padding and spacing
+- Smaller font sizes
+- Full-width sections
+
+**Component Variations:**
+- Cards stack vertically
+- Buttons full-width or centered
+- Tabs scroll horizontally
+- Images scale to fit viewport
+
+**Navigation Patterns:**
+- Hamburger menu
+- Mobile menu slides in from side
+- Footer links stack vertically
+
+### Tablet (768px - 1024px)
+
+**Layout Changes:**
+- Two-column grid where applicable
+- Increased padding
+- Medium font sizes
+- Navigation remains horizontal
+
+**Component Variations:**
+- Cards in 2-column grid
+- Tabs remain horizontal
+- Images maintain aspect ratio
+
+### Desktop (> 1024px)
+
+**Layout Changes:**
+- Multi-column layouts (3-4 columns)
+- Maximum section widths
+- Larger font sizes
+- Increased spacing
+
+**Component Variations:**
+- Cards in grid layouts
+- Hover effects more pronounced
+- Parallax effects active
+- Enhanced animations
+
+## Loading States and Indicators
+
+### Page Load
+
+**Initial Load:**
+- Nuxt loading indicator at top (red bar, #ea4b71)
+- Skeleton screens for content areas
+- Progressive image loading
+
+**Loading Indicator:**
+```css
+.nuxt-loading-indicator {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #ea4b71;
+  transform: scaleX(0%);
+  transform-origin: left;
+  transition: transform 0.1s, height 0.4s, opacity 0.4s;
+  z-index: 999999;
+}
+```
+
+### Content Loading
+
+- Lazy-loaded images with blur-up effect
+- Progressive enhancement for interactive elements
+- Smooth fade-in animations for content sections
+
+## Interactive Behaviors
+
+### Hover Effects
+
+**Button Hover:**
+```css
+.btn-primary:hover {
+  box-shadow: var(--effect-hover-shadow);
+  transform: translateY(-1px);
+}
+```
+
+**Card Hover:**
+```css
+.card-anime:hover .animate {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.2);
+}
+```
+
+**Link Hover:**
+```css
+a:hover {
+  color: #ea4b71;
+  text-decoration: underline;
+}
+```
+
+**Gradient Tile Hover:**
+```css
+.gradient-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0px 4px 16px 0px rgba(0, 0, 0, 0.4);
+}
+```
+
+### Click Interactions
+
+**Button Click:**
+- Slight scale down (0.98) on active state
+- Smooth transition back to normal
+
+**Tab Click:**
+- Active state with color change
+- Content fade transition
+- Smooth animation
+
+### Scroll Behaviors
+
+**Sticky Header:**
+- Header remains fixed at top
+- Transforms on scroll (if implemented)
+- Backdrop blur effect
+
+**Parallax Effects:**
+- Background elements move at different speeds
+- Creates depth perception
+- Smooth scroll-triggered animations
+
+### Form Interactions
+
+**Input Focus:**
+- Border color changes to brand color (#ea4b71)
+- Subtle glow effect
+- Smooth transition
+
+**Input Validation:**
+- Error states with red border
+- Success states (if implemented)
+- Real-time feedback
+
+## Implementation Guidelines
+
+### CSS Architecture
+
+**Organization:**
+- Component-scoped styles (Vue scoped styles)
+- Global utility classes (Tailwind CSS)
+- Custom CSS variables for design tokens
+- Media queries for responsive design
+
+**Naming Conventions:**
+- BEM-like naming for components
+- Tailwind utility classes for layout
+- Custom classes for complex components
+- Data attributes for Vue component scoping
+
+### Component Structure
+
+**Vue Component Pattern:**
+```vue
+<template>
+  <div class="component-name" data-v-component-hash>
+    <!-- Component content -->
+  </div>
+</template>
+
+<style scoped>
+.component-name[data-v-component-hash] {
+  /* Component styles */
+}
+</style>
+```
+
+### Animation Performance
+
+**Best Practices:**
+- Use `transform` and `opacity` for animations (GPU accelerated)
+- Use `will-change` sparingly and only for animated elements
+- Avoid animating `width`, `height`, `top`, `left` (use `transform` instead)
+- Use `backdrop-filter` with caution (performance impact)
+
+**Optimization:**
+```css
+.animated-element {
+  will-change: transform, opacity;
+  transform: translateZ(0); /* Force GPU acceleration */
+}
+```
+
+### Accessibility Considerations
+
+**Focus States:**
+- Visible focus indicators on all interactive elements
+- Keyboard navigation support
+- ARIA labels where appropriate
+
+**Color Contrast:**
+- Ensure WCAG AA compliance for text colors
+- Test contrast ratios for gradient text
+- Provide alternative text for images
+
+**Semantic HTML:**
+- Use proper heading hierarchy
+- Semantic HTML5 elements (header, nav, section, article, footer)
+- ARIA roles where needed
+
+## Design Tokens
+
+```css
+:root {
+  /* Colors */
+  --color-primary: #ea4b71;
+  --color-secondary-purple: #6b21ef;
+  --color-orange: #ff9b26;
+  --color-background-deep: #0e0918;
+  --color-background-midnight: #0c081c;
+  --color-background-navy: #0d0a19;
+  --color-surface: rgb(31, 25, 42);
+  --color-text-primary: #ffffff;
+  --color-text-secondary: rgb(196, 187, 211);
+  --color-text-tertiary: rgba(250, 249, 251, 0.75);
+  --color-border: rgba(255, 255, 255, 0.1);
+  
+  /* Typography */
+  --font-family-primary: geomanist, ui-sans-serif, system-ui, sans-serif;
+  --font-family-heading: geomanist-book, ui-sans-serif, system-ui, sans-serif;
+  --font-weight-light: 300;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --letter-spacing-tight: -0.02em;
+  --letter-spacing-normal: 0.02em;
+  --letter-spacing-button: 0.3px;
+  
+  /* Spacing */
+  --spacing-unit: 0.25rem; /* 4px base unit */
+  --section-gap-x: 1rem;
+  --section-gap-y: 2rem;
+  
+  /* Shadows */
+  --shadow-card: inset 0 1px #ffffff1a, 0 0 1.8px #ffffff30;
+  --shadow-badge: 0 4px 4px #0e091870, 0 13px 16px -8px #000;
+  --shadow-tile: 0px 0px 8px 0px rgba(0, 0, 0, 0.26);
+  
+  /* Border Radius */
+  --radius-sm: 0.5rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.5rem;
+  --radius-xl: 24px;
+  --radius-full: 100%;
+  
+  /* Transitions */
+  --transition-fast: 0.2s ease;
+  --transition-normal: 0.3s ease;
+  --transition-slow: 0.5s ease;
+  
+  /* Z-Index Scale */
+  --z-base: 1;
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+}
+```
+
+## Page-Specific Designs
+
+### Homepage
+
+**Layout Structure:**
+1. Fixed header with navigation
+2. Announcement bar (if present)
+3. Hero section with headline, description, and CTAs
+4. Tab section with interactive content
+5. Social proof section with gradient tiles
+6. Features/integrations section
+7. Product showcase sections
+8. Case studies section
+9. Enterprise features section
+10. Footer
+
+**Components Used:**
+- Header navigation with dropdowns
+- Hero section with gradient background
+- Interactive tabs with content switching
+- Gradient tiles for social proof
+- Feature cards with gradient backgrounds
+- Case study cards
+- CTA buttons
+- Badges
+
+**Responsive Behavior:**
+- Mobile: Single column, stacked sections, hamburger menu
+- Tablet: Two-column grids, horizontal navigation
+- Desktop: Multi-column layouts, enhanced effects, parallax
+
+## Motion Graphics and Advanced Animations
+
+### Gradient Glow Animation
+
+**Description:** Animated gradient that moves across buttons/CTAs
+**Trigger:** On page load and hover
+**CSS:**
+```css
+@property --gradient-glow-x {
+  syntax: "<percentage>";
+  initial-value: 100%;
+  inherits: false;
+}
+
+@property --gradient-glow-y {
+  syntax: "<percentage>";
+  initial-value: 50%;
+  inherits: false;
+}
+
+@keyframes gradient-glow {
+  0% { --gradient-glow-x: 100%; --gradient-glow-y: 50%; }
+  5% { --gradient-glow-x: 100%; --gradient-glow-y: 100%; }
+  20% { --gradient-glow-x: 0%; --gradient-glow-y: 100%; }
+  25% { --gradient-glow-x: 0%; --gradient-glow-y: 50%; }
+  30% { --gradient-glow-x: 0%; --gradient-glow-y: 0%; }
+  45% { --gradient-glow-x: 100%; --gradient-glow-y: 0%; }
+  50% { --gradient-glow-x: 100%; --gradient-glow-y: 50%; }
+  100% { --gradient-glow-x: 100%; --gradient-glow-y: 50%; }
+}
+```
+
+### Card Glow Effect
+
+**Description:** Animated glow that appears on card hover
+**Trigger:** Hover state
+**CSS:**
+```css
+.card-anime .animate {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 0;
+  aspect-ratio: 1/1;
+  transform: translate(-50%, -50%);
+  border-radius: 100%;
+  background: linear-gradient(to bottom right, #250055, #0019ff);
+  opacity: 0;
+  filter: blur(60px);
+  will-change: transform, opacity;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.card-anime:hover .animate {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.2);
+}
+```
+
+### Background Effect Rotations
+
+**Description:** Rotating gradient backgrounds for section effects
+**Trigger:** Viewport size changes
+**CSS:**
+```css
+.effect-bg {
+  aspect-ratio: 1/2.2;
+  background-image: linear-gradient(#a13355, #5159d9);
+  border-radius: 800%;
+  filter: blur(128px);
+  transform: translate(-50%, -50%);
+}
+
+@media (min-width: 768px) {
+  .effect-bg {
+    transform: translate(-50%, -50%) rotate(10deg);
+  }
+}
+
+@media (min-width: 1024px) {
+  .effect-bg {
+    transform: translate(-50%, -50%) rotate(20deg);
+  }
+}
+
+@media (min-width: 1536px) {
+  .effect-bg {
+    transform: translate(-50%, -50%) rotate(24deg);
+  }
+}
+```
+
+## Design Patterns and Best Practices
+
+### Layout Patterns
+
+**Container Pattern:**
+- Max-width containers for content sections
+- Centered with auto margins
+- Responsive padding
+
+**Grid Pattern:**
+- 12-column grid system
+- Responsive column spans
+- Consistent gap spacing
+
+**Card Pattern:**
+- Gradient backgrounds
+- Rounded corners (19-20px)
+- Inner glow effects
+- Hover animations
+
+### Component Patterns
+
+**Button Pattern:**
+- Primary: Solid background with hover shadow
+- Secondary: Transparent with border
+- Consistent padding and min-height
+- Smooth transitions
+
+**Badge Pattern:**
+- Rounded pill shape (44px border-radius)
+- Gradient or flat background variants
+- Icon + text layout
+- Subtle shadows
+
+**Tab Pattern:**
+- Gradient layer background
+- Rounded container
+- Active state highlighting
+- Smooth content transitions
+
+### Animation Patterns
+
+**Fade Transitions:**
+- Opacity-based fades for content changes
+- Smooth timing functions
+- Appropriate durations (0.2s - 0.5s)
+
+**Scale Transitions:**
+- Subtle scale effects on hover (1.02 - 1.05)
+- Transform-based for performance
+- Will-change optimization
+
+**Glow Effects:**
+- Blur-based glows (60px blur)
+- Radial gradients
+- Opacity animations
+- Position-based transforms
+
+## Implementation Checklist
+
+### Setup
+- [ ] Set up CSS variables/tokens
+- [ ] Configure typography system (Geomanist font)
+- [ ] Set up color palette
+- [ ] Configure spacing system
+- [ ] Set up Tailwind CSS configuration
+- [ ] Configure Nuxt.js project
+
+### Components
+- [ ] Implement button variants (primary, secondary)
+- [ ] Implement card components with gradients
+- [ ] Implement form elements
+- [ ] Implement navigation (header, mobile menu)
+- [ ] Implement badges
+- [ ] Implement tabs
+- [ ] Implement gradient tiles
+- [ ] Implement modals/dialogs
+- [ ] Implement loading indicators
+
+### Responsive Design
+- [ ] Implement mobile layouts (< 768px)
+- [ ] Implement tablet layouts (768px - 1024px)
+- [ ] Implement desktop layouts (> 1024px)
+- [ ] Test at all breakpoints
+- [ ] Verify touch interactions on mobile
+
+### Animations
+- [ ] Implement CSS transitions
+- [ ] Implement CSS animations (gradient glow, fade-in)
+- [ ] Implement scroll animations (parallax)
+- [ ] Implement page transitions
+- [ ] Optimize animation performance
+
+### Effects
+- [ ] Implement backdrop blur effects
+- [ ] Implement gradient overlays
+- [ ] Implement glow effects
+- [ ] Implement shadow systems
+- [ ] Test browser compatibility
+
+## Notes and Observations
+
+**Design Characteristics:**
+- Heavy use of gradients creates depth and visual interest
+- Dark theme with high contrast for readability
+- Glassmorphism effects (backdrop blur) add modern feel
+- Custom Geomanist font gives unique brand identity
+- Sophisticated animation system with multiple layers
+
+**Technical Considerations:**
+- Backdrop filter requires browser support checks
+- Gradient animations use CSS custom properties (@property)
+- Performance optimization needed for blur effects
+- Responsive design uses mobile-first approach
+- Nuxt.js SSR requires hydration considerations
+
+**Accessibility Notes:**
+- Ensure sufficient color contrast for text on gradients
+- Provide alternative text for decorative images
+- Keyboard navigation support for all interactive elements
+- Focus indicators must be visible
+- Test with screen readers
+
+**Browser Compatibility:**
+- Modern browsers (Chrome, Firefox, Safari, Edge)
+- CSS custom properties (@property) may need fallbacks
+- Backdrop filter requires -webkit- prefix for Safari
+- Test gradient rendering across browsers
+
+**Performance Optimizations:**
+- Lazy load images and videos
+- Use will-change sparingly
+- Optimize blur filter usage
+- Minimize repaints and reflows
+- Use transform instead of position changes
+
+---
+
+**END OF MDC**
+
+This design system document provides comprehensive information for recreating the n8n.io website design. All design elements, components, colors, typography, spacing, animations, and responsive patterns have been documented to enable pixel-perfect implementation.

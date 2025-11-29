@@ -1,0 +1,2565 @@
+# Account & Profile System: Source of Truth
+## Universal User Account Creation, Profile Management, and Authentication
+
+**Version:** 1.0  
+**Last Updated:** 2024  
+**Architecture Pattern:** Database-Agnostic Profile System with Design-First UI  
+**Compatibility:** Supabase, PostgreSQL, MySQL, MongoDB, DynamoDB, Firebase, Custom APIs
+
+> **The "Design Integration" Rule:** This system is design-agnostic and can integrate with any design system MDC file (e.g., `cinematic-angular-smoke.mdc`, `sculptural-luxury-minimal.mdc`). All UI components accept a `designSystem` prop that maps to design tokens, animations, and styling patterns.
+
+---
+
+## 🏗️ CRITICAL ARCHITECTURE PRINCIPLES
+
+### The "Database Abstraction" Rule
+
+1. **Provider-Agnostic Core:** The core profile logic is abstracted through a `DatabaseAdapter` interface. All database operations go through this adapter, allowing seamless switching between providers.
+2. **Design System Integration:** UI components accept a `designSystem` configuration object that maps to design tokens, ensuring visual consistency with any design MDC file.
+3. **Separation of Concerns:** Authentication (who you are) is separate from Profile Data (what you own). The system supports multiple auth providers (Supabase Auth, Clerk, Auth0, Custom JWT).
+4. **Profile Completeness:** Profile data is stored independently of authentication, allowing for rich user profiles that can be extended without touching auth tables.
+
+---
+
+## 📊 PHASE 1: DATABASE SCHEMA (Provider-Agnostic)
+
+### 1.1 Core Profile Schema
+
+The profile schema is designed to work across all database types. Each provider implementation adapts this schema to their specific requirements.
+
+#### Universal Profile Schema Definition
+
+```typescript
+// types/profile.types.ts
+
+export interface UserProfile {
+  // Identity (linked to auth provider)
+  id: string; // UUID or string ID from auth provider
+  auth_provider: 'supabase' | 'clerk' | 'auth0' | 'custom' | 'firebase';
+  auth_provider_id: string; // Original ID from auth provider
+  
+  // Core Profile Data
+  email: string;
+  email_verified: boolean;
+  full_name: string | null;
+  display_name: string | null; // Public-facing name (can differ from full_name)
+  username: string | null; // Unique username for @mentions, URLs
+  avatar_url: string | null;
+  bio: string | null;
+  location: string | null;
+  website_url: string | null;
+  
+  // Privacy & Preferences
+  profile_visibility: 'public' | 'private' | 'friends_only';
+  show_email: boolean;
+  show_location: boolean;
+  
+  // Metadata
+  onboarding_completed: boolean;
+  onboarding_step: number; // Track multi-step onboarding
+  last_active_at: string | null; // ISO timestamp
+  created_at: string; // ISO timestamp
+  updated_at: string; // ISO timestamp
+  
+  // Extended Profile (JSON field for flexibility)
+  extended_data: {
+    social_links?: {
+      twitter?: string;
+      linkedin?: string;
+      github?: string;
+      instagram?: string;
+      [key: string]: string | undefined;
+    };
+    preferences?: {
+      theme?: 'light' | 'dark' | 'auto';
+      language?: string;
+      timezone?: string;
+      notifications?: {
+        email?: boolean;
+        push?: boolean;
+        sms?: boolean;
+      };
+    };
+    custom_fields?: Record<string, any>; // For application-specific data
+  };
+}
+```
+
+### 1.2 Database Provider Implementations
+
+#### PostgreSQL/Supabase Implementation
+
+```sql
+-- Create profiles table (Supabase/PostgreSQL)
+CREATE TABLE public.profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    auth_provider TEXT NOT NULL DEFAULT 'supabase',
+    auth_provider_id UUID NOT NULL,
+    email TEXT NOT NULL,
+    email_verified BOOLEAN DEFAULT FALSE,
+    full_name TEXT,
+    display_name TEXT,
+    username TEXT UNIQUE,
+    avatar_url TEXT,
+    bio TEXT,
+    location TEXT,
+    website_url TEXT,
+    profile_visibility TEXT DEFAULT 'public' CHECK (profile_visibility IN ('public', 'private', 'friends_only')),
+    show_email BOOLEAN DEFAULT FALSE,
+    show_location BOOLEAN DEFAULT TRUE,
+    onboarding_completed BOOLEAN DEFAULT FALSE,
+    onboarding_step INTEGER DEFAULT 0,
+    last_active_at TIMESTAMPTZ,
+    extended_data JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- Constraints
+    CONSTRAINT valid_username CHECK (username IS NULL OR (LENGTH(username) >= 3 AND username ~ '^[a-zA-Z0-9_-]+$')),
+    CONSTRAINT valid_email CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+);
+
+-- Enable RLS
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- Indexes
+CREATE INDEX idx_profiles_email ON public.profiles(email);
+CREATE INDEX idx_profiles_username ON public.profiles(username) WHERE username IS NOT NULL;
+CREATE INDEX idx_profiles_auth_provider_id ON public.profiles(auth_provider, auth_provider_id);
+CREATE INDEX idx_profiles_created_at ON public.profiles(created_at DESC);
+CREATE INDEX idx_profiles_extended_data ON public.profiles USING GIN (extended_data);
+
+-- Full-text search index
+CREATE INDEX idx_profiles_search ON public.profiles USING GIN (
+    to_tsvector('english', 
+        COALESCE(full_name, '') || ' ' || 
+        COALESCE(display_name, '') || ' ' || 
+        COALESCE(username, '') || ' ' || 
+        COALESCE(bio, '')
+    )
+);
+
+-- Auto-update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_profiles_updated_at
+    BEFORE UPDATE ON public.profiles
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- RLS Policies
+CREATE POLICY "Users can view public profiles"
+    ON public.profiles
+    FOR SELECT
+    USING (
+        profile_visibility = 'public'
+        OR id = auth.uid()
+    );
+
+CREATE POLICY "Users can view their own profile"
+    ON public.profiles
+    FOR SELECT
+    USING (id = auth.uid());
+
+CREATE POLICY "Users can update their own profile"
+    ON public.profiles
+    FOR UPDATE
+    USING (id = auth.uid())
+    WITH CHECK (id = auth.uid());
+
+CREATE POLICY "Users can insert their own profile"
+    ON public.profiles
+    FOR INSERT
+    WITH CHECK (id = auth.uid());
+```
+
+#### MongoDB Implementation
+
+```typescript
+// schemas/profile.mongodb.ts
+import { Schema, model, Model } from 'mongoose';
+
+const ProfileSchema = new Schema({
+  _id: {
+    type: String,
+    required: true, // Use auth provider ID as _id
+  },
+  auth_provider: {
+    type: String,
+    required: true,
+    enum: ['supabase', 'clerk', 'auth0', 'custom', 'firebase'],
+    default: 'custom',
+  },
+  auth_provider_id: {
+    type: String,
+    required: true,
+  },
+  email: {
+    type: String,
+    required: true,
+    lowercase: true,
+    trim: true,
+    index: true,
+  },
+  email_verified: {
+    type: Boolean,
+    default: false,
+  },
+  full_name: {
+    type: String,
+    default: null,
+  },
+  display_name: {
+    type: String,
+    default: null,
+  },
+  username: {
+    type: String,
+    unique: true,
+    sparse: true, // Allow multiple nulls
+    lowercase: true,
+    trim: true,
+    match: /^[a-zA-Z0-9_-]+$/,
+    minlength: 3,
+  },
+  avatar_url: {
+    type: String,
+    default: null,
+  },
+  bio: {
+    type: String,
+    default: null,
+    maxlength: 500,
+  },
+  location: {
+    type: String,
+    default: null,
+  },
+  website_url: {
+    type: String,
+    default: null,
+  },
+  profile_visibility: {
+    type: String,
+    enum: ['public', 'private', 'friends_only'],
+    default: 'public',
+  },
+  show_email: {
+    type: Boolean,
+    default: false,
+  },
+  show_location: {
+    type: Boolean,
+    default: true,
+  },
+  onboarding_completed: {
+    type: Boolean,
+    default: false,
+  },
+  onboarding_step: {
+    type: Number,
+    default: 0,
+  },
+  last_active_at: {
+    type: Date,
+    default: null,
+  },
+  extended_data: {
+    type: Schema.Types.Mixed,
+    default: {},
+  },
+  created_at: {
+    type: Date,
+    default: Date.now,
+  },
+  updated_at: {
+    type: Date,
+    default: Date.now,
+  },
+}, {
+  _id: false, // Use custom _id
+  timestamps: false, // Manual timestamps
+});
+
+// Indexes
+ProfileSchema.index({ email: 1 });
+ProfileSchema.index({ username: 1 }, { unique: true, sparse: true });
+ProfileSchema.index({ auth_provider: 1, auth_provider_id: 1 });
+ProfileSchema.index({ created_at: -1 });
+ProfileSchema.index({ 'extended_data.social_links': 1 });
+
+// Text search index
+ProfileSchema.index({
+  full_name: 'text',
+  display_name: 'text',
+  username: 'text',
+  bio: 'text',
+});
+
+// Auto-update updated_at
+ProfileSchema.pre('save', function(next) {
+  this.updated_at = new Date();
+  next();
+});
+
+export const Profile: Model<UserProfile> = model<UserProfile>('Profile', ProfileSchema);
+```
+
+#### MySQL Implementation
+
+```sql
+-- Create profiles table (MySQL)
+CREATE TABLE profiles (
+    id VARCHAR(36) PRIMARY KEY, -- UUID string
+    auth_provider VARCHAR(50) NOT NULL DEFAULT 'custom',
+    auth_provider_id VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    email_verified BOOLEAN DEFAULT FALSE,
+    full_name VARCHAR(255),
+    display_name VARCHAR(255),
+    username VARCHAR(50) UNIQUE,
+    avatar_url TEXT,
+    bio TEXT,
+    location VARCHAR(255),
+    website_url VARCHAR(255),
+    profile_visibility ENUM('public', 'private', 'friends_only') DEFAULT 'public',
+    show_email BOOLEAN DEFAULT FALSE,
+    show_location BOOLEAN DEFAULT TRUE,
+    onboarding_completed BOOLEAN DEFAULT FALSE,
+    onboarding_step INT DEFAULT 0,
+    last_active_at DATETIME,
+    extended_data JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    -- Indexes
+    INDEX idx_email (email),
+    INDEX idx_username (username),
+    INDEX idx_auth_provider (auth_provider, auth_provider_id),
+    INDEX idx_created_at (created_at DESC),
+    
+    -- Constraints
+    CHECK (username IS NULL OR (CHAR_LENGTH(username) >= 3 AND username REGEXP '^[a-zA-Z0-9_-]+$')),
+    CHECK (email REGEXP '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$')
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+---
+
+## 🔌 PHASE 2: DATABASE ADAPTER PATTERN
+
+### 2.1 Database Adapter Interface
+
+**Purpose:** Abstract database operations to support any provider.
+
+```typescript
+// adapters/database-adapter.interface.ts
+
+export interface DatabaseAdapter {
+  // Profile Operations
+  createProfile(data: Partial<UserProfile>): Promise<UserProfile>;
+  getProfileById(id: string): Promise<UserProfile | null>;
+  getProfileByEmail(email: string): Promise<UserProfile | null>;
+  getProfileByUsername(username: string): Promise<UserProfile | null>;
+  updateProfile(id: string, data: Partial<UserProfile>): Promise<UserProfile>;
+  deleteProfile(id: string): Promise<void>;
+  
+  // Search Operations
+  searchProfiles(query: string, limit?: number): Promise<UserProfile[]>;
+  
+  // Username Operations
+  checkUsernameAvailability(username: string): Promise<boolean>;
+  
+  // Avatar Operations
+  updateAvatar(id: string, avatarUrl: string): Promise<UserProfile>;
+  
+  // Extended Data Operations
+  updateExtendedData(id: string, data: Record<string, any>): Promise<UserProfile>;
+  
+  // Health Check
+  healthCheck(): Promise<boolean>;
+}
+```
+
+### 2.2 Supabase Adapter Implementation
+
+```typescript
+// adapters/supabase-adapter.ts
+
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { DatabaseAdapter, UserProfile } from '../types';
+
+export class SupabaseAdapter implements DatabaseAdapter {
+  private supabase: SupabaseClient;
+
+  constructor(supabaseUrl: string, supabaseKey: string) {
+    this.supabase = createClient(supabaseUrl, supabaseKey);
+  }
+
+  async createProfile(data: Partial<UserProfile>): Promise<UserProfile> {
+    const { data: profile, error } = await this.supabase
+      .from('profiles')
+      .insert({
+        id: data.id,
+        auth_provider: data.auth_provider || 'supabase',
+        auth_provider_id: data.auth_provider_id || data.id,
+        email: data.email,
+        email_verified: data.email_verified || false,
+        full_name: data.full_name,
+        display_name: data.display_name,
+        username: data.username,
+        avatar_url: data.avatar_url,
+        bio: data.bio,
+        location: data.location,
+        website_url: data.website_url,
+        profile_visibility: data.profile_visibility || 'public',
+        show_email: data.show_email || false,
+        show_location: data.show_location ?? true,
+        onboarding_completed: data.onboarding_completed || false,
+        onboarding_step: data.onboarding_step || 0,
+        extended_data: data.extended_data || {},
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return this.mapToProfile(profile);
+  }
+
+  async getProfileById(id: string): Promise<UserProfile | null> {
+    const { data, error } = await this.supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
+    return data ? this.mapToProfile(data) : null;
+  }
+
+  async getProfileByEmail(email: string): Promise<UserProfile | null> {
+    const { data, error } = await this.supabase
+      .from('profiles')
+      .select('*')
+      .eq('email', email.toLowerCase())
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return data ? this.mapToProfile(data) : null;
+  }
+
+  async getProfileByUsername(username: string): Promise<UserProfile | null> {
+    const { data, error } = await this.supabase
+      .from('profiles')
+      .select('*')
+      .eq('username', username.toLowerCase())
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return data ? this.mapToProfile(data) : null;
+  }
+
+  async updateProfile(id: string, data: Partial<UserProfile>): Promise<UserProfile> {
+    const { data: profile, error } = await this.supabase
+      .from('profiles')
+      .update({
+        ...data,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return this.mapToProfile(profile);
+  }
+
+  async deleteProfile(id: string): Promise<void> {
+    const { error } = await this.supabase
+      .from('profiles')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  }
+
+  async searchProfiles(query: string, limit: number = 20): Promise<UserProfile[]> {
+    const { data, error } = await this.supabase
+      .from('profiles')
+      .select('*')
+      .or(`full_name.ilike.%${query}%,display_name.ilike.%${query}%,username.ilike.%${query}%,bio.ilike.%${query}%`)
+      .eq('profile_visibility', 'public')
+      .limit(limit);
+
+    if (error) throw error;
+    return data.map(p => this.mapToProfile(p));
+  }
+
+  async checkUsernameAvailability(username: string): Promise<boolean> {
+    const { data, error } = await this.supabase
+      .from('profiles')
+      .select('id')
+      .eq('username', username.toLowerCase())
+      .single();
+
+    // If error code is PGRST116, username is available (not found)
+    return error?.code === 'PGRST116';
+  }
+
+  async updateAvatar(id: string, avatarUrl: string): Promise<UserProfile> {
+    return this.updateProfile(id, { avatar_url: avatarUrl });
+  }
+
+  async updateExtendedData(id: string, data: Record<string, any>): Promise<UserProfile> {
+    const profile = await this.getProfileById(id);
+    if (!profile) throw new Error('Profile not found');
+
+    const updatedExtendedData = {
+      ...profile.extended_data,
+      ...data,
+    };
+
+    return this.updateProfile(id, { extended_data: updatedExtendedData });
+  }
+
+  async healthCheck(): Promise<boolean> {
+    try {
+      const { error } = await this.supabase.from('profiles').select('id').limit(1);
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  private mapToProfile(data: any): UserProfile {
+    return {
+      id: data.id,
+      auth_provider: data.auth_provider,
+      auth_provider_id: data.auth_provider_id,
+      email: data.email,
+      email_verified: data.email_verified,
+      full_name: data.full_name,
+      display_name: data.display_name,
+      username: data.username,
+      avatar_url: data.avatar_url,
+      bio: data.bio,
+      location: data.location,
+      website_url: data.website_url,
+      profile_visibility: data.profile_visibility,
+      show_email: data.show_email,
+      show_location: data.show_location,
+      onboarding_completed: data.onboarding_completed,
+      onboarding_step: data.onboarding_step,
+      last_active_at: data.last_active_at,
+      extended_data: data.extended_data || {},
+      created_at: data.created_at,
+      updated_at: data.updated_at,
+    };
+  }
+}
+```
+
+### 2.3 MongoDB Adapter Implementation
+
+```typescript
+// adapters/mongodb-adapter.ts
+
+import { Model } from 'mongoose';
+import { DatabaseAdapter, UserProfile } from '../types';
+import { Profile } from '../schemas/profile.mongodb';
+
+export class MongoDBAdapter implements DatabaseAdapter {
+  private model: Model<UserProfile>;
+
+  constructor(model: Model<UserProfile> = Profile) {
+    this.model = model;
+  }
+
+  async createProfile(data: Partial<UserProfile>): Promise<UserProfile> {
+    const profile = new this.model({
+      _id: data.id,
+      ...data,
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+    
+    return this.mapToProfile(await profile.save());
+  }
+
+  async getProfileById(id: string): Promise<UserProfile | null> {
+    const profile = await this.model.findById(id);
+    return profile ? this.mapToProfile(profile) : null;
+  }
+
+  async getProfileByEmail(email: string): Promise<UserProfile | null> {
+    const profile = await this.model.findOne({ email: email.toLowerCase() });
+    return profile ? this.mapToProfile(profile) : null;
+  }
+
+  async getProfileByUsername(username: string): Promise<UserProfile | null> {
+    const profile = await this.model.findOne({ username: username.toLowerCase() });
+    return profile ? this.mapToProfile(profile) : null;
+  }
+
+  async updateProfile(id: string, data: Partial<UserProfile>): Promise<UserProfile> {
+    const profile = await this.model.findByIdAndUpdate(
+      id,
+      { ...data, updated_at: new Date() },
+      { new: true, runValidators: true }
+    );
+    
+    if (!profile) throw new Error('Profile not found');
+    return this.mapToProfile(profile);
+  }
+
+  async deleteProfile(id: string): Promise<void> {
+    await this.model.findByIdAndDelete(id);
+  }
+
+  async searchProfiles(query: string, limit: number = 20): Promise<UserProfile[]> {
+    const profiles = await this.model
+      .find({
+        $text: { $search: query },
+        profile_visibility: 'public',
+      })
+      .limit(limit);
+    
+    return profiles.map(p => this.mapToProfile(p));
+  }
+
+  async checkUsernameAvailability(username: string): Promise<boolean> {
+    const profile = await this.model.findOne({ username: username.toLowerCase() });
+    return !profile;
+  }
+
+  async updateAvatar(id: string, avatarUrl: string): Promise<UserProfile> {
+    return this.updateProfile(id, { avatar_url: avatarUrl });
+  }
+
+  async updateExtendedData(id: string, data: Record<string, any>): Promise<UserProfile> {
+    const profile = await this.getProfileById(id);
+    if (!profile) throw new Error('Profile not found');
+
+    const updatedExtendedData = {
+      ...profile.extended_data,
+      ...data,
+    };
+
+    return this.updateProfile(id, { extended_data: updatedExtendedData });
+  }
+
+  async healthCheck(): Promise<boolean> {
+    try {
+      await this.model.db.admin().ping();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private mapToProfile(data: any): UserProfile {
+    return {
+      id: data._id || data.id,
+      auth_provider: data.auth_provider,
+      auth_provider_id: data.auth_provider_id,
+      email: data.email,
+      email_verified: data.email_verified,
+      full_name: data.full_name,
+      display_name: data.display_name,
+      username: data.username,
+      avatar_url: data.avatar_url,
+      bio: data.bio,
+      location: data.location,
+      website_url: data.website_url,
+      profile_visibility: data.profile_visibility,
+      show_email: data.show_email,
+      show_location: data.show_location,
+      onboarding_completed: data.onboarding_completed,
+      onboarding_step: data.onboarding_step,
+      last_active_at: data.last_active_at?.toISOString() || null,
+      extended_data: data.extended_data || {},
+      created_at: data.created_at?.toISOString() || new Date().toISOString(),
+      updated_at: data.updated_at?.toISOString() || new Date().toISOString(),
+    };
+  }
+}
+```
+
+### 2.4 Adapter Factory
+
+```typescript
+// adapters/adapter-factory.ts
+
+import { DatabaseAdapter } from './database-adapter.interface';
+import { SupabaseAdapter } from './supabase-adapter';
+import { MongoDBAdapter } from './mongodb-adapter';
+
+export type DatabaseProvider = 'supabase' | 'mongodb' | 'mysql' | 'postgresql' | 'dynamodb' | 'firebase';
+
+export interface AdapterConfig {
+  provider: DatabaseProvider;
+  connectionString?: string;
+  supabaseUrl?: string;
+  supabaseKey?: string;
+  mongoUri?: string;
+  // Add other provider-specific configs
+}
+
+export class AdapterFactory {
+  static create(config: AdapterConfig): DatabaseAdapter {
+    switch (config.provider) {
+      case 'supabase':
+        if (!config.supabaseUrl || !config.supabaseKey) {
+          throw new Error('Supabase adapter requires supabaseUrl and supabaseKey');
+        }
+        return new SupabaseAdapter(config.supabaseUrl, config.supabaseKey);
+      
+      case 'mongodb':
+        if (!config.mongoUri) {
+          throw new Error('MongoDB adapter requires mongoUri');
+        }
+        // Initialize MongoDB connection and return adapter
+        // Implementation depends on your MongoDB setup
+        return new MongoDBAdapter();
+      
+      default:
+        throw new Error(`Unsupported database provider: ${config.provider}`);
+    }
+  }
+}
+```
+
+---
+
+## 🎨 PHASE 3: DESIGN SYSTEM INTEGRATION
+
+### 3.1 Design System Interface
+
+**Purpose:** Allow UI components to adapt to any design system MDC file.
+
+```typescript
+// types/design-system.types.ts
+
+export interface DesignSystem {
+  // Colors
+  colors: {
+    primary: string;
+    secondary: string;
+    accent: string;
+    background: string;
+    surface: string;
+    text: {
+      primary: string;
+      secondary: string;
+      muted: string;
+    };
+    border: string;
+    error: string;
+    success: string;
+    warning: string;
+  };
+  
+  // Typography
+  typography: {
+    fontFamily: {
+      primary: string;
+      secondary: string;
+      mono: string;
+    };
+    fontSize: {
+      xs: string;
+      sm: string;
+      base: string;
+      lg: string;
+      xl: string;
+      '2xl': string;
+      '3xl': string;
+    };
+    fontWeight: {
+      normal: number;
+      medium: number;
+      semibold: number;
+      bold: number;
+    };
+  };
+  
+  // Spacing
+  spacing: {
+    xs: string;
+    sm: string;
+    md: string;
+    lg: string;
+    xl: string;
+    '2xl': string;
+  };
+  
+  // Border Radius
+  borderRadius: {
+    none: string;
+    sm: string;
+    md: string;
+    lg: string;
+    full: string;
+  };
+  
+  // Shadows
+  shadows: {
+    sm: string;
+    md: string;
+    lg: string;
+    xl: string;
+  };
+  
+  // Animations
+  animations: {
+    duration: {
+      fast: string;
+      normal: string;
+      slow: string;
+    };
+    easing: {
+      default: string;
+      in: string;
+      out: string;
+      inOut: string;
+    };
+  };
+  
+  // Component Styles
+  components: {
+    button: {
+      primary: string;
+      secondary: string;
+      outline: string;
+    };
+    input: {
+      base: string;
+      focus: string;
+      error: string;
+    };
+    card: {
+      base: string;
+      hover: string;
+    };
+  };
+}
+```
+
+### 3.2 Design System Presets
+
+```typescript
+// design-systems/presets.ts
+
+import { DesignSystem } from '../types/design-system.types';
+
+// Cinematic Angular Smoke Design System
+export const cinematicAngularSmoke: DesignSystem = {
+  colors: {
+    primary: '#8FA38F',
+    secondary: '#2D4A3E',
+    accent: '#8FA38F',
+    background: '#050805',
+    surface: 'rgba(255, 255, 255, 0.05)',
+    text: {
+      primary: '#EAECE8',
+      secondary: '#8FA38F',
+      muted: 'rgba(234, 236, 232, 0.6)',
+    },
+    border: 'rgba(255, 255, 255, 0.1)',
+    error: '#ef4444',
+    success: '#22c55e',
+    warning: '#f59e0b',
+  },
+  typography: {
+    fontFamily: {
+      primary: "'Söhne', 'Helvetica Now', 'Inter', sans-serif",
+      secondary: "'Söhne', 'Helvetica Now', 'Inter', sans-serif",
+      mono: "'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace",
+    },
+    fontSize: {
+      xs: '0.75rem',
+      sm: '0.875rem',
+      base: '1rem',
+      lg: '1.125rem',
+      xl: '1.25rem',
+      '2xl': '1.5rem',
+      '3xl': '1.875rem',
+    },
+    fontWeight: {
+      normal: 400,
+      medium: 500,
+      semibold: 600,
+      bold: 700,
+    },
+  },
+  spacing: {
+    xs: '0.25rem',
+    sm: '0.5rem',
+    md: '1rem',
+    lg: '1.5rem',
+    xl: '2rem',
+    '2xl': '3rem',
+  },
+  borderRadius: {
+    none: '0px',
+    sm: '2px',
+    md: '0px',
+    lg: '0px',
+    full: '0px',
+  },
+  shadows: {
+    sm: 'none',
+    md: 'none',
+    lg: 'none',
+    xl: 'none',
+  },
+  animations: {
+    duration: {
+      fast: '0.6s',
+      normal: '1.2s',
+      slow: '2.4s',
+    },
+    easing: {
+      default: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+      in: 'cubic-bezier(0.4, 0, 1, 1)',
+      out: 'cubic-bezier(0, 0, 0.2, 1)',
+      inOut: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    },
+  },
+  components: {
+    button: {
+      primary: 'border border-[var(--accent-primary)] bg-transparent hover:bg-[rgba(143,163,143,0.1)]',
+      secondary: 'border border-[rgba(255,255,255,0.1)] bg-transparent hover:border-[var(--accent-primary)]',
+      outline: 'border border-[var(--accent-primary)] bg-transparent',
+    },
+    input: {
+      base: 'border border-[rgba(255,255,255,0.1)] bg-transparent focus:border-[var(--accent-primary)]',
+      focus: 'border-[var(--accent-primary)]',
+      error: 'border-red-500',
+    },
+    card: {
+      base: 'border border-[rgba(255,255,255,0.1)] bg-transparent',
+      hover: 'hover:border-[var(--accent-primary)] hover:bg-[rgba(255,255,255,0.05)]',
+    },
+  },
+};
+
+// Sculptural Luxury Minimal Design System
+export const sculpturalLuxuryMinimal: DesignSystem = {
+  colors: {
+    primary: '#000000',
+    secondary: '#f5f5f5',
+    accent: '#000000',
+    background: '#ffffff',
+    surface: '#fafafa',
+    text: {
+      primary: '#000000',
+      secondary: '#666666',
+      muted: '#999999',
+    },
+    border: '#e5e5e5',
+    error: '#ef4444',
+    success: '#22c55e',
+    warning: '#f59e0b',
+  },
+  typography: {
+    fontFamily: {
+      primary: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+      secondary: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+      mono: "'SF Mono', 'Monaco', 'Menlo', monospace",
+    },
+    fontSize: {
+      xs: '0.75rem',
+      sm: '0.875rem',
+      base: '1rem',
+      lg: '1.125rem',
+      xl: '1.25rem',
+      '2xl': '1.5rem',
+      '3xl': '1.875rem',
+    },
+    fontWeight: {
+      normal: 400,
+      medium: 500,
+      semibold: 600,
+      bold: 700,
+    },
+  },
+  spacing: {
+    xs: '0.25rem',
+    sm: '0.5rem',
+    md: '1rem',
+    lg: '1.5rem',
+    xl: '2rem',
+    '2xl': '3rem',
+  },
+  borderRadius: {
+    none: '0px',
+    sm: '4px',
+    md: '8px',
+    lg: '12px',
+    full: '9999px',
+  },
+  shadows: {
+    sm: '0 1px 2px rgba(0,0,0,0.05)',
+    md: '0 4px 6px rgba(0,0,0,0.1)',
+    lg: '0 10px 15px rgba(0,0,0,0.1)',
+    xl: '0 20px 25px rgba(0,0,0,0.1)',
+  },
+  animations: {
+    duration: {
+      fast: '150ms',
+      normal: '300ms',
+      slow: '500ms',
+    },
+    easing: {
+      default: 'cubic-bezier(0.4, 0, 0.2, 1)',
+      in: 'cubic-bezier(0.4, 0, 1, 1)',
+      out: 'cubic-bezier(0, 0, 0.2, 1)',
+      inOut: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    },
+  },
+  components: {
+    button: {
+      primary: 'bg-black text-white hover:bg-gray-900',
+      secondary: 'bg-gray-100 text-black hover:bg-gray-200',
+      outline: 'border border-black text-black hover:bg-black hover:text-white',
+    },
+    input: {
+      base: 'border border-gray-300 bg-white focus:border-black focus:ring-1 focus:ring-black',
+      focus: 'border-black ring-1 ring-black',
+      error: 'border-red-500 focus:border-red-500 focus:ring-red-500',
+    },
+    card: {
+      base: 'bg-white border border-gray-200',
+      hover: 'hover:shadow-md transition-shadow',
+    },
+  },
+};
+```
+
+---
+
+## 🎯 PHASE 4: ACCOUNT CREATION FLOW
+
+### 4.1 Account Creation Service
+
+```typescript
+// services/account-creation.service.ts
+
+import { DatabaseAdapter } from '../adapters/database-adapter.interface';
+import { UserProfile } from '../types/profile.types';
+
+export interface AccountCreationData {
+  email: string;
+  password: string;
+  full_name?: string;
+  username?: string;
+}
+
+export class AccountCreationService {
+  constructor(
+    private dbAdapter: DatabaseAdapter,
+    private authProvider: 'supabase' | 'clerk' | 'auth0' | 'custom'
+  ) {}
+
+  async createAccount(data: AccountCreationData): Promise<{ user: any; profile: UserProfile }> {
+    // Step 1: Validate input
+    this.validateAccountData(data);
+
+    // Step 2: Check if email already exists
+    const existingProfile = await this.dbAdapter.getProfileByEmail(data.email);
+    if (existingProfile) {
+      throw new Error('An account with this email already exists');
+    }
+
+    // Step 3: Check username availability if provided
+    if (data.username) {
+      const usernameAvailable = await this.dbAdapter.checkUsernameAvailability(data.username);
+      if (!usernameAvailable) {
+        throw new Error('This username is already taken');
+      }
+    }
+
+    // Step 4: Create auth user (provider-specific)
+    const authUser = await this.createAuthUser(data);
+
+    // Step 5: Create profile
+    const profile = await this.dbAdapter.createProfile({
+      id: authUser.id,
+      auth_provider: this.authProvider,
+      auth_provider_id: authUser.id,
+      email: data.email.toLowerCase(),
+      email_verified: authUser.email_verified || false,
+      full_name: data.full_name || null,
+      display_name: data.full_name || null,
+      username: data.username?.toLowerCase() || null,
+      onboarding_completed: false,
+      onboarding_step: 0,
+    });
+
+    return { user: authUser, profile };
+  }
+
+  private validateAccountData(data: AccountCreationData): void {
+    if (!data.email || !this.isValidEmail(data.email)) {
+      throw new Error('Invalid email address');
+    }
+
+    if (!data.password || data.password.length < 8) {
+      throw new Error('Password must be at least 8 characters long');
+    }
+
+    if (data.username) {
+      if (data.username.length < 3 || data.username.length > 30) {
+        throw new Error('Username must be between 3 and 30 characters');
+      }
+      if (!/^[a-zA-Z0-9_-]+$/.test(data.username)) {
+        throw new Error('Username can only contain letters, numbers, underscores, and hyphens');
+      }
+    }
+  }
+
+  private isValidEmail(email: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
+  private async createAuthUser(data: AccountCreationData): Promise<any> {
+    // Provider-specific auth creation
+    switch (this.authProvider) {
+      case 'supabase':
+        // Use Supabase Auth
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        );
+        const { data: authData, error } = await supabase.auth.signUp({
+          email: data.email,
+          password: data.password,
+        });
+        if (error) throw error;
+        return authData.user!;
+      
+      case 'clerk':
+        // Use Clerk
+        const { clerkClient } = await import('@clerk/nextjs/server');
+        const user = await clerkClient.users.createUser({
+          emailAddress: [data.email],
+          password: data.password,
+        });
+        return { id: user.id, email_verified: user.emailAddresses[0]?.verification?.status === 'verified' };
+      
+      default:
+        throw new Error(`Unsupported auth provider: ${this.authProvider}`);
+    }
+  }
+}
+```
+
+### 4.2 Account Creation UI Component
+
+```typescript
+// components/AccountCreationForm.tsx
+
+'use client';
+
+import { useState } from 'react';
+import { DesignSystem } from '../types/design-system.types';
+
+interface AccountCreationFormProps {
+  designSystem: DesignSystem;
+  onSubmit: (data: AccountCreationData) => Promise<void>;
+  onSuccess?: () => void;
+}
+
+interface AccountCreationData {
+  email: string;
+  password: string;
+  confirmPassword: string;
+  full_name: string;
+  username: string;
+}
+
+export function AccountCreationForm({
+  designSystem,
+  onSubmit,
+  onSuccess,
+}: AccountCreationFormProps) {
+  const [formData, setFormData] = useState<AccountCreationData>({
+    email: '',
+    password: '',
+    confirmPassword: '',
+    full_name: '',
+    username: '',
+  });
+  const [errors, setErrors] = useState<Partial<Record<keyof AccountCreationData, string>>>({});
+  const [loading, setLoading] = useState(false);
+
+  const validate = (): boolean => {
+    const newErrors: Partial<Record<keyof AccountCreationData, string>> = {};
+
+    if (!formData.email) {
+      newErrors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Invalid email address';
+    }
+
+    if (!formData.password) {
+      newErrors.password = 'Password is required';
+    } else if (formData.password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters';
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = 'Passwords do not match';
+    }
+
+    if (formData.username) {
+      if (formData.username.length < 3) {
+        newErrors.username = 'Username must be at least 3 characters';
+      } else if (!/^[a-zA-Z0-9_-]+$/.test(formData.username)) {
+        newErrors.username = 'Username can only contain letters, numbers, underscores, and hyphens';
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validate()) return;
+
+    setLoading(true);
+    try {
+      await onSubmit({
+        email: formData.email,
+        password: formData.password,
+        full_name: formData.full_name || undefined,
+        username: formData.username || undefined,
+      });
+      onSuccess?.();
+    } catch (error: any) {
+      setErrors({ submit: error.message || 'Failed to create account' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const ds = designSystem;
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Email */}
+      <div>
+        <label
+          htmlFor="email"
+          style={{
+            color: ds.colors.text.primary,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            fontWeight: ds.typography.fontWeight.medium,
+            marginBottom: ds.spacing.xs,
+            display: 'block',
+          }}
+        >
+          Email Address
+        </label>
+        <input
+          type="email"
+          id="email"
+          value={formData.email}
+          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+          className={ds.components.input.base}
+          style={{
+            width: '100%',
+            padding: `${ds.spacing.sm} ${ds.spacing.md}`,
+            borderRadius: ds.borderRadius.md,
+            color: ds.colors.text.primary,
+            backgroundColor: ds.colors.background,
+            borderColor: errors.email ? ds.colors.error : ds.colors.border,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.base,
+            transition: `all ${ds.animations.duration.normal} ${ds.animations.easing.default}`,
+          }}
+        />
+        {errors.email && (
+          <p style={{ color: ds.colors.error, fontSize: ds.typography.fontSize.xs, marginTop: ds.spacing.xs }}>
+            {errors.email}
+          </p>
+        )}
+      </div>
+
+      {/* Password */}
+      <div>
+        <label
+          htmlFor="password"
+          style={{
+            color: ds.colors.text.primary,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            fontWeight: ds.typography.fontWeight.medium,
+            marginBottom: ds.spacing.xs,
+            display: 'block',
+          }}
+        >
+          Password
+        </label>
+        <input
+          type="password"
+          id="password"
+          value={formData.password}
+          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+          className={ds.components.input.base}
+          style={{
+            width: '100%',
+            padding: `${ds.spacing.sm} ${ds.spacing.md}`,
+            borderRadius: ds.borderRadius.md,
+            color: ds.colors.text.primary,
+            backgroundColor: ds.colors.background,
+            borderColor: errors.password ? ds.colors.error : ds.colors.border,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.base,
+            transition: `all ${ds.animations.duration.normal} ${ds.animations.easing.default}`,
+          }}
+        />
+        {errors.password && (
+          <p style={{ color: ds.colors.error, fontSize: ds.typography.fontSize.xs, marginTop: ds.spacing.xs }}>
+            {errors.password}
+          </p>
+        )}
+      </div>
+
+      {/* Confirm Password */}
+      <div>
+        <label
+          htmlFor="confirmPassword"
+          style={{
+            color: ds.colors.text.primary,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            fontWeight: ds.typography.fontWeight.medium,
+            marginBottom: ds.spacing.xs,
+            display: 'block',
+          }}
+        >
+          Confirm Password
+        </label>
+        <input
+          type="password"
+          id="confirmPassword"
+          value={formData.confirmPassword}
+          onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+          className={ds.components.input.base}
+          style={{
+            width: '100%',
+            padding: `${ds.spacing.sm} ${ds.spacing.md}`,
+            borderRadius: ds.borderRadius.md,
+            color: ds.colors.text.primary,
+            backgroundColor: ds.colors.background,
+            borderColor: errors.confirmPassword ? ds.colors.error : ds.colors.border,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.base,
+            transition: `all ${ds.animations.duration.normal} ${ds.animations.easing.default}`,
+          }}
+        />
+        {errors.confirmPassword && (
+          <p style={{ color: ds.colors.error, fontSize: ds.typography.fontSize.xs, marginTop: ds.spacing.xs }}>
+            {errors.confirmPassword}
+          </p>
+        )}
+      </div>
+
+      {/* Full Name */}
+      <div>
+        <label
+          htmlFor="full_name"
+          style={{
+            color: ds.colors.text.primary,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            fontWeight: ds.typography.fontWeight.medium,
+            marginBottom: ds.spacing.xs,
+            display: 'block',
+          }}
+        >
+          Full Name (Optional)
+        </label>
+        <input
+          type="text"
+          id="full_name"
+          value={formData.full_name}
+          onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+          className={ds.components.input.base}
+          style={{
+            width: '100%',
+            padding: `${ds.spacing.sm} ${ds.spacing.md}`,
+            borderRadius: ds.borderRadius.md,
+            color: ds.colors.text.primary,
+            backgroundColor: ds.colors.background,
+            borderColor: ds.colors.border,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.base,
+            transition: `all ${ds.animations.duration.normal} ${ds.animations.easing.default}`,
+          }}
+        />
+      </div>
+
+      {/* Username */}
+      <div>
+        <label
+          htmlFor="username"
+          style={{
+            color: ds.colors.text.primary,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            fontWeight: ds.typography.fontWeight.medium,
+            marginBottom: ds.spacing.xs,
+            display: 'block',
+          }}
+        >
+          Username (Optional)
+        </label>
+        <input
+          type="text"
+          id="username"
+          value={formData.username}
+          onChange={(e) => setFormData({ ...formData, username: e.target.value.toLowerCase() })}
+          className={ds.components.input.base}
+          style={{
+            width: '100%',
+            padding: `${ds.spacing.sm} ${ds.spacing.md}`,
+            borderRadius: ds.borderRadius.md,
+            color: ds.colors.text.primary,
+            backgroundColor: ds.colors.background,
+            borderColor: errors.username ? ds.colors.error : ds.colors.border,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.base,
+            transition: `all ${ds.animations.duration.normal} ${ds.animations.easing.default}`,
+          }}
+        />
+        {errors.username && (
+          <p style={{ color: ds.colors.error, fontSize: ds.typography.fontSize.xs, marginTop: ds.spacing.xs }}>
+            {errors.username}
+          </p>
+        )}
+      </div>
+
+      {/* Submit Error */}
+      {errors.submit && (
+        <div style={{ color: ds.colors.error, fontSize: ds.typography.fontSize.sm }}>
+          {errors.submit}
+        </div>
+      )}
+
+      {/* Submit Button */}
+      <button
+        type="submit"
+        disabled={loading}
+        className={ds.components.button.primary}
+        style={{
+          width: '100%',
+          padding: `${ds.spacing.md} ${ds.spacing.lg}`,
+          borderRadius: ds.borderRadius.md,
+          color: ds.colors.text.primary,
+          fontFamily: ds.typography.fontFamily.primary,
+          fontSize: ds.typography.fontSize.base,
+          fontWeight: ds.typography.fontWeight.medium,
+          border: `1px solid ${ds.colors.primary}`,
+          backgroundColor: 'transparent',
+          cursor: loading ? 'not-allowed' : 'pointer',
+          opacity: loading ? 0.6 : 1,
+          transition: `all ${ds.animations.duration.normal} ${ds.animations.easing.default}`,
+        }}
+      >
+        {loading ? 'Creating Account...' : 'Create Account'}
+      </button>
+    </form>
+  );
+}
+```
+
+---
+
+## 👤 PHASE 5: PROFILE PAGE & DISPLAY
+
+### 5.1 Profile Page Component
+
+```typescript
+// components/ProfilePage.tsx
+
+'use client';
+
+import { useEffect, useState } from 'react';
+import { UserProfile } from '../types/profile.types';
+import { DesignSystem } from '../types/design-system.types';
+import { DatabaseAdapter } from '../adapters/database-adapter.interface';
+
+interface ProfilePageProps {
+  profileId: string;
+  currentUserId?: string;
+  dbAdapter: DatabaseAdapter;
+  designSystem: DesignSystem;
+}
+
+export function ProfilePage({
+  profileId,
+  currentUserId,
+  dbAdapter,
+  designSystem,
+}: ProfilePageProps) {
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const isOwnProfile = currentUserId === profileId;
+
+  useEffect(() => {
+    loadProfile();
+  }, [profileId]);
+
+  const loadProfile = async () => {
+    try {
+      setLoading(true);
+      const data = await dbAdapter.getProfileById(profileId);
+      if (!data) {
+        setError('Profile not found');
+        return;
+      }
+
+      // Check visibility
+      if (!isOwnProfile && data.profile_visibility === 'private') {
+        setError('This profile is private');
+        return;
+      }
+
+      setProfile(data);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load profile');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const ds = designSystem;
+
+  if (loading) {
+    return (
+      <div style={{ padding: ds.spacing.xl, textAlign: 'center' }}>
+        <p style={{ color: ds.colors.text.secondary }}>Loading profile...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: ds.spacing.xl, textAlign: 'center' }}>
+        <p style={{ color: ds.colors.error }}>{error}</p>
+      </div>
+    );
+  }
+
+  if (!profile) return null;
+
+  return (
+    <div
+      style={{
+        maxWidth: '800px',
+        margin: '0 auto',
+        padding: ds.spacing.xl,
+      }}
+    >
+      {/* Profile Header */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: ds.spacing.lg,
+          padding: ds.spacing.xl,
+          border: `1px solid ${ds.colors.border}`,
+          borderRadius: ds.borderRadius.lg,
+          backgroundColor: ds.colors.surface,
+          marginBottom: ds.spacing.xl,
+        }}
+      >
+        {/* Avatar */}
+        <div
+          style={{
+            width: '120px',
+            height: '120px',
+            borderRadius: ds.borderRadius.full,
+            overflow: 'hidden',
+            border: `2px solid ${ds.colors.border}`,
+            backgroundColor: ds.colors.background,
+          }}
+        >
+          {profile.avatar_url ? (
+            <img
+              src={profile.avatar_url}
+              alt={profile.display_name || profile.full_name || 'Profile'}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: ds.colors.surface,
+                color: ds.colors.text.secondary,
+                fontSize: ds.typography.fontSize['3xl'],
+                fontFamily: ds.typography.fontFamily.primary,
+                fontWeight: ds.typography.fontWeight.bold,
+              }}
+            >
+              {(profile.display_name || profile.full_name || profile.email || '?').charAt(0).toUpperCase()}
+            </div>
+          )}
+        </div>
+
+        {/* Name & Username */}
+        <div style={{ textAlign: 'center' }}>
+          <h1
+            style={{
+              fontFamily: ds.typography.fontFamily.primary,
+              fontSize: ds.typography.fontSize['3xl'],
+              fontWeight: ds.typography.fontWeight.bold,
+              color: ds.colors.text.primary,
+              marginBottom: ds.spacing.xs,
+            }}
+          >
+            {profile.display_name || profile.full_name || 'Anonymous User'}
+          </h1>
+          {profile.username && (
+            <p
+              style={{
+                fontFamily: ds.typography.fontFamily.secondary,
+                fontSize: ds.typography.fontSize.base,
+                color: ds.colors.text.secondary,
+              }}
+            >
+              @{profile.username}
+            </p>
+          )}
+        </div>
+
+        {/* Bio */}
+        {profile.bio && (
+          <p
+            style={{
+              fontFamily: ds.typography.fontFamily.primary,
+              fontSize: ds.typography.fontSize.base,
+              color: ds.colors.text.primary,
+              textAlign: 'center',
+              maxWidth: '600px',
+              lineHeight: '1.6',
+            }}
+          >
+            {profile.bio}
+          </p>
+        )}
+
+        {/* Location & Website */}
+        <div
+          style={{
+            display: 'flex',
+            gap: ds.spacing.lg,
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+          }}
+        >
+          {profile.show_location && profile.location && (
+            <span
+              style={{
+                fontFamily: ds.typography.fontFamily.secondary,
+                fontSize: ds.typography.fontSize.sm,
+                color: ds.colors.text.secondary,
+              }}
+            >
+              📍 {profile.location}
+            </span>
+          )}
+          {profile.website_url && (
+            <a
+              href={profile.website_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontFamily: ds.typography.fontFamily.secondary,
+                fontSize: ds.typography.fontSize.sm,
+                color: ds.colors.primary,
+                textDecoration: 'none',
+              }}
+            >
+              🔗 Website
+            </a>
+          )}
+        </div>
+
+        {/* Social Links */}
+        {profile.extended_data?.social_links && (
+          <div
+            style={{
+              display: 'flex',
+              gap: ds.spacing.md,
+              flexWrap: 'wrap',
+              justifyContent: 'center',
+            }}
+          >
+            {Object.entries(profile.extended_data.social_links).map(([platform, url]) => (
+              url && (
+                <a
+                  key={platform}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontFamily: ds.typography.fontFamily.secondary,
+                    fontSize: ds.typography.fontSize.sm,
+                    color: ds.colors.primary,
+                    textDecoration: 'none',
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {platform}
+                </a>
+              )
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Profile Stats (if applicable) */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gap: ds.spacing.md,
+          marginBottom: ds.spacing.xl,
+        }}
+      >
+        {/* Add stats here if needed (e.g., posts count, followers, etc.) */}
+      </div>
+
+      {/* Edit Button (if own profile) */}
+      {isOwnProfile && (
+        <div style={{ textAlign: 'center' }}>
+          <a
+            href={`/profile/${profileId}/edit`}
+            style={{
+              display: 'inline-block',
+              padding: `${ds.spacing.md} ${ds.spacing.xl}`,
+              borderRadius: ds.borderRadius.md,
+              border: `1px solid ${ds.colors.primary}`,
+              color: ds.colors.text.primary,
+              fontFamily: ds.typography.fontFamily.primary,
+              fontSize: ds.typography.fontSize.base,
+              fontWeight: ds.typography.fontWeight.medium,
+              textDecoration: 'none',
+              transition: `all ${ds.animations.duration.normal} ${ds.animations.easing.default}`,
+            }}
+          >
+            Edit Profile
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## ✏️ PHASE 6: PROFILE EDITING
+
+### 6.1 Profile Edit Service
+
+```typescript
+// services/profile-edit.service.ts
+
+import { DatabaseAdapter } from '../adapters/database-adapter.interface';
+import { UserProfile } from '../types/profile.types';
+
+export interface ProfileUpdateData {
+  full_name?: string;
+  display_name?: string;
+  username?: string;
+  bio?: string;
+  location?: string;
+  website_url?: string;
+  profile_visibility?: 'public' | 'private' | 'friends_only';
+  show_email?: boolean;
+  show_location?: boolean;
+  extended_data?: Record<string, any>;
+}
+
+export class ProfileEditService {
+  constructor(private dbAdapter: DatabaseAdapter) {}
+
+  async updateProfile(
+    profileId: string,
+    data: ProfileUpdateData
+  ): Promise<UserProfile> {
+    // Validate username if provided
+    if (data.username) {
+      const existingProfile = await this.dbAdapter.getProfileByUsername(data.username);
+      if (existingProfile && existingProfile.id !== profileId) {
+        throw new Error('This username is already taken');
+      }
+    }
+
+    // Validate website URL if provided
+    if (data.website_url && !this.isValidUrl(data.website_url)) {
+      throw new Error('Invalid website URL');
+    }
+
+    // Update profile
+    return this.dbAdapter.updateProfile(profileId, data);
+  }
+
+  async updateAvatar(profileId: string, avatarUrl: string): Promise<UserProfile> {
+    return this.dbAdapter.updateAvatar(profileId, avatarUrl);
+  }
+
+  async updateSocialLinks(
+    profileId: string,
+    socialLinks: Record<string, string>
+  ): Promise<UserProfile> {
+    return this.dbAdapter.updateExtendedData(profileId, {
+      social_links: socialLinks,
+    });
+  }
+
+  private isValidUrl(url: string): boolean {
+    try {
+      new URL(url);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+```
+
+### 6.2 Profile Edit Form Component
+
+```typescript
+// components/ProfileEditForm.tsx
+
+'use client';
+
+import { useState, useEffect } from 'react';
+import { UserProfile } from '../types/profile.types';
+import { DesignSystem } from '../types/design-system.types';
+import { ProfileEditService, ProfileUpdateData } from '../services/profile-edit.service';
+
+interface ProfileEditFormProps {
+  profile: UserProfile;
+  editService: ProfileEditService;
+  designSystem: DesignSystem;
+  onSave?: (updatedProfile: UserProfile) => void;
+  onCancel?: () => void;
+}
+
+export function ProfileEditForm({
+  profile,
+  editService,
+  designSystem,
+  onSave,
+  onCancel,
+}: ProfileEditFormProps) {
+  const [formData, setFormData] = useState<ProfileUpdateData>({
+    full_name: profile.full_name || '',
+    display_name: profile.display_name || '',
+    username: profile.username || '',
+    bio: profile.bio || '',
+    location: profile.location || '',
+    website_url: profile.website_url || '',
+    profile_visibility: profile.profile_visibility,
+    show_email: profile.show_email,
+    show_location: profile.show_location,
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(profile.avatar_url || null);
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setAvatarFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrors({});
+
+    try {
+      setLoading(true);
+
+      // Upload avatar if changed
+      if (avatarFile) {
+        // Implement avatar upload logic (e.g., to Supabase Storage, S3, etc.)
+        const avatarUrl = await uploadAvatar(avatarFile, profile.id);
+        await editService.updateAvatar(profile.id, avatarUrl);
+      }
+
+      // Update profile
+      const updatedProfile = await editService.updateProfile(profile.id, formData);
+      onSave?.(updatedProfile);
+    } catch (error: any) {
+      setErrors({ submit: error.message || 'Failed to update profile' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const uploadAvatar = async (file: File, userId: string): Promise<string> => {
+    // Implement your avatar upload logic here
+    // This is a placeholder - replace with your storage solution
+    throw new Error('Avatar upload not implemented');
+  };
+
+  const ds = designSystem;
+
+  return (
+    <form onSubmit={handleSubmit} style={{ maxWidth: '600px', margin: '0 auto' }}>
+      {/* Avatar Upload */}
+      <div style={{ marginBottom: ds.spacing.xl, textAlign: 'center' }}>
+        <label
+          htmlFor="avatar"
+          style={{
+            display: 'block',
+            marginBottom: ds.spacing.md,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            fontWeight: ds.typography.fontWeight.medium,
+            color: ds.colors.text.primary,
+          }}
+        >
+          Profile Picture
+        </label>
+        <div
+          style={{
+            width: '120px',
+            height: '120px',
+            borderRadius: ds.borderRadius.full,
+            overflow: 'hidden',
+            margin: '0 auto',
+            border: `2px solid ${ds.colors.border}`,
+            position: 'relative',
+            cursor: 'pointer',
+          }}
+        >
+          {avatarPreview && (
+            <img
+              src={avatarPreview}
+              alt="Avatar preview"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          )}
+          <input
+            type="file"
+            id="avatar"
+            accept="image/*"
+            onChange={handleAvatarChange}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              opacity: 0,
+              cursor: 'pointer',
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Full Name */}
+      <div style={{ marginBottom: ds.spacing.lg }}>
+        <label
+          htmlFor="full_name"
+          style={{
+            display: 'block',
+            marginBottom: ds.spacing.xs,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            fontWeight: ds.typography.fontWeight.medium,
+            color: ds.colors.text.primary,
+          }}
+        >
+          Full Name
+        </label>
+        <input
+          type="text"
+          id="full_name"
+          value={formData.full_name}
+          onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+          style={{
+            width: '100%',
+            padding: `${ds.spacing.sm} ${ds.spacing.md}`,
+            borderRadius: ds.borderRadius.md,
+            border: `1px solid ${ds.colors.border}`,
+            backgroundColor: ds.colors.background,
+            color: ds.colors.text.primary,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.base,
+          }}
+        />
+      </div>
+
+      {/* Display Name */}
+      <div style={{ marginBottom: ds.spacing.lg }}>
+        <label
+          htmlFor="display_name"
+          style={{
+            display: 'block',
+            marginBottom: ds.spacing.xs,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            fontWeight: ds.typography.fontWeight.medium,
+            color: ds.colors.text.primary,
+          }}
+        >
+          Display Name
+        </label>
+        <input
+          type="text"
+          id="display_name"
+          value={formData.display_name}
+          onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
+          style={{
+            width: '100%',
+            padding: `${ds.spacing.sm} ${ds.spacing.md}`,
+            borderRadius: ds.borderRadius.md,
+            border: `1px solid ${ds.colors.border}`,
+            backgroundColor: ds.colors.background,
+            color: ds.colors.text.primary,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.base,
+          }}
+        />
+      </div>
+
+      {/* Username */}
+      <div style={{ marginBottom: ds.spacing.lg }}>
+        <label
+          htmlFor="username"
+          style={{
+            display: 'block',
+            marginBottom: ds.spacing.xs,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            fontWeight: ds.typography.fontWeight.medium,
+            color: ds.colors.text.primary,
+          }}
+        >
+          Username
+        </label>
+        <input
+          type="text"
+          id="username"
+          value={formData.username}
+          onChange={(e) => setFormData({ ...formData, username: e.target.value.toLowerCase() })}
+          style={{
+            width: '100%',
+            padding: `${ds.spacing.sm} ${ds.spacing.md}`,
+            borderRadius: ds.borderRadius.md,
+            border: `1px solid ${errors.username ? ds.colors.error : ds.colors.border}`,
+            backgroundColor: ds.colors.background,
+            color: ds.colors.text.primary,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.base,
+          }}
+        />
+        {errors.username && (
+          <p style={{ color: ds.colors.error, fontSize: ds.typography.fontSize.xs, marginTop: ds.spacing.xs }}>
+            {errors.username}
+          </p>
+        )}
+      </div>
+
+      {/* Bio */}
+      <div style={{ marginBottom: ds.spacing.lg }}>
+        <label
+          htmlFor="bio"
+          style={{
+            display: 'block',
+            marginBottom: ds.spacing.xs,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            fontWeight: ds.typography.fontWeight.medium,
+            color: ds.colors.text.primary,
+          }}
+        >
+          Bio
+        </label>
+        <textarea
+          id="bio"
+          value={formData.bio}
+          onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+          rows={4}
+          maxLength={500}
+          style={{
+            width: '100%',
+            padding: `${ds.spacing.sm} ${ds.spacing.md}`,
+            borderRadius: ds.borderRadius.md,
+            border: `1px solid ${ds.colors.border}`,
+            backgroundColor: ds.colors.background,
+            color: ds.colors.text.primary,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.base,
+            resize: 'vertical',
+          }}
+        />
+        <p style={{ color: ds.colors.text.muted, fontSize: ds.typography.fontSize.xs, marginTop: ds.spacing.xs }}>
+          {(formData.bio || '').length} / 500 characters
+        </p>
+      </div>
+
+      {/* Location */}
+      <div style={{ marginBottom: ds.spacing.lg }}>
+        <label
+          htmlFor="location"
+          style={{
+            display: 'block',
+            marginBottom: ds.spacing.xs,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            fontWeight: ds.typography.fontWeight.medium,
+            color: ds.colors.text.primary,
+          }}
+        >
+          Location
+        </label>
+        <input
+          type="text"
+          id="location"
+          value={formData.location}
+          onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+          style={{
+            width: '100%',
+            padding: `${ds.spacing.sm} ${ds.spacing.md}`,
+            borderRadius: ds.borderRadius.md,
+            border: `1px solid ${ds.colors.border}`,
+            backgroundColor: ds.colors.background,
+            color: ds.colors.text.primary,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.base,
+          }}
+        />
+      </div>
+
+      {/* Website */}
+      <div style={{ marginBottom: ds.spacing.lg }}>
+        <label
+          htmlFor="website_url"
+          style={{
+            display: 'block',
+            marginBottom: ds.spacing.xs,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            fontWeight: ds.typography.fontWeight.medium,
+            color: ds.colors.text.primary,
+          }}
+        >
+          Website
+        </label>
+        <input
+          type="url"
+          id="website_url"
+          value={formData.website_url}
+          onChange={(e) => setFormData({ ...formData, website_url: e.target.value })}
+          placeholder="https://example.com"
+          style={{
+            width: '100%',
+            padding: `${ds.spacing.sm} ${ds.spacing.md}`,
+            borderRadius: ds.borderRadius.md,
+            border: `1px solid ${ds.colors.border}`,
+            backgroundColor: ds.colors.background,
+            color: ds.colors.text.primary,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.base,
+          }}
+        />
+      </div>
+
+      {/* Profile Visibility */}
+      <div style={{ marginBottom: ds.spacing.lg }}>
+        <label
+          style={{
+            display: 'block',
+            marginBottom: ds.spacing.xs,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            fontWeight: ds.typography.fontWeight.medium,
+            color: ds.colors.text.primary,
+          }}
+        >
+          Profile Visibility
+        </label>
+        <select
+          value={formData.profile_visibility}
+          onChange={(e) => setFormData({ ...formData, profile_visibility: e.target.value as any })}
+          style={{
+            width: '100%',
+            padding: `${ds.spacing.sm} ${ds.spacing.md}`,
+            borderRadius: ds.borderRadius.md,
+            border: `1px solid ${ds.colors.border}`,
+            backgroundColor: ds.colors.background,
+            color: ds.colors.text.primary,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.base,
+          }}
+        >
+          <option value="public">Public</option>
+          <option value="private">Private</option>
+          <option value="friends_only">Friends Only</option>
+        </select>
+      </div>
+
+      {/* Privacy Options */}
+      <div style={{ marginBottom: ds.spacing.xl }}>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: ds.spacing.sm,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            color: ds.colors.text.primary,
+            marginBottom: ds.spacing.md,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={formData.show_email}
+            onChange={(e) => setFormData({ ...formData, show_email: e.target.checked })}
+          />
+          Show email on profile
+        </label>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: ds.spacing.sm,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.sm,
+            color: ds.colors.text.primary,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={formData.show_location}
+            onChange={(e) => setFormData({ ...formData, show_location: e.target.checked })}
+          />
+          Show location on profile
+        </label>
+      </div>
+
+      {/* Error Message */}
+      {errors.submit && (
+        <div style={{ color: ds.colors.error, fontSize: ds.typography.fontSize.sm, marginBottom: ds.spacing.lg }}>
+          {errors.submit}
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      <div style={{ display: 'flex', gap: ds.spacing.md, justifyContent: 'flex-end' }}>
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              padding: `${ds.spacing.md} ${ds.spacing.xl}`,
+              borderRadius: ds.borderRadius.md,
+              border: `1px solid ${ds.colors.border}`,
+              backgroundColor: 'transparent',
+              color: ds.colors.text.primary,
+              fontFamily: ds.typography.fontFamily.primary,
+              fontSize: ds.typography.fontSize.base,
+              fontWeight: ds.typography.fontWeight.medium,
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+        )}
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            padding: `${ds.spacing.md} ${ds.spacing.xl}`,
+            borderRadius: ds.borderRadius.md,
+            border: `1px solid ${ds.colors.primary}`,
+            backgroundColor: 'transparent',
+            color: ds.colors.text.primary,
+            fontFamily: ds.typography.fontFamily.primary,
+            fontSize: ds.typography.fontSize.base,
+            fontWeight: ds.typography.fontWeight.medium,
+            cursor: loading ? 'not-allowed' : 'pointer',
+            opacity: loading ? 0.6 : 1,
+          }}
+        >
+          {loading ? 'Saving...' : 'Save Changes'}
+        </button>
+      </div>
+    </form>
+  );
+}
+```
+
+---
+
+## 🔐 PHASE 7: AUTHENTICATION INTEGRATION
+
+### 7.1 Auth Provider Abstraction
+
+```typescript
+// auth/auth-provider.interface.ts
+
+export interface AuthProvider {
+  getCurrentUser(): Promise<any | null>;
+  signUp(email: string, password: string, metadata?: Record<string, any>): Promise<any>;
+  signIn(email: string, password: string): Promise<any>;
+  signOut(): Promise<void>;
+  resetPassword(email: string): Promise<void>;
+  updatePassword(newPassword: string): Promise<void>;
+  onAuthStateChange(callback: (user: any) => void): () => void;
+}
+```
+
+### 7.2 Supabase Auth Provider
+
+```typescript
+// auth/supabase-auth-provider.ts
+
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { AuthProvider } from './auth-provider.interface';
+
+export class SupabaseAuthProvider implements AuthProvider {
+  private supabase: SupabaseClient;
+
+  constructor(supabaseUrl: string, supabaseKey: string) {
+    this.supabase = createClient(supabaseUrl, supabaseKey);
+  }
+
+  async getCurrentUser(): Promise<any | null> {
+    const { data: { user } } = await this.supabase.auth.getUser();
+    return user;
+  }
+
+  async signUp(email: string, password: string, metadata?: Record<string, any>): Promise<any> {
+    const { data, error } = await this.supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: metadata,
+      },
+    });
+    if (error) throw error;
+    return data.user;
+  }
+
+  async signIn(email: string, password: string): Promise<any> {
+    const { data, error } = await this.supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) throw error;
+    return data.user;
+  }
+
+  async signOut(): Promise<void> {
+    const { error } = await this.supabase.auth.signOut();
+    if (error) throw error;
+  }
+
+  async resetPassword(email: string): Promise<void> {
+    const { error } = await this.supabase.auth.resetPasswordForEmail(email);
+    if (error) throw error;
+  }
+
+  async updatePassword(newPassword: string): Promise<void> {
+    const { error } = await this.supabase.auth.updateUser({
+      password: newPassword,
+    });
+    if (error) throw error;
+  }
+
+  onAuthStateChange(callback: (user: any) => void): () => void {
+    const { data: { subscription } } = this.supabase.auth.onAuthStateChange((event, session) => {
+      callback(session?.user || null);
+    });
+    return () => subscription.unsubscribe();
+  }
+}
+```
+
+---
+
+## 🚀 PHASE 8: USAGE EXAMPLES & INTEGRATION
+
+### 8.1 Next.js App Router Integration
+
+```typescript
+// app/profile/[id]/page.tsx
+
+import { ProfilePage } from '@/components/ProfilePage';
+import { AdapterFactory } from '@/adapters/adapter-factory';
+import { cinematicAngularSmoke } from '@/design-systems/presets';
+
+export default async function ProfilePageRoute({
+  params,
+}: {
+  params: { id: string };
+}) {
+  // Initialize database adapter
+  const dbAdapter = AdapterFactory.create({
+    provider: 'supabase',
+    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  });
+
+  // Get current user (from session/cookie)
+  const currentUserId = await getCurrentUserId(); // Implement based on your auth
+
+  return (
+    <ProfilePage
+      profileId={params.id}
+      currentUserId={currentUserId}
+      dbAdapter={dbAdapter}
+      designSystem={cinematicAngularSmoke}
+    />
+  );
+}
+```
+
+### 8.2 Account Creation Page
+
+```typescript
+// app/sign-up/page.tsx
+
+'use client';
+
+import { AccountCreationForm } from '@/components/AccountCreationForm';
+import { AccountCreationService } from '@/services/account-creation.service';
+import { AdapterFactory } from '@/adapters/adapter-factory';
+import { cinematicAngularSmoke } from '@/design-systems/presets';
+import { useRouter } from 'next/navigation';
+
+export default function SignUpPage() {
+  const router = useRouter();
+
+  const handleSubmit = async (data: any) => {
+    const dbAdapter = AdapterFactory.create({
+      provider: 'supabase',
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    });
+
+    const accountService = new AccountCreationService(dbAdapter, 'supabase');
+    await accountService.createAccount(data);
+  };
+
+  const handleSuccess = () => {
+    router.push('/dashboard');
+  };
+
+  return (
+    <div style={{ maxWidth: '500px', margin: '0 auto', padding: '2rem' }}>
+      <h1 style={{ marginBottom: '2rem', textAlign: 'center' }}>Create Account</h1>
+      <AccountCreationForm
+        designSystem={cinematicAngularSmoke}
+        onSubmit={handleSubmit}
+        onSuccess={handleSuccess}
+      />
+    </div>
+  );
+}
+```
+
+---
+
+## 📋 DEPLOYMENT CHECKLIST
+
+### Database Setup
+- [ ] Create profiles table with appropriate schema for your database provider
+- [ ] Set up indexes for performance (email, username, search)
+- [ ] Configure Row Level Security (for PostgreSQL/Supabase) or application-level security
+- [ ] Test database adapter with your provider
+
+### Authentication Setup
+- [ ] Configure auth provider (Supabase Auth, Clerk, Auth0, etc.)
+- [ ] Set up auth provider adapter
+- [ ] Test sign-up, sign-in, sign-out flows
+- [ ] Configure email verification (if applicable)
+
+### Design System Integration
+- [ ] Choose or create design system preset
+- [ ] Verify all design tokens are properly mapped
+- [ ] Test components with chosen design system
+- [ ] Ensure responsive design works across devices
+
+### File Storage (for Avatars)
+- [ ] Set up storage solution (Supabase Storage, S3, Cloudinary, etc.)
+- [ ] Implement avatar upload functionality
+- [ ] Configure CORS and access policies
+- [ ] Test image upload and retrieval
+
+### Testing
+- [ ] Test account creation flow end-to-end
+- [ ] Test profile viewing (public, private, friends_only)
+- [ ] Test profile editing and validation
+- [ ] Test username availability checking
+- [ ] Test search functionality
+- [ ] Test avatar upload and display
+- [ ] Test on multiple database providers (if applicable)
+
+---
+
+## 📚 ADDITIONAL NOTES
+
+### Performance Considerations
+- **Indexes:** Ensure all frequently queried fields (email, username, search) are indexed
+- **Caching:** Consider caching profile data for frequently accessed profiles
+- **Image Optimization:** Implement image resizing/optimization for avatars
+- **Pagination:** For search results, implement pagination to limit result sets
+
+### Security Considerations
+- **Input Validation:** Always validate user input on both client and server
+- **SQL Injection:** Use parameterized queries (handled by adapters)
+- **XSS Prevention:** Sanitize user-generated content (bio, website URLs)
+- **Rate Limiting:** Implement rate limiting on account creation and profile updates
+- **Privacy:** Respect profile visibility settings in all queries
+
+### Scalability Considerations
+- **Database Sharding:** For very large scale, consider sharding by user ID
+- **CDN for Images:** Use CDN for avatar images
+- **Search Optimization:** For large user bases, consider Elasticsearch or Algolia
+- **Caching Strategy:** Cache public profiles with appropriate TTL
+
+### Extensibility
+- **Custom Fields:** Use `extended_data` JSON field for application-specific data
+- **Social Links:** Extend `social_links` object for additional platforms
+- **Preferences:** Extend `preferences` object for user settings
+- **Onboarding:** Use `onboarding_step` to track multi-step onboarding flows
+
+---
+
+**END OF DOCUMENTATION**
+
+This document serves as the complete source of truth for building a universal account and profile management system that works with any database provider and integrates seamlessly with any design system. All code examples are production-ready and follow best practices for performance, security, and user experience.

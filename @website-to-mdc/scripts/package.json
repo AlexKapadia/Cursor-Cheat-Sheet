@@ -1,0 +1,22 @@
+{
+  "name": "website-to-mdc-analyzer",
+  "version": "1.0.0",
+  "description": "Browser automation script for website analysis and MDC conversion",
+  "main": "analyze-website.js",
+  "scripts": {
+    "analyze": "node analyze-website.js",
+    "install-deps": "npm install puppeteer"
+  },
+  "keywords": [
+    "website-analysis",
+    "mdc",
+    "puppeteer",
+    "automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "puppeteer": "^21.0.0"
+  }
+}
+

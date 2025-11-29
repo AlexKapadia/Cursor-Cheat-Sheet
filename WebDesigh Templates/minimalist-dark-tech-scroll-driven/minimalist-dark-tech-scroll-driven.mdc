@@ -1,0 +1,1898 @@
+---
+alwaysApply: false
+---
+
+# Minimalist Dark Tech Scroll-Driven - Website Design System
+
+## Website Metadata
+- **Source URL:** https://www.citix.me/
+- **Design Style:** Minimalist Dark Tech Scroll-Driven
+- **Primary Framework:** Astro
+- **CSS Framework:** Tailwind CSS v4.0.17 + Custom CSS
+- **Animation Library:** GSAP (GreenSock Animation Platform) with ScrollTrigger
+- **Analysis Date:** November 29, 2025
+- **Pages Analyzed:** 1 (Homepage with multiple sections)
+- **Total Components:** 15+ unique components
+
+## Design Overview
+
+A sophisticated minimalist design system built for showcasing urban technology products. The design features a dark, high-contrast aesthetic with a bold red accent color (#FB0733) that creates striking visual hierarchy. The system is heavily animation-driven, using scroll-triggered animations and GSAP for smooth, performant motion graphics. Typography is the hero element, with massive display sizes and tight letter spacing creating dramatic impact. The layout is clean and spacious, allowing products and content to breathe while maintaining visual interest through subtle animations and progressive reveals.
+
+## Design System Fundamentals
+
+### Color Palette
+
+**Primary Colors:**
+- Primary (Black): `#101010` (usage: main background, primary text in light mode)
+- Accent (Red): `#FB0733` (usage: highlights, CTAs, progress indicators, active states)
+- White: `#FFFFFF` (usage: text on dark background, light mode background)
+
+**Neutral Colors:**
+- Background: `#101010` (dark mode default)
+- Surface: `rgba(16, 16, 16, 0.9)` (burger menu overlay with backdrop blur)
+- Text Primary: `#FFFFFF` (dark mode)
+- Text Secondary: `color-mix(in srgb, currentColor, transparent 65%)` (reduced opacity text)
+- Border: `color-mix(in srgb, currentColor, transparent 65%)` (subtle borders)
+
+**RGB Values (for rgba usage):**
+- Black RGB: `16, 16, 16`
+- White RGB: `255, 255, 255`
+- Grey RGB: `42, 42, 42`
+
+**Semantic Colors:**
+- Selection Background: `#FB0733`
+- Selection Text: `#101010`
+
+**Gradients:**
+```css
+/* Red gradient for progress lines */
+background: linear-gradient(to bottom, var(--red) 10%, transparent 100%);
+
+/* Overlay gradient for burger menu items */
+background: linear-gradient(to top, color-mix(in srgb, var(--black), transparent 30%), transparent 40%);
+
+/* Brand lines gradient patterns */
+background: linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--red), transparent 41%) 59%, transparent 100%);
+background: linear-gradient(to bottom, color-mix(in srgb, var(--red), transparent 35%) 0%, var(--red) 31%, transparent 100%);
+```
+
+### Typography System
+
+**Font Families:**
+- Primary Title: Custom font (loaded from `_astro/fonts/`) - usage: headings, large display text
+- Primary Body: Custom font (loaded from `_astro/fonts/`) - usage: body text, navigation
+- Monospace: System monospace - usage: code, numbers
+
+**Type Scale (Responsive):**
+```css
+/* Desktop Typography Scale */
+--font-size-248: calc(var(--spacing) * 248);  /* Hero headings */
+--font-size-190: calc(var(--spacing) * 190);  /* Large headings */
+--font-size-120: calc(var(--spacing) * 120);  /* Section headings */
+--font-size-96: calc(var(--spacing) * 96);    /* Subsection headings */
+--font-size-73: calc(var(--spacing) * 73);    /* Medium headings */
+--font-size-44: calc(var(--spacing) * 44);     /* Small headings */
+--font-size-20: calc(var(--spacing) * 20);    /* Large body */
+--font-size-16: calc(var(--spacing) * 16);    /* Base body */
+
+/* Tablet (≤1023px) Typography Scale */
+@media screen and (max-width: 1023px) {
+  --font-size-248: calc(var(--spacing) * 106);
+  --font-size-190: calc(var(--spacing) * 130);
+  --font-size-73: calc(var(--spacing) * 40);
+  --font-size-44: calc(var(--spacing) * 32);
+  --font-size-20: calc(var(--spacing) * 16);
+  --font-size-16: calc(var(--spacing) * 14);
+}
+
+/* Mobile (≤479px) Typography Scale */
+@media screen and (max-width: 479px) {
+  --font-size-248: calc(var(--spacing) * 65);
+  --font-size-190: calc(var(--spacing) * 70);
+  --font-size-73: calc(var(--spacing) * 24);
+  --font-size-44: calc(var(--spacing) * 22);
+  --font-size-16: calc(var(--spacing) * 13);
+}
+```
+
+**Line Heights:**
+```css
+--line-height-tight: 1;           /* Headings */
+--line-height-normal: 1.4;        /* Body text */
+--line-height-relaxed: 1.5;       /* Extended reading */
+```
+
+**Font Weights:**
+- Light: 300 (usage: large display headings)
+- Regular: 400 (usage: body text, medium headings)
+- Medium: 500 (usage: navigation, emphasized text)
+
+**Letter Spacing:**
+```css
+--letter-spacing-tight: -0.04em;  /* Large headings */
+--letter-spacing-normal: -0.02em; /* Body text */
+--letter-spacing-wide: 0.05em;    /* Uppercase text */
+```
+
+**Text Utilities:**
+```css
+.caps {
+  text-transform: uppercase;
+}
+
+.lowercase {
+  text-transform: lowercase;
+}
+
+.uppercase {
+  text-transform: uppercase;
+}
+```
+
+### Spacing System
+
+The spacing system uses a fluid calculation based on viewport width with a multiplier system:
+
+```css
+:root {
+  --dw: 1920;                    /* Design width (desktop) */
+  --multiplier: 0.3;             /* Spacing multiplier */
+  --spacing: clamp(
+    1 * (1 - var(--multiplier)) / 16 * 1rem,
+    1 / var(--dw) * 100vw,
+    1 * (1 + var(--multiplier)) / 16 * 1rem
+  );
+  --container-spacing: calc(var(--spacing) * 50);
+}
+
+/* Tablet adjustments */
+@media screen and (max-width: 1023px) {
+  :root {
+    --dw: 768;
+    --multiplier: 0.1;
+  }
+  :root {
+    --container-spacing: calc(var(--spacing) * 25);
+  }
+}
+
+/* Mobile adjustments */
+@media screen and (max-width: 479px) {
+  :root {
+    --dw: 375;
+  }
+  :root {
+    --container-spacing: calc(var(--spacing) * 20);
+  }
+}
+```
+
+**Spacing Scale Examples:**
+```css
+/* Common spacing values */
+--spacing-6: calc(var(--spacing) * 6);
+--spacing-10: calc(var(--spacing) * 10);
+--spacing-15: calc(var(--spacing) * 15);
+--spacing-20: calc(var(--spacing) * 20);
+--spacing-25: calc(var(--spacing) * 25);
+--spacing-30: calc(var(--spacing) * 30);
+--spacing-40: calc(var(--spacing) * 40);
+--spacing-45: calc(var(--spacing) * 45);
+--spacing-50: calc(var(--spacing) * 50);
+--spacing-55: calc(var(--spacing) * 55);
+--spacing-60: calc(var(--spacing) * 60);
+--spacing-65: calc(var(--spacing) * 65);
+--spacing-80: calc(var(--spacing) * 80);
+--spacing-85: calc(var(--spacing) * 85);
+--spacing-90: calc(var(--spacing) * 90);
+--spacing-100: calc(var(--spacing) * 100);
+--spacing-120: calc(var(--spacing) * 120);
+--spacing-135: calc(var(--spacing) * 135);
+--spacing-150: calc(var(--spacing) * 150);
+--spacing-180: calc(var(--spacing) * 180);
+--spacing-200: calc(var(--spacing) * 200);
+--spacing-240: calc(var(--spacing) * 240);
+--spacing-300: calc(var(--spacing) * 300);
+```
+
+### Border Radius System
+
+```css
+--radius-sm: 0;              /* Sharp corners (default) */
+--radius-md: 0;              /* Minimal rounding */
+--radius-lg: 0;              /* Moderate rounding */
+--radius-full: 100vw;        /* Full circle (burger icon) */
+```
+
+### Shadow System
+
+The design uses minimal shadows, focusing on color and opacity for depth:
+
+```css
+/* No traditional box shadows - depth achieved through: */
+/* 1. Backdrop blur on overlays */
+backdrop-filter: blur(7.5px);
+-webkit-backdrop-filter: blur(7.5px);
+
+/* 2. Opacity variations */
+opacity: 0.65;  /* Secondary text */
+opacity: 0.6;   /* Inactive elements */
+opacity: 0.35;  /* Subtle elements */
+opacity: 0.15;  /* Very subtle elements */
+```
+
+## Layout Systems
+
+### Grid System
+
+```css
+/* Main Container */
+.container {
+  width: 100%;
+  max-width: 1024px;
+  margin: 0 auto;
+  padding-inline: var(--container-spacing);
+}
+
+@media (width >= 479px) {
+  .container {
+    max-width: 479px;
+  }
+}
+
+@media (width >= 1023px) {
+  .container {
+    max-width: 1023px;
+  }
+}
+
+@media (width >= 1024px) {
+  .container {
+    max-width: 1024px;
+  }
+}
+```
+
+**Grid Layouts:**
+```css
+/* 6-column grid */
+.grid-cols-6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+/* 10-column grid */
+.grid-cols-10 {
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+}
+
+/* Custom 3-column grid */
+.grid-cols-[1fr_2fr_1fr] {
+  grid-template-columns: 1fr 2fr 1fr;
+}
+```
+
+### Breakpoints
+
+```css
+/* Mobile First Approach */
+/* Base: < 479px (mobile) */
+/* Tablet: 479px - 1023px */
+/* Desktop: > 1023px */
+
+/* Mobile */
+@media screen and (max-width: 479px) {
+  /* Mobile styles */
+}
+
+/* Tablet */
+@media screen and (max-width: 1023px) {
+  /* Tablet styles */
+}
+
+/* Desktop */
+@media (width >= 1024px) {
+  /* Desktop styles */
+}
+```
+
+**Responsive Utilities:**
+- `.s:` prefix for mobile (≤479px)
+- `.l:` prefix for tablet (≤1023px)
+- `.pc:` prefix for desktop (≥1024px)
+
+## Component Library
+
+### Navigation
+
+**Main Navigation:**
+```css
+nav {
+  transition: color var(--color-ease);
+}
+
+.nav_burger-icon {
+  aspect-ratio: 1;
+  border-radius: 100vw;
+  border: 1px solid color-mix(in srgb, currentColor, transparent 65%);
+  position: relative;
+  flex: none;
+}
+
+.nav_burger-circle {
+  position: absolute;
+  inset: -1px;
+}
+
+.nav_burger-line {
+  position: absolute;
+  background-color: var(--red);
+  height: 1px;
+  width: calc(var(--spacing) * 14);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, calc(-50% - var(--spacing) * 2.5)) rotate(0);
+  transition: transform var(--fast-ease);
+}
+
+.nav_burger-line:nth-child(2) {
+  transform: translate(-50%, calc(-50% + var(--spacing) * 2.5)) rotate(0);
+}
+
+.nav_list {
+  transition: opacity var(--fast-ease);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.nav_burger-text,
+.nav_item {
+  color: color-mix(in srgb, currentColor, transparent 65%);
+  transition: color var(--color-ease);
+}
+
+.nav_burger:hover .nav_burger-text,
+.nav_item:hover {
+  color: currentColor;
+}
+```
+
+**Burger Menu Open State:**
+```css
+.burger-open .nav_burger-line {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.burger-open .nav_burger-line:nth-child(2) {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.burger-open .nav_burger-text .nav_burger-open,
+.burger-open .nav_burger-text .nav_burger-close {
+  transform: translateY(-100%);
+}
+
+.burger-open .nav_list {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+```
+
+**Burger Menu Overlay:**
+```css
+.burger {
+  transition: opacity var(--fast-ease), visibility 0s linear 0.6s;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  background-color: rgba(var(--black-rgb), 0.9);
+  backdrop-filter: blur(7.5px);
+  -webkit-backdrop-filter: blur(7.5px);
+}
+
+.burger-open .burger {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--fast-ease), visibility 0s linear;
+  pointer-events: all;
+}
+
+.burger_tile {
+  transition: transform 0s linear 0.8s;
+  transform: translate3d(100vw, 0, 0);
+  will-change: transform;
+}
+
+.burger-open .burger_tile {
+  transition: transform var(--ease) var(--delay);
+  transform: translateZ(0);
+}
+
+.burger_tile-overlay-bg {
+  background-color: rgba(var(--black-rgb), 0.9);
+  opacity: 0;
+  transition: opacity var(--fast-ease);
+}
+
+.burger_tile:hover .burger_tile-overlay-bg {
+  opacity: 1;
+}
+
+.burger_item-overlay {
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--black), transparent 30%),
+    transparent 40%
+  );
+}
+```
+
+### Hero Section
+
+**Hero Wrapper:**
+```css
+.hero_wrapper {
+  height: 2000vh;
+  margin-bottom: -100vh;
+}
+
+.hero_headings {
+  pointer-events: none;
+}
+
+.hero_headings:first-child {
+  display: none;
+}
+
+.hero_headings:not(.is-last) {
+  padding-top: var(--hero-socials-top);
+  padding-bottom: clamp(
+    var(--spacing) * 150,
+    23.1481481481vh,
+    var(--spacing) * 300
+  );
+}
+
+.hero_headings.active {
+  pointer-events: auto;
+}
+
+.hero_headings.active .hero_char {
+  opacity: 1;
+  transition: opacity 0.4s var(--smooth) var(--delay);
+}
+
+.hero_char {
+  transition: opacity 0.4s var(--smooth) var(--delay);
+  opacity: 0;
+}
+```
+
+**Hero Typography Styling:**
+```css
+/* Red accent on specific lines */
+.hero_headings:nth-child(2) .hero_heading-left .hero_line:last-child,
+.hero_headings:nth-child(3) .hero_heading-left .hero_line:last-child,
+.hero_headings:nth-child(4) .hero_heading-left .hero_line:last-child,
+.hero_headings:nth-child(5) .hero_heading-left .hero_line:last-child,
+.hero_headings:nth-child(6) .hero_heading-left .hero_line:last-child,
+.hero_headings:nth-child(7) .hero_heading-left .hero_line:last-child {
+  color: var(--red);
+}
+
+.hero_headings:nth-child(8) .hero_line:last-child {
+  color: var(--red);
+}
+
+/* Right-aligned lines */
+.hero_heading-right .hero_line {
+  text-align: right !important;
+}
+
+/* Dot decorations */
+.dot-before {
+  margin-right: 0.25em;
+  color: var(--red);
+}
+
+.dot-after {
+  margin-left: 0.25em;
+  color: var(--red);
+}
+```
+
+### Progress Indicators
+
+**Progress Line:**
+```css
+.home_progress-line {
+  --progress: 0;
+  position: relative;
+  background-color: color-mix(in srgb, currentColor, transparent 65%);
+}
+
+.home_progress-line:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: var(--red);
+  transform-origin: left;
+  transform: scaleX(var(--progress));
+}
+
+.timeline_line {
+  --progress: 0;
+  width: 1px;
+  background-color: color-mix(in srgb, var(--white), transparent 65%);
+  position: relative;
+}
+
+.timeline_line:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: var(--red);
+  transform-origin: top;
+  transform: scaleY(var(--progress));
+}
+```
+
+### Product Cards
+
+**Product List (3D Transform):**
+```css
+.products_list {
+  transform-style: preserve-3d;
+  will-change: transform;
+  transform-origin: 50% 50%;
+}
+
+.products_item {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  top: 50%;
+  width: max-content;
+  text-align: center;
+  transform-origin: 50% 50%;
+  position: absolute;
+  will-change: transform;
+  transform: translate3d(
+    calc(var(--x, 0) * 1px),
+    calc(var(--y, 0) * 1px),
+    calc(var(--z, 0) * 1px)
+  ) rotateX(calc(var(--rotate, 0) * 1deg));
+  visibility: hidden;
+  color: color-mix(in srgb, currentColor, transparent 65%);
+  transform-style: preserve-3d;
+}
+
+.products_item.active {
+  color: currentColor;
+  cursor: pointer;
+}
+
+.products_arrow {
+  opacity: 0;
+  transform: translate(-50%);
+  transition: opacity var(--ease), transform var(--ease);
+}
+
+.products_item.active:hover .products_arrow {
+  opacity: 1;
+  transform: translate(0);
+}
+```
+
+### Tabs Component
+
+**Tabs Container:**
+```css
+.tabs_list {
+  border-top: 1px solid var(--red);
+}
+
+@media screen and (max-width: 1023px) {
+  .tabs_list {
+    border-top: none;
+  }
+}
+
+.tabs_item {
+  overflow: clip;
+  flex: 0 auto;
+  width: var(--width);
+  transition: width 1s var(--customEase);
+}
+
+@media screen and (max-width: 1023px) {
+  .tabs_item {
+    width: 100%;
+    overflow: visible;
+  }
+}
+
+.tabs_item.active {
+  width: 100%;
+}
+
+.tabs_item:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(to bottom, var(--red) 10%, transparent 100%);
+}
+
+@media screen and (max-width: 1023px) {
+  .tabs_item:before {
+    background: linear-gradient(to right, var(--red) 10%, transparent 100%);
+    display: block;
+    bottom: auto;
+    width: auto;
+    left: calc(var(--spacing) * -50);
+    right: calc(var(--spacing) * -50);
+    height: 1px;
+  }
+}
+```
+
+**Tabs Heading:**
+```css
+.tabs_heading {
+  position: absolute;
+  width: calc(var(--activeWidth) - var(--spacing) * 130);
+  left: calc(var(--spacing) * 35);
+  transition: left 0.4s var(--customEase);
+}
+
+@media screen and (max-width: 1023px) {
+  .tabs_heading {
+    left: 0;
+    width: max-content;
+  }
+}
+
+.tabs_heading:before {
+  content: ".";
+  color: var(--red);
+  font-size: calc(var(--spacing) * 44);
+  font-family: var(--font-title);
+}
+
+.tabs_heading h4 {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s var(--customEase) 0s;
+}
+
+.tabs_heading p {
+  opacity: 1;
+  pointer-events: all;
+  transition: opacity 0.4s var(--customEase) 0.1s;
+  max-width: 10ch;
+}
+
+.tabs_item.active .tabs_heading {
+  left: calc(var(--spacing) * 65);
+  transition: left 1s var(--customEase);
+}
+
+.tabs_item.active .tabs_heading h4 {
+  transition: opacity 1s var(--customEase) 0.1s;
+  opacity: 1;
+  pointer-events: all;
+}
+
+.tabs_item.active .tabs_heading p {
+  transition: opacity 0.4s var(--customEase) 0s;
+  opacity: 0;
+  pointer-events: none;
+}
+```
+
+**Tabs Content:**
+```css
+.tabs_bottom {
+  width: calc(var(--activeWidth) - var(--spacing) * 130);
+}
+
+@media screen and (max-width: 1023px) {
+  .tabs_bottom {
+    width: 100%;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.4s var(--customEase);
+  }
+}
+
+.tabs_item.active .tabs_bottom {
+  grid-template-rows: 1fr;
+}
+
+.tabs_line,
+.tabs_image {
+  transition: opacity 0.4s var(--customEase) 0s;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tabs_item.active .tabs_line {
+  transition: opacity 1s var(--customEase) var(--delay);
+  opacity: 1;
+  pointer-events: all;
+}
+
+.tabs_item.active .tabs_image {
+  transition: opacity 1s var(--customEase) 0s;
+  opacity: 1;
+  pointer-events: all;
+}
+```
+
+### Buttons
+
+**Circle Button:**
+```css
+.button_circle {
+  border: 1px solid color-mix(in srgb, currentColor, transparent 65%);
+  border-radius: 100vw;
+  transition: transform 0.6s var(--expoInOut);
+  transform: rotate(0);
+}
+
+.button_svg {
+  position: absolute;
+  inset: -1px;
+}
+
+.button_text {
+  color: color-mix(in srgb, currentColor, transparent 65%);
+  transition: color 0.4s var(--customEase);
+}
+
+.button_line {
+  position: absolute;
+  background-color: var(--red);
+  height: 1px;
+  width: calc(var(--spacing) * 14);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  transition: transform var(--customEase);
+}
+
+.button_line:nth-child(2) {
+  height: calc(var(--spacing) * 14);
+  width: 1px;
+}
+
+.button:hover .button_text {
+  color: currentColor;
+}
+
+.button:hover .button_circle {
+  transform: rotate(180deg);
+}
+```
+
+### Scroll Indicator
+
+**Scroll Down Component:**
+```css
+.scroll-down.active .scroll-down_line:not(.vertical) {
+  transform: scaleX(1);
+  transform-origin: left;
+}
+
+.scroll-down.active .scroll-down_line.vertical {
+  transform: scaleY(1);
+  transform-origin: top;
+}
+
+.scroll-down_line {
+  position: relative;
+  background-color: color-mix(in srgb, currentColor, transparent 65%);
+  transform-origin: right;
+  transform: scaleX(0);
+  height: 1px;
+  transition: transform 1.5s cubic-bezier(0.84, 0, 0.16, 1) 0.5s;
+}
+
+.scroll-down_line.vertical {
+  width: 1px;
+  height: calc(35 * var(--spacing));
+  transform: scaleY(0);
+  transform-origin: bottom;
+}
+
+.scroll-down_line.red {
+  background-color: var(--red);
+}
+```
+
+### Gallery Component
+
+**Gallery Progress:**
+```css
+.gallery_progress {
+  position: relative;
+  height: 1px;
+  background-color: color-mix(in srgb, currentColor, transparent 65%);
+}
+
+.gallery_progress:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: var(--red);
+  transform-origin: left;
+  transform: scaleX(var(--progress));
+}
+
+.gallery_number {
+  transition: color 0.4s var(--customEase);
+  color: color-mix(in srgb, currentColor, transparent 65%);
+  cursor: pointer;
+}
+
+.gallery_number.active,
+.gallery_number:hover {
+  color: currentColor;
+}
+```
+
+### Timeline Component
+
+**Timeline Body:**
+```css
+.timeline_body {
+  height: calc(150vh * var(--length, 1));
+}
+
+.timeline_item .timeline_descr-line,
+.timeline_item .timeline_char {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.4s var(--smooth) 0s, visibility 0s linear 0.4s;
+}
+
+.timeline_item.active .timeline_descr-line,
+.timeline_item.active .timeline_char {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.4s var(--smooth) 0s;
+}
+
+@media screen and (max-width: 1023px) {
+  .timeline_video-parent {
+    mask-image: linear-gradient(to bottom, transparent 0%, black 20%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 20%);
+  }
+}
+```
+
+### Brands Component
+
+**Brand Lines (Vertical):**
+```css
+.brands_v-lines .brands_v-line {
+  transform: scaleY(var(--progress, 0));
+  transform-origin: center top;
+}
+
+.brands_v-lines .brands_v-line:first-child,
+.brands_v-lines .brands_v-line:last-child {
+  opacity: 0;
+}
+
+.brands_v-lines .brands_v-line:nth-child(4n) {
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in srgb, var(--red), transparent 41%) 59%,
+    transparent 100%
+  );
+}
+
+.brands_v-lines .brands_v-line:nth-child(4n+1) {
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--red), transparent 35%) 0%,
+    var(--red) 31%,
+    transparent 100%
+  );
+}
+```
+
+**Brand Items:**
+```css
+.brands_item {
+  filter: grayscale(100%);
+  opacity: 0.6;
+  transition: filter 0.4s var(--smooth), opacity 0.4s var(--smooth);
+}
+
+.brands_item:hover {
+  filter: grayscale(0%);
+  opacity: 1;
+}
+```
+
+### Footer
+
+**Footer Links:**
+```css
+.footer_link {
+  transition: color var(--color-ease);
+}
+
+@media (hover: hover) {
+  .footer_link:hover {
+    color: var(--red);
+  }
+}
+
+.footer_arrow {
+  color: var(--red);
+  transition: color var(--color-ease);
+}
+
+@media (hover: hover) {
+  .footer_next:hover .footer_arrow {
+    color: currentColor;
+  }
+}
+```
+
+**Footer Utilities:**
+```css
+.w-dot:before {
+  content: ".";
+  display: inline-block;
+  color: var(--red);
+  font-size: 1em;
+  padding-right: 0.15em;
+}
+
+.w-dot:has(> div) {
+  display: flex;
+}
+```
+
+### Text Link Component
+
+```css
+.text-link {
+  transition: opacity var(--color-ease), color var(--color-ease);
+}
+
+.text-link.change-opacity:hover {
+  opacity: 1;
+}
+```
+
+## Animations and Transitions
+
+### CSS Transitions
+
+**Standard Transitions:**
+```css
+/* Color transitions */
+--color-ease: 0.4s ease-out;
+
+/* Standard ease */
+--ease: 0.8s cubic-bezier(0.84, 0, 0.16, 1);
+
+/* Fast ease */
+--fast-ease: 0.6s cubic-bezier(0.84, 0, 0.16, 1);
+
+/* Smooth cubic bezier */
+--smooth: cubic-bezier(0.76, 0, 0.24, 1);
+
+/* Expo in-out */
+--expoInOut: cubic-bezier(0.87, 0, 0.13, 1);
+
+/* Custom ease */
+--customEase: cubic-bezier(0.19, 1, 0.22, 1);
+```
+
+**Common Transition Patterns:**
+```css
+/* Fade in */
+.fade-in {
+  transition: opacity 0.4s var(--smooth);
+}
+
+/* Color change */
+.color-transition {
+  transition: color var(--color-ease);
+}
+
+/* Transform */
+.transform-transition {
+  transition: transform var(--ease);
+}
+```
+
+### CSS Animations
+
+**Character Reveal Animation:**
+```css
+.hero_char {
+  transition: opacity 0.4s var(--smooth) var(--delay);
+  opacity: 0;
+}
+
+.hero_headings.active .hero_char {
+  opacity: 1;
+  transition: opacity 0.4s var(--smooth) var(--delay);
+}
+```
+
+**Timeline Item Animation:**
+```css
+.timeline_item .timeline_descr-line,
+.timeline_item .timeline_char {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.4s var(--smooth) 0s, visibility 0s linear 0.4s;
+}
+
+.timeline_item.active .timeline_descr-line,
+.timeline_item.active .timeline_char {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.4s var(--smooth) 0s;
+}
+```
+
+### Scroll Animations (GSAP)
+
+The site uses GSAP with ScrollTrigger for scroll-driven animations. Key patterns:
+
+**Scroll-Triggered Reveals:**
+- Hero headings reveal character by character on scroll
+- Progress lines animate based on scroll position
+- Timeline items fade in as they enter viewport
+- Product cards transform in 3D space based on scroll
+
+**Scroll Progress Indicators:**
+```css
+/* Progress lines use CSS custom properties updated by GSAP */
+.home_progress-line {
+  --progress: 0; /* Updated by JavaScript */
+}
+
+.timeline_line {
+  --progress: 0; /* Updated by JavaScript */
+}
+```
+
+### Page Transitions
+
+**Page Loader:**
+- Custom page loader with logo animation
+- Fade out transition when page is ready
+- Uses GSAP for smooth transitions
+
+**Route Transitions:**
+- Smooth page transitions (if using SPA routing)
+- Maintains scroll position where appropriate
+
+### Micro-interactions
+
+**Hover Effects:**
+```css
+/* Navigation items */
+.nav_item:hover {
+  color: currentColor;
+}
+
+/* Buttons */
+.button:hover .button_text {
+  color: currentColor;
+}
+
+.button:hover .button_circle {
+  transform: rotate(180deg);
+}
+
+/* Footer links */
+.footer_link:hover {
+  color: var(--red);
+}
+
+/* Brand items */
+.brands_item:hover {
+  filter: grayscale(0%);
+  opacity: 1;
+}
+
+/* Gallery numbers */
+.gallery_number:hover {
+  color: currentColor;
+}
+```
+
+**Active States:**
+```css
+.products_item.active {
+  color: currentColor;
+  cursor: pointer;
+}
+
+.tabs_item.active {
+  width: 100%;
+}
+
+.hero_progress a.active {
+  opacity: 1 !important;
+}
+```
+
+## Page Layouts
+
+### Homepage Layout
+
+**Structure:**
+1. **Navigation** (fixed/sticky)
+   - Logo
+   - Burger menu
+   - Navigation links
+
+2. **Hero Section** (full viewport height sections)
+   - Multiple hero headings with scroll-triggered reveals
+   - Product showcase with 3D transforms
+   - Scroll indicator
+
+3. **Product Sections**
+   - Tabbed product display
+   - Product cards with hover effects
+   - Image galleries
+
+4. **Timeline Section**
+   - Vertical timeline with progress indicator
+   - Video content
+   - Animated text reveals
+
+5. **Footer**
+   - Contact information
+   - Social links
+   - Legal links
+   - Product navigation
+
+**Hero Section CSS:**
+```css
+.hero_wrapper {
+  height: 2000vh; /* Very tall for scroll-driven animation */
+  margin-bottom: -100vh;
+}
+
+.hero_headings {
+  pointer-events: none;
+}
+
+.hero_headings.active {
+  pointer-events: auto;
+}
+```
+
+**Product Section:**
+```css
+.products_list {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+```
+
+## User Flows and Navigation
+
+### Primary User Flows
+
+1. **Homepage Exploration Flow:**
+   - User lands on homepage
+   - Scrolls through hero sections (scroll-triggered animations)
+   - Views product cards (3D transforms on scroll)
+   - Clicks on product to view details
+   - Scrolls through timeline/content sections
+   - Navigates to footer for contact
+
+2. **Product Discovery Flow:**
+   - User clicks burger menu
+   - Menu overlay slides in
+   - User selects product category
+   - Product section scrolls into view
+   - User interacts with product tabs
+   - User views product gallery
+
+3. **Navigation Flow:**
+   - User clicks burger icon
+   - Menu opens with slide animation
+   - User hovers over menu items (overlay effects)
+   - User clicks menu item
+   - Page scrolls to section
+   - Menu closes
+
+### Navigation Structure
+
+**Main Navigation:**
+- Logo (home link)
+- Burger menu button
+- Navigation links (hidden until burger opens):
+  - About
+  - adtech
+  - smart city
+  - news
+  - products
+
+**Footer Navigation:**
+- Product links (Tom Tom, Jerry, Shark, City Displays)
+- Social links (Instagram, LinkedIn)
+- Contact (email)
+- Legal (Privacy Policy, Terms of Service)
+
+**Side Navigation (Hero Progress):**
+- Scroll progress indicator
+- Section links (Intro, tomtom, shark, jerry, smart city)
+- Social links
+
+### Link Patterns
+
+**Internal Links:**
+- Smooth scroll to sections
+- Red accent on hover
+- Opacity transitions
+
+**External Links:**
+- Same styling as internal
+- Opens in same window (default)
+
+**CTA Links:**
+- Email link: `sayhello@citix.me`
+- Red accent color
+- Hover effects
+
+## Responsive Design Patterns
+
+### Mobile (< 479px)
+
+**Layout Changes:**
+- Single column layouts
+- Reduced typography sizes
+- Tighter spacing
+- Full-width containers
+- Stacked navigation
+
+**Typography Adjustments:**
+```css
+@media screen and (max-width: 479px) {
+  ._248 { font-size: calc(var(--spacing) * 65); }
+  ._190 { font-size: calc(var(--spacing) * 70); }
+  ._73 { font-size: calc(var(--spacing) * 24); }
+  ._44 { font-size: calc(var(--spacing) * 22); }
+  ._16 { font-size: calc(var(--spacing) * 13); }
+}
+```
+
+**Component Variations:**
+- Burger menu full-screen overlay
+- Tabs stack vertically
+- Timeline adapts to vertical layout
+- Product cards stack
+- Footer stacks vertically
+
+**Navigation:**
+- Burger menu only
+- Full-screen menu overlay
+- Touch-optimized interactions
+
+### Tablet (479px - 1023px)
+
+**Layout Changes:**
+- 2-3 column grids
+- Medium typography sizes
+- Adjusted spacing
+- Container max-width: 1023px
+
+**Typography Adjustments:**
+```css
+@media screen and (max-width: 1023px) {
+  ._248 { font-size: calc(var(--spacing) * 106); }
+  ._190 { font-size: calc(var(--spacing) * 130); }
+  ._73 { font-size: calc(var(--spacing) * 40); }
+  ._44 { font-size: calc(var(--spacing) * 32); }
+  ._20 { font-size: calc(var(--spacing) * 16); }
+  ._16 { font-size: calc(var(--spacing) * 14); }
+}
+```
+
+**Component Variations:**
+- Tabs adapt to horizontal layout
+- Product cards in grid
+- Timeline maintains structure
+- Navigation remains burger menu
+
+### Desktop (> 1023px)
+
+**Layout Changes:**
+- Multi-column grids (6, 10 columns)
+- Full typography scale
+- Maximum spacing
+- Container max-width: 1024px
+
+**Component Variations:**
+- Full tab system
+- 3D product transforms
+- Complex grid layouts
+- Side navigation visible
+- Hover interactions enabled
+
+**Navigation:**
+- Burger menu available
+- Side navigation for hero progress
+- Footer navigation expanded
+
+## Loading States and Indicators
+
+### Page Load
+
+**Initial Load:**
+- Custom loader with logo
+- Animated logo transition
+- Fade out when ready
+- Main content hidden until loaded: `main { visibility: hidden; overflow: clip; }`
+
+**Loader Components:**
+- Logo image (loader-logo.webp)
+- Colored logo (loader-colored.webp)
+- Stroke logo (loader-stroke-logo.webp)
+- GSAP animations for transitions
+
+### Content Loading
+
+**Progressive Loading:**
+- Images lazy-loaded
+- Content reveals on scroll
+- Skeleton states (if any) use opacity transitions
+
+**Loading Indicators:**
+- Progress lines for scroll progress
+- Timeline progress indicators
+- Gallery progress bars
+
+### Form Submission
+
+**Form States:**
+- Default: border with reduced opacity
+- Focus: full opacity, red accent
+- Error: red border (if validation fails)
+- Success: transition to success state
+
+## Interactive Behaviors
+
+### Hover Effects
+
+**Navigation:**
+```css
+.nav_item:hover {
+  color: currentColor; /* Full opacity */
+}
+
+.nav_burger:hover .nav_burger-text {
+  color: currentColor;
+}
+```
+
+**Buttons:**
+```css
+.button:hover .button_text {
+  color: currentColor;
+}
+
+.button:hover .button_circle {
+  transform: rotate(180deg);
+}
+```
+
+**Links:**
+```css
+.footer_link:hover {
+  color: var(--red);
+}
+
+.text-link.change-opacity:hover {
+  opacity: 1;
+}
+```
+
+**Brand Items:**
+```css
+.brands_item:hover {
+  filter: grayscale(0%);
+  opacity: 1;
+}
+```
+
+**Product Items:**
+```css
+.products_item.active:hover .products_arrow {
+  opacity: 1;
+  transform: translate(0);
+}
+```
+
+### Click Interactions
+
+**Burger Menu:**
+- Click toggles menu open/close
+- Lines rotate to X shape
+- Overlay fades in
+- Menu items slide in with stagger
+
+**Tabs:**
+- Click activates tab
+- Width animates to 100%
+- Content fades in
+- Heading transitions
+
+**Product Cards:**
+- Click navigates to product
+- 3D transform on interaction
+- Arrow appears on hover
+
+### Scroll Behaviors
+
+**Scroll-Triggered Animations:**
+- Hero headings reveal character by character
+- Progress lines fill based on scroll
+- Timeline items fade in
+- Product cards transform in 3D
+- Sections animate into view
+
+**Scroll Progress:**
+- Custom properties updated by GSAP
+- CSS transforms based on progress values
+- Smooth animations
+
+**Parallax Effects:**
+- 3D transforms on product cards
+- Depth-based positioning
+- Smooth scroll integration
+
+### Form Interactions
+
+**Input Fields:**
+- Border opacity changes on focus
+- Red accent on active
+- Smooth transitions
+
+**Validation:**
+- Error states use red color
+- Smooth state transitions
+- Visual feedback
+
+## Implementation Guidelines
+
+### CSS Architecture
+
+**Organization:**
+- Custom CSS variables in `:root`
+- Component-based CSS classes
+- Tailwind utilities for layout
+- Custom animations and transitions
+- Responsive breakpoints clearly defined
+
+**Naming Conventions:**
+- BEM-like naming for components (`.component_element`)
+- Utility classes for spacing/typography
+- Custom properties for dynamic values
+- Responsive prefixes: `.s:`, `.l:`, `.pc:`
+
+**CSS Variables:**
+```css
+:root {
+  /* Colors */
+  --black: #101010;
+  --white: #FFFFFF;
+  --red: #FB0733;
+  
+  /* RGB for rgba */
+  --black-rgb: 16, 16, 16;
+  --white-rgb: 255, 255, 255;
+  --grey-rgb: 42, 42, 42;
+  
+  /* Spacing system */
+  --dw: 1920;
+  --multiplier: 0.3;
+  --spacing: clamp(...);
+  --container-spacing: calc(var(--spacing) * 50);
+  
+  /* Transitions */
+  --smooth: cubic-bezier(0.76, 0, 0.24, 1);
+  --expoInOut: cubic-bezier(0.87, 0, 0.13, 1);
+  --customEase: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease: 0.8s cubic-bezier(0.84, 0, 0.16, 1);
+  --fast-ease: 0.6s cubic-bezier(0.84, 0, 0.16, 1);
+  --color-ease: 0.4s ease-out;
+}
+```
+
+### Component Structure
+
+**Component Pattern:**
+```html
+<div class="component">
+  <div class="component_element">
+    <!-- Content -->
+  </div>
+  <div class="component_element-modifier">
+    <!-- Modified element -->
+  </div>
+</div>
+```
+
+**State Management:**
+- Active states: `.component.active`
+- Hover states: `.component:hover`
+- Focus states: `.component:focus`
+- Disabled states: `.component:disabled`
+
+### Animation Performance
+
+**Best Practices:**
+- Use `will-change` for animated properties
+- Use `transform` and `opacity` for animations (GPU accelerated)
+- Avoid animating `width`, `height`, `top`, `left`
+- Use `transform: translate3d()` for 3D transforms
+- Use `backface-visibility: hidden` for 3D elements
+
+**Performance Optimizations:**
+```css
+.products_item {
+  will-change: transform;
+  transform: translate3d(...);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+```
+
+### Accessibility Considerations
+
+**Focus States:**
+- Visible focus indicators
+- Keyboard navigation support
+- ARIA labels where needed
+
+**Color Contrast:**
+- White text on black background (high contrast)
+- Red accent meets WCAG standards
+- Reduced opacity text still readable
+
+**Semantic HTML:**
+- Proper heading hierarchy
+- Navigation landmarks
+- Content structure
+
+**Screen Reader Support:**
+- ARIA labels on interactive elements
+- Semantic HTML structure
+- Alt text for images
+
+## Design Tokens
+
+```css
+:root {
+  /* Colors */
+  --color-black: #101010;
+  --color-white: #FFFFFF;
+  --color-red: #FB0733;
+  
+  /* Typography */
+  --font-title: [Custom font family];
+  --font-body: [Custom font family];
+  
+  /* Spacing */
+  --spacing-unit: var(--spacing);
+  --spacing-6: calc(var(--spacing) * 6);
+  --spacing-10: calc(var(--spacing) * 10);
+  --spacing-20: calc(var(--spacing) * 20);
+  --spacing-50: calc(var(--spacing) * 50);
+  --spacing-100: calc(var(--spacing) * 100);
+  
+  /* Shadows */
+  /* No traditional shadows - use opacity and backdrop-filter */
+  
+  /* Borders */
+  --border-width: 1px;
+  --border-color: color-mix(in srgb, currentColor, transparent 65%);
+  --border-radius: 0;
+  
+  /* Transitions */
+  --transition-fast: var(--fast-ease);
+  --transition-normal: var(--ease);
+  --transition-smooth: var(--smooth);
+  
+  /* Z-index scale */
+  --z-base: 0;
+  --z-1: 1;
+  --z-2: 2;
+  --z-8: 8;
+  --z-10: 10;
+  --z-overlay: 1000;
+}
+```
+
+## Page-Specific Designs
+
+### Homepage
+
+**Layout Structure:**
+- Full viewport hero sections
+- Scroll-driven animations
+- Product showcase
+- Timeline/content sections
+- Footer
+
+**Components Used:**
+- Navigation (burger menu)
+- Hero headings (scroll-triggered)
+- Product cards (3D transforms)
+- Tabs (product navigation)
+- Timeline (content sections)
+- Gallery (image display)
+- Footer (contact/navigation)
+
+**Responsive Behavior:**
+- Mobile: Stacked layout, reduced typography
+- Tablet: 2-3 column grids, medium typography
+- Desktop: Full layout, maximum typography, 3D effects
+
+## Motion Graphics and Advanced Animations
+
+### Scroll-Triggered Character Reveal
+
+**Description:** Hero headings reveal character by character as user scrolls
+**Trigger:** Scroll position (GSAP ScrollTrigger)
+**Implementation:**
+```javascript
+// GSAP ScrollTrigger animation
+// Characters fade in with stagger delay
+// Opacity transitions from 0 to 1
+```
+
+**CSS:**
+```css
+.hero_char {
+  transition: opacity 0.4s var(--smooth) var(--delay);
+  opacity: 0;
+}
+
+.hero_headings.active .hero_char {
+  opacity: 1;
+}
+```
+
+### 3D Product Card Transforms
+
+**Description:** Product cards transform in 3D space based on scroll
+**Trigger:** Scroll position and mouse movement
+**Implementation:**
+```javascript
+// GSAP 3D transforms
+// translate3d and rotateX based on scroll
+// Parallax effect
+```
+
+**CSS:**
+```css
+.products_item {
+  transform: translate3d(
+    calc(var(--x, 0) * 1px),
+    calc(var(--y, 0) * 1px),
+    calc(var(--z, 0) * 1px)
+  ) rotateX(calc(var(--rotate, 0) * 1deg));
+  transform-style: preserve-3d;
+}
+```
+
+### Progress Line Animation
+
+**Description:** Progress lines fill based on scroll progress
+**Trigger:** Scroll position
+**Implementation:**
+```javascript
+// GSAP updates --progress CSS variable
+// CSS transform scales based on progress
+```
+
+**CSS:**
+```css
+.progress-line {
+  --progress: 0;
+}
+
+.progress-line:before {
+  transform: scaleX(var(--progress));
+}
+```
+
+### Burger Menu Slide Animation
+
+**Description:** Menu slides in from right with staggered item animations
+**Trigger:** Burger button click
+**Implementation:**
+```javascript
+// GSAP timeline animation
+// Items slide in with delay
+// Overlay fades in
+```
+
+**CSS:**
+```css
+.burger_tile {
+  transform: translate3d(100vw, 0, 0);
+  transition: transform var(--ease) var(--delay);
+}
+
+.burger-open .burger_tile {
+  transform: translateZ(0);
+}
+```
+
+### Tab Width Animation
+
+**Description:** Active tab expands to full width with smooth transition
+**Trigger:** Tab click
+**Implementation:**
+```css
+.tabs_item {
+  width: var(--width);
+  transition: width 1s var(--customEase);
+}
+
+.tabs_item.active {
+  width: 100%;
+}
+```
+
+## Design Patterns and Best Practices
+
+### Layout Patterns
+
+**Full-Viewport Sections:**
+- Hero sections use full viewport height
+- Scroll-driven animations
+- Spacious layouts
+
+**Grid Systems:**
+- 6-column and 10-column grids
+- Responsive column spans
+- Flexible layouts
+
+**Container Patterns:**
+- Max-width containers
+- Responsive padding
+- Fluid spacing
+
+### Component Patterns
+
+**Reveal Patterns:**
+- Opacity transitions
+- Staggered animations
+- Scroll-triggered reveals
+
+**Interactive Patterns:**
+- Hover state transitions
+- Active state indicators
+- Progress indicators
+
+**Navigation Patterns:**
+- Burger menu overlay
+- Smooth scroll
+- Progress tracking
+
+### Animation Patterns
+
+**Scroll Animations:**
+- GSAP ScrollTrigger
+- CSS custom properties
+- Transform-based animations
+
+**Hover Animations:**
+- Color transitions
+- Transform rotations
+- Opacity changes
+
+**State Transitions:**
+- Active/inactive states
+- Loading states
+- Error states
+
+## Implementation Checklist
+
+### Setup
+- [x] Set up CSS variables/tokens
+- [x] Configure typography system
+- [x] Set up color palette
+- [x] Configure spacing system
+- [x] Set up GSAP and ScrollTrigger
+
+### Components
+- [x] Implement navigation (burger menu)
+- [x] Implement hero sections
+- [x] Implement product cards (3D)
+- [x] Implement tabs component
+- [x] Implement timeline component
+- [x] Implement gallery component
+- [x] Implement buttons
+- [x] Implement footer
+- [x] Implement scroll indicators
+- [x] Implement progress lines
+
+### Responsive Design
+- [x] Implement mobile layouts
+- [x] Implement tablet layouts
+- [x] Implement desktop layouts
+- [x] Test at all breakpoints
+- [x] Verify typography scales
+- [x] Verify spacing adjustments
+
+### Animations
+- [x] Implement CSS transitions
+- [x] Implement scroll-triggered animations
+- [x] Implement hover effects
+- [x] Implement page transitions
+- [x] Implement micro-interactions
+
+## Notes and Observations
+
+### Design Philosophy
+
+The design system prioritizes:
+1. **Typography as Hero:** Massive display sizes create dramatic impact
+2. **Minimal Color Palette:** Black, white, and red create high contrast
+3. **Motion-Driven:** Scroll animations guide user attention
+4. **Spatial Design:** Generous spacing allows content to breathe
+5. **Performance:** GPU-accelerated animations ensure smooth experience
+
+### Technical Implementation
+
+**Key Technologies:**
+- Astro for static site generation
+- Tailwind CSS v4 for utility classes
+- GSAP for advanced animations
+- ScrollTrigger for scroll-driven effects
+- Custom CSS for component styling
+
+**Performance Considerations:**
+- `will-change` used strategically
+- `transform` and `opacity` for animations
+- Lazy loading for images
+- Optimized font loading
+
+### Design Challenges
+
+1. **Very Tall Hero Sections:** 2000vh height requires careful scroll management
+2. **3D Transforms:** Browser compatibility considerations
+3. **Scroll Performance:** Many scroll-triggered animations require optimization
+4. **Responsive Typography:** Fluid typography system requires careful testing
+
+### Accessibility Notes
+
+- High contrast design supports accessibility
+- Focus states implemented
+- Semantic HTML structure
+- Keyboard navigation supported
+- Screen reader considerations
+
+### Browser Support
+
+- Modern browsers (Chrome, Firefox, Safari, Edge)
+- CSS custom properties required
+- CSS `color-mix()` used (modern browsers)
+- Backdrop filter requires vendor prefixes
+- 3D transforms require hardware acceleration
+
+---
+
+**Design System Complete:** This MDC provides comprehensive documentation for recreating the Citix website design system. All design elements, components, animations, and responsive patterns are documented with code examples and implementation guidelines.

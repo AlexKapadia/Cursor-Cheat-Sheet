@@ -1,0 +1,943 @@
+# Jokula Design Agency Minimal: Source of Truth
+
+> **Design Philosophy:** Minimalist design agency portfolio with focus on visual storytelling and clean typography.
+
+This document serves as the definitive guide for recreating the design aesthetic of **Jokula**, a design agency website. Every design decision, component specification, and interaction pattern is documented here to ensure consistency across implementations.
+
+---
+
+## PHASE 1: VISUAL FORENSICS (THE "JOKULA" DNA)
+
+### 1. The Minimalist Grid Layout
+
+**Principle:** Clean, spacious grid system that allows content to breathe. Focus on visual hierarchy through whitespace.
+
+**Implementation:**
+- **Project Gallery:** Grid-based layout with consistent spacing
+  - **Desktop:** Multi-column grid (typically 2-3 columns)
+  - **Tablet:** 2-column grid
+  - **Mobile:** Single column stack
+- **Content Sections:** Generous padding and margins
+- **Image Display:** Full-width or contained with consistent aspect ratios
+
+**Technical Specifications:**
+```css
+/* Project Gallery Grid */
+.project-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  padding: 4rem 2rem;
+}
+
+@media (min-width: 768px) {
+  .project-gallery {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 3rem;
+    padding: 6rem 4rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .project-gallery {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4rem;
+    padding: 8rem 6rem;
+  }
+}
+```
+
+**Visual Rules:**
+- Maintain consistent gaps between grid items
+- Use generous padding around sections
+- Allow images to maintain their aspect ratios
+- Create visual breathing room between elements
+
+---
+
+### 2. Typography System
+
+**Principle:** Clean, readable typography with clear hierarchy. Sans-serif for modern, professional feel.
+
+#### Primary Typography (Headings)
+
+**Font Selection:**
+- **Preferred:** Modern sans-serif (e.g., `Inter`, `Helvetica Neue`, `System UI`)
+- **Fallback:** System sans-serif stack: `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
+
+**Settings:**
+- **Weight:** `font-weight: 400` (regular) to `600` (semi-bold)
+- **Size:** Responsive sizing from `1.5rem` (24px) to `3rem` (48px) for main headings
+- **Line Height:** `1.2` to `1.4` for headings
+- **Letter Spacing:** Normal to slightly tight (`-0.02em`)
+
+**Example:**
+```css
+.heading-primary {
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+```
+
+#### Body Typography
+
+**Font Selection:**
+- **Preferred:** Same as headings for consistency
+- **Settings:**
+  - **Size:** `1rem` (16px) base, with responsive scaling
+  - **Weight:** `400` (regular)
+  - **Line Height:** `1.6` to `1.8` for readability
+
+**Example:**
+```css
+.body-text {
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.7;
+  color: #1a1a1a;
+}
+```
+
+#### Navigation Typography
+
+**Settings:**
+- **Size:** `0.875rem` (14px) to `1rem` (16px)
+- **Weight:** `400` to `500`
+- **Transform:** `text-transform: none` (natural case)
+- **Letter Spacing:** Normal
+
+**Example:**
+```css
+.nav-link {
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-size: 0.9375rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+```
+
+**Visual Hierarchy:**
+- Headings: **Large, medium weight, tight line-height**
+- Body: **Regular size, comfortable line-height**
+- Navigation: **Smaller, subtle**
+
+---
+
+### 3. Color Palette
+
+**Principle:** Minimalist monochrome with subtle variations. Focus on contrast and readability.
+
+#### Core Colors
+
+**Backgrounds:**
+- **Primary:** Pure White `#FFFFFF` (RGB: 255, 255, 255)
+- **Secondary:** Off-White `#FAFAFA` (RGB: 250, 250, 250) for subtle section separation
+- **Accent Background:** Light Gray `#F5F5F5` (RGB: 245, 245, 245) for hover states
+
+**Text Colors:**
+- **Primary Text:** Near Black `#1A1A1A` (RGB: 26, 26, 26)
+- **Secondary Text:** Medium Gray `#666666` (RGB: 102, 102, 102)
+- **Muted Text:** Light Gray `#999999` (RGB: 153, 153, 153)
+- **Link Color:** Primary text color with underline on hover
+
+**Borders & Dividers:**
+- **Subtle Border:** `#E5E5E5` (RGB: 229, 229, 229)
+- **Divider:** `#F0F0F0` (RGB: 240, 240, 240)
+
+**Implementation:**
+```css
+:root {
+  --color-bg-primary: #FFFFFF;
+  --color-bg-secondary: #FAFAFA;
+  --color-bg-accent: #F5F5F5;
+  
+  --color-text-primary: #1A1A1A;
+  --color-text-secondary: #666666;
+  --color-text-muted: #999999;
+  
+  --color-border: #E5E5E5;
+  --color-divider: #F0F0F0;
+}
+```
+
+---
+
+### 4. Spacing System
+
+**Principle:** Generous whitespace creates luxury feel. Consistent spacing scale throughout.
+
+**Specifications:**
+- **Base Unit:** `1rem` (16px)
+- **Section Padding:** 
+  - Mobile: `3rem 1.5rem` (48px vertical, 24px horizontal)
+  - Tablet: `4rem 2rem` (64px vertical, 32px horizontal)
+  - Desktop: `6rem 4rem` (96px vertical, 64px horizontal)
+- **Element Spacing:**
+  - Small: `1rem` (16px)
+  - Medium: `2rem` (32px)
+  - Large: `3rem` (48px)
+  - Extra Large: `4rem` (64px)
+
+**Implementation:**
+```css
+.section {
+  padding: clamp(3rem, 8vw, 6rem) clamp(1.5rem, 4vw, 4rem);
+}
+
+.spacing-small { margin-bottom: 1rem; }
+.spacing-medium { margin-bottom: 2rem; }
+.spacing-large { margin-bottom: 3rem; }
+.spacing-xl { margin-bottom: 4rem; }
+```
+
+---
+
+## PHASE 2: THE BASELINE PHYSICS
+
+### 1. Design DNA: "Minimalist Professional"
+
+#### Core Philosophy
+
+**Clean, focused, professional.**
+
+Every design decision should reinforce this concept:
+- Navigation is minimal and unobtrusive
+- Content takes center stage
+- Images are high-quality and well-presented
+- Typography is clear and readable
+- Whitespace is used generously
+
+#### Layout Structure
+
+**Header:**
+- Fixed or sticky navigation
+- Logo on left
+- Navigation links centered or right-aligned
+- Menu button for mobile
+
+**Main Content:**
+- Hero section (optional)
+- Project gallery
+- Content sections
+- Articles/blog section
+
+**Footer:**
+- Contact information
+- Social media links
+- Additional navigation (optional)
+
+---
+
+### 2. Navigation System
+
+#### Desktop Navigation
+
+**Structure:**
+- Horizontal navigation bar
+- Links: Service, About U, Article, Say Halló, Project
+- Subtle hover effects
+- Active state indication
+
+**Implementation:**
+```css
+.nav-desktop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem 2rem;
+  background: var(--color-bg-primary);
+}
+
+.nav-links {
+  display: flex;
+  gap: 2.5rem;
+  list-style: none;
+}
+
+.nav-link {
+  color: var(--color-text-primary);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.nav-link:hover {
+  color: var(--color-text-secondary);
+}
+
+.nav-link.active {
+  font-weight: 500;
+}
+```
+
+#### Mobile Navigation
+
+**Structure:**
+- Hamburger menu button
+- Full-screen or slide-out menu
+- Stacked navigation links
+- Close button
+
+**Implementation:**
+```css
+.mobile-menu-button {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+}
+
+@media (max-width: 767px) {
+  .mobile-menu-button {
+    display: block;
+  }
+  
+  .nav-links {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    background: var(--color-bg-primary);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+  }
+  
+  .nav-links.active {
+    display: flex;
+  }
+}
+```
+
+---
+
+### 3. Project Gallery Component
+
+#### Grid Layout
+
+**Structure:**
+- Responsive grid system
+- Project cards with images
+- Hover effects
+- Click-through to project detail
+
+**Implementation:**
+```css
+.project-card {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.project-card:hover {
+  transform: translateY(-4px);
+}
+
+.project-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.project-card:hover .project-image {
+  transform: scale(1.05);
+}
+
+.project-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 1.5rem;
+  background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+  color: white;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.project-card:hover .project-overlay {
+  opacity: 1;
+}
+```
+
+**HTML Structure:**
+```html
+<div class="project-gallery">
+  <article class="project-card">
+    <img src="project-image.jpg" alt="Project Name" class="project-image">
+    <div class="project-overlay">
+      <h3 class="project-title">Project Name</h3>
+      <p class="project-category">Category</p>
+    </div>
+  </article>
+  <!-- More project cards -->
+</div>
+```
+
+---
+
+### 4. Article/Blog Section
+
+#### Article List
+
+**Structure:**
+- List of articles with titles
+- Publication dates (optional)
+- Excerpts or descriptions
+- Link to full article
+
+**Implementation:**
+```css
+.article-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.article-item {
+  padding: 2rem 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.article-item:last-child {
+  border-bottom: none;
+}
+
+.article-title {
+  font-size: 1.5rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.article-title a {
+  color: var(--color-text-primary);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.article-title a:hover {
+  color: var(--color-text-secondary);
+}
+
+.article-excerpt {
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+  margin-top: 0.75rem;
+}
+```
+
+---
+
+### 5. Contact Section ("Say Halló")
+
+#### Contact Form
+
+**Structure:**
+- Simple contact form
+- Name, email, message fields
+- Submit button
+- Social media links
+
+**Implementation:**
+```css
+.contact-section {
+  padding: 6rem 4rem;
+  background: var(--color-bg-secondary);
+}
+
+.contact-form {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.form-input,
+.form-textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 1rem;
+  transition: border-color 0.2s ease;
+}
+
+.form-input:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--color-text-primary);
+}
+
+.form-textarea {
+  min-height: 150px;
+  resize: vertical;
+}
+
+.submit-button {
+  padding: 0.875rem 2rem;
+  background: var(--color-text-primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.submit-button:hover {
+  background: var(--color-text-secondary);
+}
+```
+
+---
+
+## PHASE 3: RESPONSIVE DESIGN
+
+### Breakpoints
+
+**Mobile First Approach:**
+- **Mobile:** `0px - 767px`
+- **Tablet:** `768px - 1023px`
+- **Desktop:** `1024px+`
+- **Large Desktop:** `1440px+`
+
+**Implementation:**
+```css
+/* Mobile (default) */
+.container {
+  width: 100%;
+  padding: 0 1.5rem;
+}
+
+/* Tablet */
+@media (min-width: 768px) {
+  .container {
+    padding: 0 2rem;
+  }
+}
+
+/* Desktop */
+@media (min-width: 1024px) {
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 4rem;
+  }
+}
+
+/* Large Desktop */
+@media (min-width: 1440px) {
+  .container {
+    max-width: 1400px;
+  }
+}
+```
+
+### Responsive Typography
+
+**Fluid Typography:**
+```css
+.heading-responsive {
+  font-size: clamp(1.5rem, 4vw, 3rem);
+}
+
+.body-responsive {
+  font-size: clamp(0.9375rem, 2vw, 1rem);
+}
+```
+
+---
+
+## PHASE 4: INTERACTIONS & ANIMATIONS
+
+### Hover Effects
+
+**Subtle, Professional:**
+```css
+.interactive-element {
+  transition: all 0.2s ease;
+}
+
+.interactive-element:hover {
+  opacity: 0.8;
+  transform: translateY(-2px);
+}
+```
+
+### Page Transitions
+
+**Smooth Transitions:**
+```css
+.page-transition {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.page-enter {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.page-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+}
+```
+
+### Loading States
+
+**Skeleton Loading:**
+```css
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-secondary) 0%,
+    var(--color-bg-accent) 50%,
+    var(--color-bg-secondary) 100%
+  );
+  background-size: 200% 100%;
+  animation: loading 1.5s ease-in-out infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+```
+
+---
+
+## PHASE 5: COMPONENT SPECIFICATIONS
+
+### Button Component
+
+**Primary Button:**
+```css
+.btn-primary {
+  display: inline-block;
+  padding: 0.875rem 2rem;
+  background: var(--color-text-primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: var(--color-text-secondary);
+  transform: translateY(-2px);
+}
+```
+
+**Secondary Button:**
+```css
+.btn-secondary {
+  display: inline-block;
+  padding: 0.875rem 2rem;
+  background: transparent;
+  color: var(--color-text-primary);
+  border: 2px solid var(--color-text-primary);
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background: var(--color-text-primary);
+  color: white;
+}
+```
+
+### Link Component
+
+**Text Link:**
+```css
+.text-link {
+  color: var(--color-text-primary);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s ease;
+}
+
+.text-link:hover {
+  border-bottom-color: var(--color-text-primary);
+}
+```
+
+---
+
+## PHASE 6: ACCESSIBILITY
+
+### Color Contrast
+
+**WCAG AA Compliance:**
+- Text on white: Minimum 4.5:1 contrast ratio
+- Large text (18px+): Minimum 3:1 contrast ratio
+
+### Keyboard Navigation
+
+**Focus States:**
+```css
+.focusable:focus {
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: 2px;
+}
+```
+
+### Screen Reader Support
+
+**Semantic HTML:**
+- Use proper heading hierarchy (h1-h6)
+- Include alt text for images
+- Use ARIA labels where appropriate
+- Ensure form labels are properly associated
+
+---
+
+## PHASE 7: PERFORMANCE
+
+### Image Optimization
+
+**Best Practices:**
+- Use modern image formats (WebP, AVIF)
+- Implement lazy loading
+- Provide responsive image sizes
+- Optimize image compression
+
+**Implementation:**
+```html
+<picture>
+  <source srcset="image.avif" type="image/avif">
+  <source srcset="image.webp" type="image/webp">
+  <img src="image.jpg" alt="Description" loading="lazy">
+</picture>
+```
+
+### Code Splitting
+
+**JavaScript:**
+- Split code by route
+- Lazy load components
+- Minimize bundle size
+
+### CSS Optimization
+
+**Best Practices:**
+- Use CSS custom properties for theming
+- Minimize CSS file size
+- Use critical CSS for above-the-fold content
+- Remove unused CSS
+
+---
+
+## PHASE 8: IMPLEMENTATION GUIDE
+
+### Setup
+
+**Technologies:**
+- **Framework:** Next.js, React, or vanilla HTML/CSS/JS
+- **Styling:** CSS Modules, Tailwind CSS, or vanilla CSS
+- **Build Tool:** Vite, Webpack, or Next.js built-in
+
+### File Structure
+
+```
+jokula-design-agency/
+├── components/
+│   ├── Header.jsx
+│   ├── Navigation.jsx
+│   ├── ProjectGallery.jsx
+│   ├── ArticleList.jsx
+│   └── ContactForm.jsx
+├── styles/
+│   ├── globals.css
+│   ├── components.css
+│   └── utilities.css
+├── assets/
+│   ├── images/
+│   └── fonts/
+└── pages/
+    ├── index.jsx
+    ├── projects.jsx
+    ├── articles.jsx
+    └── contact.jsx
+```
+
+### Step-by-Step Implementation
+
+1. **Setup Project Structure**
+   - Create directory structure
+   - Install dependencies
+   - Configure build tools
+
+2. **Implement Base Styles**
+   - Set up CSS variables
+   - Define typography system
+   - Create spacing utilities
+
+3. **Build Components**
+   - Header and Navigation
+   - Project Gallery
+   - Article List
+   - Contact Form
+
+4. **Implement Responsive Design**
+   - Add breakpoints
+   - Test on multiple devices
+   - Adjust spacing and typography
+
+5. **Add Interactions**
+   - Hover effects
+   - Transitions
+   - Loading states
+
+6. **Optimize Performance**
+   - Image optimization
+   - Code splitting
+   - CSS optimization
+
+7. **Test Accessibility**
+   - Keyboard navigation
+   - Screen reader compatibility
+   - Color contrast
+
+8. **Final Polish**
+   - Cross-browser testing
+   - Performance testing
+   - User testing
+
+---
+
+## PHASE 9: DESIGN TOKENS
+
+### Spacing Scale
+
+```css
+:root {
+  --spacing-xs: 0.25rem;   /* 4px */
+  --spacing-sm: 0.5rem;    /* 8px */
+  --spacing-md: 1rem;      /* 16px */
+  --spacing-lg: 1.5rem;    /* 24px */
+  --spacing-xl: 2rem;      /* 32px */
+  --spacing-2xl: 3rem;     /* 48px */
+  --spacing-3xl: 4rem;     /* 64px */
+  --spacing-4xl: 6rem;     /* 96px */
+}
+```
+
+### Typography Scale
+
+```css
+:root {
+  --font-size-xs: 0.75rem;    /* 12px */
+  --font-size-sm: 0.875rem;    /* 14px */
+  --font-size-base: 1rem;     /* 16px */
+  --font-size-lg: 1.125rem;   /* 18px */
+  --font-size-xl: 1.25rem;    /* 20px */
+  --font-size-2xl: 1.5rem;   /* 24px */
+  --font-size-3xl: 2rem;     /* 32px */
+  --font-size-4xl: 2.5rem;   /* 40px */
+  --font-size-5xl: 3rem;     /* 48px */
+}
+```
+
+### Border Radius
+
+```css
+:root {
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+}
+```
+
+### Shadows
+
+```css
+:root {
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+```
+
+---
+
+## PHASE 10: BEST PRACTICES
+
+### Code Quality
+
+- Use semantic HTML
+- Follow BEM or similar naming convention
+- Write maintainable CSS
+- Comment complex logic
+- Keep components modular
+
+### Performance
+
+- Optimize images
+- Minimize HTTP requests
+- Use CDN for assets
+- Implement caching strategies
+- Monitor Core Web Vitals
+
+### Accessibility
+
+- Test with screen readers
+- Ensure keyboard navigation
+- Maintain color contrast
+- Provide alt text for images
+- Use ARIA attributes appropriately
+
+### Browser Support
+
+- Test on modern browsers
+- Provide fallbacks for older browsers
+- Use progressive enhancement
+- Test on real devices
+
+---
+
+## CONCLUSION
+
+This MDC document provides a comprehensive guide for recreating the Jokula design agency website. Follow the specifications, use the provided code examples, and maintain consistency with the design philosophy throughout your implementation.
+
+For questions or clarifications, refer to the specific sections above or consult the design system documentation.
+
+---
+
+*Last Updated: 2025-11-29*
+*Version: 1.0.0*

@@ -1,0 +1,39 @@
+CHAPTER STRUCTURE
+==================================================
+
+Chapter 1: Introduction to AI 1
+  Page: ~8
+  Line: 91
+
+Chapter 1: x files have a “tf_” prefix and TF 2 files have a “tf2_” prefix.
+  Page: ~243
+  Line: 8288
+
+Chapter 2: Introduction to Machine Learning 23
+  Page: ~9
+  Line: 118
+
+Chapter 2: contains a complete code sample with more examples of a
+  Page: ~273
+  Line: 9423
+
+Chapter 3: Classifiers in Machine Learning 63
+  Page: ~10
+  Line: 168
+
+Chapter 4: Deep Learning Introduction 95
+  Page: ~11
+  Line: 214
+
+Chapter 5: Deep Learning: RNNs and LSTMs 127
+  Page: ~11
+  Line: 251
+
+Chapter 6: NLP and Reinforcement Learning 159
+  Page: ~12
+  Line: 278
+
+Chapter 243: Launch the code in Listing B.26 and you will see the following output
+  Page: ~285
+  Line: 9835
+

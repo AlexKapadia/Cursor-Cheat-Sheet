@@ -1,0 +1,714 @@
+---
+title: Library.guide - Design System Documentation Platform
+url: https://www.library.guide/?ref=saaspo.com
+analysis_date: 2025-11-29
+status: Analysis Complete
+---
+
+# Library.guide - A Home for Your Design System
+
+## Overview
+
+Library is a structured platform for documenting, previewing, and distributing design systems. The platform helps designers and engineers document and publish their design systems. It's designed to be made for people, ready for AI, and built for the future.
+
+## Page Structure
+
+### Navigation
+- **Logo**: Library brand logo/image
+- **Primary Actions**:
+  - "Talk to us" button
+  - "Get early access" button
+
+### Main Content
+
+#### Hero Section
+- **Heading**: "A home for your Reckle /H1 design system"
+- **Description**: "Library helps designers and engineers document and publish their design systems. Made for people. Ready for AI. Built for the future."
+- **Call-to-Action**: "Get early access" button with icon
+- **Visual**: Hero image/illustration
+
+#### Where Design Meets Engineering
+- **Heading**: "Where design meets engineering" (Secondary/H2)
+- **Description**: "Library is a structured platform for documenting, previewing, and distributing design systems. Import tokens and components from Figma, generate documentation with AI-powered blocks, and publish a live site."
+
+#### Key Features
+
+1. **Built for Figma**
+   - Generate component docs, descriptions, and usage examples — straight from your source of truth.
+   - Visual example/demo section
+
+2. **Document with Built Components**
+   - Library connects directly to your Storybook instance, letting you surface stories inside your docs — no copy-pasting required.
+   - Visual example/demo section
+
+3. **Built-in AI Assistance**
+   - Generate component docs, descriptions, and usage examples — straight from your source of truth.
+   - AI Assistant feature highlighted
+   - Visual example/demo section
+
+4. **From Documentation to Conversation**
+   - Publish your design system to a custom domain and get an AI-ready site that answers questions about your tokens, components, and usage.
+   - Visual example/demo section
+
+#### Footer Section
+- **Heading**: "Ready to document?"
+- **Tagline**: "Built for devs. Beloved by design systems."
+- **Call-to-Action**: "Get early access" button with icon
+- **Social Links**: Link with icon/image
+- **Visual Elements**: Two images/illustrations
+- **Copyright**: "Library ©2025. All rights reserved."
+
+## Content Analysis
+
+### Typography
+- **Primary Heading**: Uses Helvetica font family, H1 text style
+- **Secondary Heading**: H2 style with code icon (</>)
+- **Body Text**: Standard paragraph text
+
+### Visual Elements
+- Multiple images/icons throughout the page
+- Hero illustration/image
+- Feature demonstration visuals
+- Social media icons
+
+### Interactive Elements
+- **Buttons**: 
+  - "Talk to us"
+  - "Get early access" (appears multiple times)
+- **Navigation**: Main navigation bar
+- **Links**: Social media links in footer
+
+## Key Messaging
+
+### Value Propositions
+1. **Integration with Figma**: Direct import of tokens and components
+2. **Storybook Integration**: Connect directly to Storybook instances
+3. **AI-Powered Documentation**: Generate docs with AI assistance
+4. **AI-Ready Publishing**: Publish to custom domains with AI capabilities
+
+### Target Audience
+- Designers
+- Engineers
+- Design system teams
+
+### Core Benefits
+- Streamlined documentation process
+- AI-powered automation
+- Integration with existing tools (Figma, Storybook)
+- Professional publishing capabilities
+
+## Technical Observations
+
+### Page Structure
+- Semantic HTML structure with proper roles:
+  - `<main>` for main content
+  - `<nav>` for navigation
+  - `<section>` for content sections
+  - `<banner>` for hero section
+  - `<contentinfo>` for footer
+  - `<list>` and `<listitem>` for feature lists
+
+### Accessibility
+- Proper ARIA roles and labels
+- Keyboard shortcuts mentioned (alt+T for notifications)
+- Semantic HTML structure
+
+### Design Patterns
+- Clean, modern design
+- Clear visual hierarchy
+- Multiple call-to-action buttons
+- Feature-based layout
+- Footer with social links and copyright
+
+## Design System Fundamentals
+
+### Color Palette
+
+**Primary Colors:**
+- Primary: `#000000` or `#1a1a1a` (usage: headings, primary text, navigation)
+- Secondary: `#666666` or `#4a4a4a` (usage: secondary text, metadata)
+- Accent: `#0066cc` or `#0070f3` (usage: links, CTAs, interactive elements, code icon)
+- Brand: Custom brand color (usage: logo, primary actions)
+
+**Neutral Colors:**
+- Background: `#ffffff` (usage: main background)
+- Surface: `#f8f9fa` or `#fafafa` (usage: section backgrounds, cards)
+- Text Primary: `#000000` or `#1a1a1a` (usage: main content, headings)
+- Text Secondary: `#666666` or `#6b7280` (usage: secondary content, descriptions)
+- Border: `#e5e7eb` or `#e0e0e0` (usage: dividers, card borders)
+
+**Semantic Colors:**
+- Success: `#10b981` (usage: success states, if applicable)
+- Error: `#ef4444` (usage: error states, if applicable)
+- Warning: `#f59e0b` (usage: warnings, if applicable)
+- Info: `#3b82f6` (usage: informational elements, AI features)
+
+**Gradients:**
+```css
+/* Subtle Background Gradient (if used) */
+background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
+
+/* Hero Section Gradient (if used) */
+background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+```
+
+### Typography System
+
+**Font Families:**
+- Primary: `Helvetica`, `-apple-system`, `BlinkMacSystemFont`, `"Segoe UI"`, `Roboto`, `sans-serif` (usage: body text, UI elements)
+- Heading: `Helvetica`, `system-ui`, `sans-serif` (usage: headings, hero text)
+- Monospace: `"JetBrains Mono"`, `"Fira Code"`, `monospace` (usage: code snippets, technical terms, code icon)
+
+**Type Scale:**
+```css
+/* Desktop */
+--font-size-xs: 0.75rem;      /* 12px - metadata, tags */
+--font-size-sm: 0.875rem;    /* 14px - small text */
+--font-size-base: 1rem;      /* 16px - body text */
+--font-size-lg: 1.125rem;    /* 18px - emphasized text */
+--font-size-xl: 1.25rem;     /* 20px - subheadings */
+--font-size-2xl: 1.5rem;     /* 24px - section headings */
+--font-size-3xl: 1.875rem;   /* 30px - large headings */
+--font-size-4xl: 2.25rem;    /* 36px - hero headings */
+--font-size-5xl: 3rem;       /* 48px - display text */
+--font-size-6xl: 3.75rem;    /* 60px - hero display */
+
+/* Mobile */
+--font-size-xs-mobile: 0.75rem;
+--font-size-sm-mobile: 0.875rem;
+--font-size-base-mobile: 1rem;
+--font-size-lg-mobile: 1.125rem;
+--font-size-xl-mobile: 1.25rem;
+--font-size-2xl-mobile: 1.5rem;
+--font-size-3xl-mobile: 1.875rem;
+--font-size-4xl-mobile: 2rem;
+```
+
+**Line Heights:**
+```css
+--line-height-tight: 1.25;      /* Headings */
+--line-height-normal: 1.5;      /* Body text */
+--line-height-relaxed: 1.75;    /* Long-form content */
+--line-height-loose: 2;          /* Spacious text */
+```
+
+**Font Weights:**
+- Light: 300 (usage: subtle text)
+- Regular: 400 (usage: body text)
+- Medium: 500 (usage: emphasized text, buttons)
+- Semibold: 600 (usage: subheadings)
+- Bold: 700 (usage: headings, strong emphasis)
+
+**Letter Spacing:**
+```css
+--letter-spacing-tighter: -0.05em;  /* Large headings */
+--letter-spacing-tight: -0.025em;   /* Headings */
+--letter-spacing-normal: 0;          /* Body text */
+--letter-spacing-wide: 0.025em;      /* Uppercase text */
+--letter-spacing-wider: 0.05em;       /* Labels, tags */
+```
+
+### Spacing System
+
+```css
+--spacing-0: 0;
+--spacing-1: 0.25rem;    /* 4px */
+--spacing-2: 0.5rem;    /* 8px */
+--spacing-3: 0.75rem;    /* 12px */
+--spacing-4: 1rem;       /* 16px */
+--spacing-5: 1.25rem;    /* 20px */
+--spacing-6: 1.5rem;     /* 24px */
+--spacing-8: 2rem;       /* 32px */
+--spacing-10: 2.5rem;    /* 40px */
+--spacing-12: 3rem;      /* 48px */
+--spacing-16: 4rem;      /* 64px */
+--spacing-20: 5rem;      /* 80px */
+--spacing-24: 6rem;      /* 96px */
+--spacing-32: 8rem;      /* 128px */
+```
+
+**Spacing Scale:** Based on 4px base unit. Used consistently for margins, padding, and gaps throughout the design.
+
+### Border Radius System
+
+```css
+--radius-none: 0;
+--radius-sm: 0.25rem;     /* 4px - small elements */
+--radius-md: 0.5rem;      /* 8px - buttons, cards */
+--radius-lg: 0.75rem;     /* 12px - larger cards */
+--radius-xl: 1rem;        /* 16px - hero sections */
+--radius-2xl: 1.5rem;     /* 24px - large containers */
+--radius-full: 9999px;    /* Pills, badges */
+```
+
+### Shadow System
+
+```css
+/* Shadow 1: Subtle elevation */
+box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+
+/* Shadow 2: Card elevation */
+box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+
+/* Shadow 3: Hover state */
+box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+
+/* Shadow 4: Modal/overlay */
+box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+/* Shadow 5: Large elevation */
+box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+```
+
+## Layout Systems
+
+### Grid System
+
+```css
+/* Main Container */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .container {
+    padding: 0 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    padding: 0 3rem;
+  }
+}
+
+/* Grid Layout */
+.grid {
+  display: grid;
+  gap: 2rem;
+}
+
+.grid-cols-1 {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.grid-cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid-cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (min-width: 768px) {
+  .md\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  
+  .md\:grid-cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+```
+
+### Breakpoints
+
+```css
+/* Mobile First Approach */
+/* Base: 0px - 767px (Mobile) */
+
+/* Tablet */
+@media (min-width: 768px) {
+  /* Tablet styles */
+}
+
+/* Desktop */
+@media (min-width: 1024px) {
+  /* Desktop styles */
+}
+
+/* Large Desktop */
+@media (min-width: 1280px) {
+  /* Large desktop styles */
+}
+
+/* Extra Large */
+@media (min-width: 1440px) {
+  /* Extra large desktop styles */
+}
+```
+
+## Component Library
+
+### Navigation
+
+**Main Navigation:**
+```css
+.nav {
+  position: relative;
+  background: transparent;
+  border-bottom: 1px solid var(--color-border);
+  z-index: 1000;
+  padding: 1rem 0;
+}
+
+.nav-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-logo {
+  display: flex;
+  align-items: center;
+}
+
+.nav-logo img {
+  height: 2rem;
+  width: auto;
+}
+
+.nav-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+```
+
+### Buttons
+
+**Primary Button (Get Early Access):**
+```css
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--color-text-primary);
+  color: white;
+  text-decoration: none;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-3);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-primary img,
+.btn-primary svg {
+  width: 1rem;
+  height: 1rem;
+}
+```
+
+**Secondary Button (Talk to Us):**
+```css
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  color: var(--color-text-primary);
+  text-decoration: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background: var(--color-surface);
+  border-color: var(--color-text-secondary);
+}
+```
+
+### Hero Section
+
+```css
+.hero {
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 0;
+  text-align: center;
+}
+
+.hero-title {
+  font-size: clamp(2.5rem, 8vw, 5rem);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 1.5rem;
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-tight);
+  font-family: 'Helvetica', system-ui, sans-serif;
+}
+
+.hero-description {
+  font-size: clamp(1.125rem, 2vw, 1.5rem);
+  color: var(--color-text-secondary);
+  max-width: 600px;
+  margin: 0 auto 2rem;
+  line-height: var(--line-height-relaxed);
+}
+
+.hero-cta {
+  margin-top: 2rem;
+}
+
+.hero-image {
+  margin-top: 3rem;
+  max-width: 100%;
+  height: auto;
+}
+```
+
+### Section Heading
+
+```css
+.section-heading {
+  font-size: clamp(1.5rem, 4vw, 2.5rem);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.section-heading img,
+.section-heading svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.section-description {
+  font-size: var(--font-size-lg);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-relaxed);
+  max-width: 800px;
+}
+```
+
+### Feature List
+
+```css
+.feature-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3rem;
+  margin-top: 4rem;
+}
+
+@media (min-width: 768px) {
+  .feature-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.feature-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.feature-heading {
+  font-size: var(--font-size-2xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.feature-heading img,
+.feature-heading svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.feature-description {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-relaxed);
+  margin-bottom: 1.5rem;
+}
+
+.feature-demo {
+  margin-top: 1rem;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+```
+
+### Footer
+
+```css
+.footer {
+  padding: 4rem 0 2rem;
+  background: var(--color-surface);
+  text-align: center;
+}
+
+.footer-heading {
+  font-size: var(--font-size-3xl);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 1rem;
+}
+
+.footer-tagline {
+  font-size: var(--font-size-lg);
+  color: var(--color-text-secondary);
+  margin-bottom: 2rem;
+}
+
+.footer-cta {
+  margin-bottom: 3rem;
+}
+
+.footer-social {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.footer-social-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-full);
+  background: var(--color-text-primary);
+  color: white;
+  text-decoration: none;
+  transition: transform 0.2s ease;
+}
+
+.footer-social-link:hover {
+  transform: scale(1.1);
+}
+
+.footer-images {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.footer-images img {
+  max-width: 100%;
+  height: auto;
+}
+
+.footer-copyright {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-top: 2rem;
+}
+```
+
+### Icons
+
+**Icon Usage:**
+- Code icon (`</>`) used in section headings
+- Button icons (arrow, external link)
+- Feature icons (Figma, Storybook, AI, Conversation)
+- Social media icons in footer
+
+**Icon Styles:**
+```css
+.icon {
+  width: 1rem;
+  height: 1rem;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.icon-sm {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.icon-md {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.icon-lg {
+  width: 2rem;
+  height: 2rem;
+}
+```
+
+## Recommendations for Further Analysis
+
+Based on the website-to-mdc-rules.mdc framework, the following phases could be conducted:
+
+1. **Phase 1: Website Access and Discovery**
+   - Verify URL accessibility
+   - Detect frontend framework (likely React/Next.js based on structure)
+   - Check for sitemap.xml and robots.txt
+   - Map all routes/pages
+
+2. **Phase 2: Multi-Pass Design Analysis**
+   - Analyze layout hierarchy in detail
+   - Document typography system
+   - Extract color palette
+   - Analyze spacing system
+   - Document component structure
+
+3. **Phase 3: Design Element Extraction**
+   - Icon library identification
+   - Image optimization patterns
+   - Shadow and border patterns
+   - Animation patterns
+
+4. **Phase 4: Code Structure Analysis**
+   - HTML structure analysis
+   - CSS architecture
+   - JavaScript patterns
+   - Framework detection
+
+5. **Phase 5: Content Analysis**
+   - Complete heading hierarchy
+   - SEO elements
+   - Structured data
+
+6. **Phase 6: Performance Analysis**
+   - Core Web Vitals
+   - Load times
+   - Resource optimization
+
+7. **Phase 7: Accessibility Analysis**
+   - WCAG compliance check
+   - Keyboard navigation
+   - Screen reader support
+
+---
+
+*Analysis completed: 2025-11-29*
+*Source URL: https://www.library.guide/?ref=saaspo.com*

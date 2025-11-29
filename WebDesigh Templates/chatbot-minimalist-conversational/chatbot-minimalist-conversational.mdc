@@ -1,0 +1,1705 @@
+---
+alwaysApply: false
+---
+
+# Chatbot Minimalist Conversational - Website Design System
+
+## Website Metadata
+- **Source URL:** https://chatgpt.com/
+- **Design Style:** Minimalist Conversational Chatbot Interface
+- **Primary Framework:** React (detected from network requests)
+- **CSS Framework:** Custom CSS with modern design patterns
+- **Analysis Date:** 2025-01-27
+- **Pages Analyzed:** Login/Authentication page, Public landing interface
+- **Total Components:** 8+ unique components identified
+
+## Design Overview
+
+ChatGPT presents a clean, minimalist conversational interface design optimized for chatbot interactions. The design philosophy centers on clarity, simplicity, and focus - removing visual clutter to allow users to concentrate on the conversation. The aesthetic is modern, professional, and approachable, with a neutral color palette that doesn't distract from the conversational content. The interface emphasizes readability, accessibility, and smooth interactions that feel natural and responsive.
+
+## Design System Fundamentals
+
+### Color Palette
+
+**Primary Colors:**
+- Primary: `#10A37F` (usage: primary actions, brand elements, active states)
+- Secondary: `#565869` (usage: secondary text, borders, subtle elements)
+- Accent: `#19C37D` (usage: highlights, success states, interactive elements)
+
+**Neutral Colors:**
+- Background: `#FFFFFF` (usage: main background, clean canvas)
+- Surface: `#F7F7F8` (usage: message bubbles, input areas, subtle containers)
+- Text Primary: `#353740` (usage: main text content, headings)
+- Text Secondary: `#6E6E80` (usage: secondary text, metadata, timestamps)
+- Border: `#E5E5E6` (usage: borders, dividers, subtle separators)
+- Border Light: `#F0F0F0` (usage: very subtle borders, hover states)
+
+**Semantic Colors:**
+- Success: `#19C37D` (usage: success messages, confirmations)
+- Error: `#EF4444` (usage: error states, warnings)
+- Warning: `#F59E0B` (usage: warnings, cautions)
+- Info: `#3B82F6` (usage: informational messages, links)
+
+**Gradients:**
+```css
+/* Primary Gradient - Used in branding */
+background: linear-gradient(180deg, #10A37F 0%, #0D8A6B 100%);
+
+/* Subtle Surface Gradient */
+background: linear-gradient(180deg, #FFFFFF 0%, #F7F7F8 100%);
+
+/* Hover Gradient - Subtle elevation */
+background: linear-gradient(180deg, #F7F7F8 0%, #FFFFFF 100%);
+```
+
+### Typography System
+
+**Font Families:**
+- Primary: `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif` (usage: all text, optimized for readability)
+- Monospace: `"SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace` (usage: code blocks, technical content)
+
+**Type Scale:**
+```css
+/* Desktop */
+--font-size-xs: 0.75rem;      /* 12px - Small labels, metadata */
+--font-size-sm: 0.875rem;      /* 14px - Secondary text, captions */
+--font-size-base: 1rem;        /* 16px - Body text, default */
+--font-size-lg: 1.125rem;      /* 18px - Emphasized body text */
+--font-size-xl: 1.25rem;       /* 20px - Small headings */
+--font-size-2xl: 1.5rem;       /* 24px - Section headings */
+--font-size-3xl: 1.875rem;     /* 30px - Page titles */
+--font-size-4xl: 2.25rem;      /* 36px - Hero headings */
+--font-size-5xl: 3rem;         /* 48px - Display headings */
+
+/* Mobile Adjustments */
+@media (max-width: 768px) {
+  --font-size-base: 0.9375rem;  /* 15px */
+  --font-size-lg: 1rem;         /* 16px */
+  --font-size-xl: 1.125rem;     /* 18px */
+  --font-size-2xl: 1.25rem;     /* 20px */
+  --font-size-3xl: 1.5rem;      /* 24px */
+}
+```
+
+**Line Heights:**
+```css
+--line-height-tight: 1.25;      /* Headings, compact text */
+--line-height-normal: 1.5;      /* Body text, default */
+--line-height-relaxed: 1.75;    /* Long-form content, messages */
+```
+
+**Font Weights:**
+- Light: 300 (usage: subtle emphasis)
+- Regular: 400 (usage: body text, default)
+- Medium: 500 (usage: emphasized text, buttons)
+- Semibold: 600 (usage: headings, important labels)
+- Bold: 700 (usage: strong emphasis, call-to-action)
+
+### Spacing System
+
+```css
+--spacing-0: 0;
+--spacing-1: 0.25rem;   /* 4px */
+--spacing-2: 0.5rem;    /* 8px */
+--spacing-3: 0.75rem;   /* 12px */
+--spacing-4: 1rem;      /* 16px */
+--spacing-5: 1.25rem;   /* 20px */
+--spacing-6: 1.5rem;    /* 24px */
+--spacing-8: 2rem;      /* 32px */
+--spacing-10: 2.5rem;   /* 40px */
+--spacing-12: 3rem;     /* 48px */
+--spacing-16: 4rem;     /* 64px */
+--spacing-20: 5rem;     /* 80px */
+--spacing-24: 6rem;     /* 96px */
+```
+
+**Spacing Scale:** Based on 4px base unit (0.25rem), creating consistent vertical and horizontal rhythm throughout the interface.
+
+### Border Radius System
+
+```css
+--radius-sm: 0.25rem;   /* 4px - Small elements, tags */
+--radius-md: 0.5rem;    /* 8px - Buttons, inputs, cards */
+--radius-lg: 0.75rem;   /* 12px - Large cards, containers */
+--radius-xl: 1rem;      /* 16px - Message bubbles, modals */
+--radius-full: 9999px;  /* Fully rounded - Pills, avatars */
+```
+
+### Shadow System
+
+```css
+/* Shadow 1: Subtle elevation */
+box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+
+/* Shadow 2: Card elevation */
+box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+
+/* Shadow 3: Modal/Dialog */
+box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+/* Shadow 4: Hover state */
+box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+```
+
+## Layout Systems
+
+### Grid System
+
+```css
+/* Main Container */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+/* Chat Container - Full height layout */
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-width: 100%;
+}
+
+/* Message Area - Scrollable */
+.message-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Input Area - Fixed bottom */
+.input-area {
+  padding: 1rem;
+  border-top: 1px solid var(--border);
+  background: var(--background);
+}
+```
+
+### Breakpoints
+
+```css
+/* Mobile */
+@media (min-width: 320px) {
+  .container {
+    padding: 0 1rem;
+  }
+}
+
+/* Tablet */
+@media (min-width: 768px) {
+  .container {
+    padding: 0 2rem;
+  }
+  
+  .chat-container {
+    max-width: 768px;
+    margin: 0 auto;
+  }
+}
+
+/* Desktop */
+@media (min-width: 1024px) {
+  .container {
+    padding: 0 3rem;
+  }
+  
+  .chat-container {
+    max-width: 1024px;
+  }
+}
+
+/* Large Desktop */
+@media (min-width: 1440px) {
+  .chat-container {
+    max-width: 1200px;
+  }
+}
+```
+
+## Component Library
+
+### Buttons
+
+**Primary Button:**
+```css
+.btn-primary {
+  background-color: var(--primary);
+  color: #FFFFFF;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  font-size: var(--font-size-base);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.btn-primary:hover {
+  background-color: #0D8A6B;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-2);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-1);
+}
+
+.btn-primary:disabled {
+  background-color: var(--text-secondary);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+```
+
+**Secondary Button:**
+```css
+.btn-secondary {
+  background-color: transparent;
+  color: var(--text-primary);
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  font-size: var(--font-size-base);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background-color: var(--surface);
+  border-color: var(--text-secondary);
+}
+
+.btn-secondary:active {
+  background-color: var(--border-light);
+}
+```
+
+**Ghost Button:**
+```css
+.btn-ghost {
+  background-color: transparent;
+  color: var(--text-primary);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  font-weight: 400;
+  font-size: var(--font-size-sm);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-ghost:hover {
+  background-color: var(--surface);
+}
+```
+
+### Message Bubbles (Chatbot-Specific)
+
+**User Message Bubble:**
+```css
+.message-bubble-user {
+  background-color: var(--primary);
+  color: #FFFFFF;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-xl);
+  max-width: 85%;
+  margin-left: auto;
+  margin-right: 0;
+  word-wrap: break-word;
+  box-shadow: var(--shadow-1);
+  position: relative;
+}
+
+.message-bubble-user::after {
+  content: '';
+  position: absolute;
+  right: -8px;
+  bottom: 12px;
+  width: 0;
+  height: 0;
+  border: 8px solid transparent;
+  border-left-color: var(--primary);
+  border-right: none;
+}
+```
+
+**Assistant Message Bubble:**
+```css
+.message-bubble-assistant {
+  background-color: var(--surface);
+  color: var(--text-primary);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-xl);
+  max-width: 85%;
+  margin-left: 0;
+  margin-right: auto;
+  word-wrap: break-word;
+  box-shadow: var(--shadow-1);
+  position: relative;
+}
+
+.message-bubble-assistant::after {
+  content: '';
+  position: absolute;
+  left: -8px;
+  bottom: 12px;
+  width: 0;
+  height: 0;
+  border: 8px solid transparent;
+  border-right-color: var(--surface);
+  border-left: none;
+}
+```
+
+**Message Container:**
+```css
+.message-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  animation: messageSlideIn 0.3s ease-out;
+}
+
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message-meta {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  padding: 0 0.5rem;
+  margin-top: 0.25rem;
+}
+```
+
+### Input Fields
+
+**Chat Input Field:**
+```css
+.chat-input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  font-size: var(--font-size-base);
+  font-family: inherit;
+  background-color: var(--background);
+  color: var(--text-primary);
+  resize: none;
+  transition: all 0.2s ease;
+  min-height: 52px;
+  max-height: 200px;
+}
+
+.chat-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
+}
+
+.chat-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.chat-input:disabled {
+  background-color: var(--surface);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+```
+
+**Input Container:**
+```css
+.input-container {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  padding: 1rem;
+  background-color: var(--background);
+  border-top: 1px solid var(--border);
+}
+
+.input-wrapper {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.send-button {
+  background-color: var(--primary);
+  color: #FFFFFF;
+  border: none;
+  border-radius: var(--radius-full);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.send-button:hover {
+  background-color: #0D8A6B;
+  transform: scale(1.05);
+}
+
+.send-button:active {
+  transform: scale(0.95);
+}
+
+.send-button:disabled {
+  background-color: var(--text-secondary);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+```
+
+### Typing Indicator (Chatbot-Specific)
+
+```css
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  background-color: var(--surface);
+  border-radius: var(--radius-xl);
+  max-width: 85px;
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.typing-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--text-secondary);
+  animation: typingDot 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes typingDot {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+```
+
+### Cards
+
+**Card Component:**
+```css
+.card {
+  background: var(--background);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-2);
+  border: 1px solid var(--border);
+  transition: all 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-3);
+  transform: translateY(-2px);
+}
+
+.card-header {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.card-body {
+  margin-bottom: 1rem;
+}
+
+.card-footer {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+```
+
+### Navigation
+
+**Main Navigation:**
+```css
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  background-color: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: var(--font-size-lg);
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.nav-link {
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  transition: color 0.2s ease;
+  padding: 0.5rem 0;
+}
+
+.nav-link:hover {
+  color: var(--primary);
+}
+
+.nav-link.active {
+  color: var(--primary);
+  font-weight: 500;
+}
+```
+
+**Mobile Menu:**
+```css
+.mobile-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--background);
+  z-index: 1000;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  padding: 1.5rem;
+}
+
+.mobile-menu.open {
+  transform: translateX(0);
+}
+
+.mobile-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.mobile-menu-overlay.open {
+  opacity: 1;
+  pointer-events: all;
+}
+```
+
+### Modals/Dialogs
+
+```css
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal-content {
+  background-color: var(--background);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-4);
+  animation: modalSlideUp 0.3s ease;
+}
+
+@keyframes modalSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.modal-title {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+  transition: color 0.2s ease;
+}
+
+.modal-close:hover {
+  color: var(--text-primary);
+}
+```
+
+### Loading Indicators
+
+**Spinner:**
+```css
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner-large {
+  width: 48px;
+  height: 48px;
+  border-width: 4px;
+}
+```
+
+**Skeleton Screen:**
+```css
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface) 0%,
+    var(--border-light) 50%,
+    var(--surface) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeletonLoading 1.5s ease-in-out infinite;
+  border-radius: var(--radius-md);
+}
+
+@keyframes skeletonLoading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton-text {
+  height: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.skeleton-text:last-child {
+  width: 60%;
+  margin-bottom: 0;
+}
+```
+
+## Animations and Transitions
+
+### CSS Transitions
+
+```css
+/* Standard Transition */
+.transition {
+  transition: all 0.2s ease;
+}
+
+/* Common Transitions */
+.fade-in {
+  transition: opacity 0.3s ease;
+  opacity: 1;
+}
+
+.fade-out {
+  transition: opacity 0.3s ease;
+  opacity: 0;
+}
+
+.slide-up {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.slide-down {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  transform: translateY(10px);
+  opacity: 0;
+}
+```
+
+### CSS Animations
+
+```css
+@keyframes messageAppear {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.message-enter {
+  animation: messageAppear 0.3s ease-out;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.shimmer {
+  animation: shimmer 2s infinite;
+  background: linear-gradient(
+    to right,
+    var(--surface) 0%,
+    var(--border-light) 50%,
+    var(--surface) 100%
+  );
+  background-size: 1000px 100%;
+}
+```
+
+### Scroll Animations
+
+**Smooth Scrolling:**
+```css
+.message-area {
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.message-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.message-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.message-area::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: var(--radius-full);
+}
+
+.message-area::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-secondary);
+}
+```
+
+### Page Transitions
+
+```css
+.page-transition-enter {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.page-transition-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.page-transition-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.page-transition-exit-active {
+  opacity: 0;
+  transform: translateY(-20px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+```
+
+## Page Layouts
+
+### Login Page Layout
+
+**Layout Structure:**
+```css
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--background);
+}
+
+.login-header {
+  padding: 1.5rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+
+.login-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.login-content {
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+}
+
+.login-heading {
+  font-size: var(--font-size-3xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.login-subheading {
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+}
+
+.login-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.login-footer {
+  padding: 1.5rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.login-footer-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.login-footer-link:hover {
+  color: var(--text-primary);
+}
+```
+
+**Components Used:**
+- Logo component in header
+- Heading component for "Get started"
+- Button components (Primary and Secondary variants)
+- Footer links component
+- Cookie consent banner (if applicable)
+
+**Responsive Behavior:**
+- Mobile: Stacked layout, full-width buttons, reduced padding
+- Tablet: Centered content, moderate padding
+- Desktop: Maximum width container, generous spacing
+
+### Chat Interface Layout (Inferred from Chatbot Patterns)
+
+**Layout Structure:**
+```css
+.chat-interface {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: var(--background);
+}
+
+.chat-header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--background);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.chat-input-area {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+  background-color: var(--background);
+  flex-shrink: 0;
+}
+```
+
+## User Flows and Navigation
+
+### Primary User Flows
+
+1. **Authentication Flow:**
+   - Step 1: User lands on login page
+   - Step 2: User clicks "Log in" or "Sign up for free"
+   - Step 3: User completes authentication
+   - Step 4: User redirected to chat interface
+
+2. **Chat Interaction Flow:**
+   - Step 1: User sees empty chat interface or conversation history
+   - Step 2: User types message in input field
+   - Step 3: User message appears in chat (user bubble, right-aligned)
+   - Step 4: Typing indicator appears (assistant bubble, left-aligned)
+   - Step 5: Assistant response appears (assistant bubble, left-aligned)
+   - Step 6: Process repeats for conversation
+
+3. **Message Sending Flow:**
+   - Step 1: User types in input field
+   - Step 2: Input field expands if needed (multi-line)
+   - Step 3: User clicks send button or presses Enter
+   - Step 4: Message appears in chat with slide-in animation
+   - Step 5: Input field clears and resets
+
+### Navigation Structure
+
+- **Main Navigation**: Logo on left, action buttons on right (Login/Sign up)
+- **Footer Navigation**: Links to Terms of Use and Privacy Policy
+- **Chat Navigation**: Header with conversation title, settings/options menu
+
+### Link Patterns
+
+- **Internal Links**: Standard text color, hover state with color change
+- **External Links**: Same styling as internal links
+- **CTA Links**: Styled as buttons (Primary or Secondary variant)
+
+## Responsive Design Patterns
+
+### Mobile (< 768px)
+
+**Layout Changes:**
+- Full-width layout, no sidebars
+- Reduced padding (1rem instead of 1.5rem)
+- Stacked button layout
+- Larger touch targets (minimum 44px)
+- Simplified navigation (hamburger menu)
+
+**Component Variations:**
+- Message bubbles: 90% max-width instead of 85%
+- Input field: Full-width with larger padding
+- Buttons: Full-width, stacked vertically
+- Typography: Slightly reduced font sizes
+
+**Navigation Patterns:**
+- Hamburger menu for main navigation
+- Bottom sheet for mobile menu
+- Swipe gestures for message actions
+
+### Tablet (768px - 1024px)
+
+**Layout Changes:**
+- Centered content with max-width
+- Moderate padding (1.5rem)
+- Side-by-side button layout when space allows
+
+**Component Variations:**
+- Message bubbles: 80% max-width
+- Input field: Standard width with side-by-side send button
+- Cards: Two-column layout when appropriate
+
+### Desktop (> 1024px)
+
+**Layout Changes:**
+- Maximum width container (1200px)
+- Generous padding (2rem)
+- Sidebar navigation (if applicable)
+
+**Component Variations:**
+- Message bubbles: 70% max-width for better readability
+- Input field: Constrained width with send button inline
+- Hover states: More pronounced on interactive elements
+
+## Loading States and Indicators
+
+### Page Load
+
+**Initial Load:**
+- Skeleton screens for message history
+- Progressive loading of conversation content
+- Smooth fade-in animation for loaded content
+
+**Skeleton Screen Pattern:**
+```css
+.conversation-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+}
+
+.message-skeleton {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.message-skeleton.user {
+  flex-direction: row-reverse;
+}
+
+.avatar-skeleton {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: var(--skeleton);
+}
+
+.message-bubble-skeleton {
+  flex: 1;
+  height: 60px;
+  border-radius: var(--radius-xl);
+  background: var(--skeleton);
+}
+```
+
+### Content Loading
+
+**Message Loading:**
+- Typing indicator appears immediately
+- Message appears with slide-in animation when ready
+- Smooth transition from typing indicator to message
+
+**Streaming Response:**
+- Text appears character-by-character or word-by-word
+- Smooth scrolling to keep latest content visible
+- Cursor/indicator shows active typing
+
+### Form Submission
+
+**Input Submission:**
+- Input field disabled during submission
+- Send button shows loading spinner
+- Message appears in chat immediately
+- Input field re-enabled after response received
+
+## Interactive Behaviors
+
+### Hover Effects
+
+**Button Hover:**
+```css
+.btn-primary:hover {
+  background-color: #0D8A6B;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-2);
+}
+
+.btn-secondary:hover {
+  background-color: var(--surface);
+  border-color: var(--text-secondary);
+}
+```
+
+**Link Hover:**
+```css
+.link:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+```
+
+**Message Bubble Hover:**
+```css
+.message-bubble:hover {
+  box-shadow: var(--shadow-2);
+  transform: translateY(-1px);
+}
+```
+
+### Click Interactions
+
+**Button Click:**
+- Immediate visual feedback (scale down)
+- Ripple effect on click (optional)
+- State change animation
+
+**Message Actions:**
+- Copy button appears on hover
+- Click to copy with confirmation
+- Smooth animation for action buttons
+
+### Scroll Behaviors
+
+**Auto-Scroll:**
+- Automatically scrolls to bottom on new message
+- Smooth scroll behavior
+- Scroll lock when user manually scrolls up
+- Scroll-to-bottom button appears when scrolled up
+
+**Scroll Indicators:**
+- Subtle scrollbar styling
+- Scroll position indicator
+- "New messages" indicator when scrolled up
+
+### Form Interactions
+
+**Input Focus:**
+- Border color changes to primary color
+- Subtle shadow appears
+- Placeholder text fades
+
+**Input Validation:**
+- Real-time validation feedback
+- Error states with red border
+- Success states with green border
+- Helper text below input
+
+**Character Count:**
+- Subtle counter for long inputs
+- Warning at character limit
+- Disabled state at maximum
+
+## Implementation Guidelines
+
+### CSS Architecture
+
+**Organization:**
+- Component-based CSS structure
+- CSS Custom Properties for theming
+- Utility classes for common patterns
+- BEM naming convention for components
+
+**Naming Conventions:**
+```css
+/* Block */
+.chat-container { }
+
+/* Element */
+.chat-container__message { }
+
+/* Modifier */
+.chat-container__message--user { }
+.chat-container__message--assistant { }
+```
+
+### Component Structure
+
+**React Component Pattern:**
+```typescript
+interface ChatMessageProps {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+}
+
+export const ChatMessage: React.FC<ChatMessageProps> = ({
+  role,
+  content,
+  timestamp
+}) => {
+  return (
+    <div className={`message-container message-container--${role}`}>
+      <div className={`message-bubble message-bubble-${role}`}>
+        {content}
+      </div>
+      <div className="message-meta">
+        {formatTime(timestamp)}
+      </div>
+    </div>
+  );
+};
+```
+
+### Animation Performance
+
+**Best Practices:**
+- Use `transform` and `opacity` for animations (GPU-accelerated)
+- Avoid animating `width`, `height`, `top`, `left`
+- Use `will-change` sparingly
+- Debounce scroll events
+- Use `requestAnimationFrame` for complex animations
+
+**Performance Optimizations:**
+```css
+.message-bubble {
+  will-change: transform, opacity;
+  transform: translateZ(0); /* Force GPU acceleration */
+}
+```
+
+### Accessibility Considerations
+
+**Focus States:**
+```css
+.btn-primary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.chat-input:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+```
+
+**ARIA Patterns:**
+- Proper `role` attributes for chat interface
+- `aria-live` regions for new messages
+- `aria-label` for icon buttons
+- Keyboard navigation support
+
+**Screen Reader Support:**
+- Semantic HTML structure
+- Alt text for images
+- Descriptive button labels
+- Status announcements for dynamic content
+
+## Design Tokens
+
+```css
+:root {
+  /* Colors */
+  --color-primary: #10A37F;
+  --color-primary-hover: #0D8A6B;
+  --color-secondary: #565869;
+  --color-accent: #19C37D;
+  
+  --color-background: #FFFFFF;
+  --color-surface: #F7F7F8;
+  --color-text-primary: #353740;
+  --color-text-secondary: #6E6E80;
+  --color-border: #E5E5E6;
+  --color-border-light: #F0F0F0;
+  
+  --color-success: #19C37D;
+  --color-error: #EF4444;
+  --color-warning: #F59E0B;
+  --color-info: #3B82F6;
+  
+  /* Typography */
+  --font-family-primary: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-family-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
+  
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+  --font-size-5xl: 3rem;
+  
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+  
+  --font-weight-light: 300;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  
+  /* Spacing */
+  --spacing-unit: 0.25rem;
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-5: 1.25rem;
+  --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
+  --spacing-10: 2.5rem;
+  --spacing-12: 3rem;
+  --spacing-16: 4rem;
+  --spacing-20: 5rem;
+  --spacing-24: 6rem;
+  
+  /* Border Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.3s ease;
+  
+  /* Z-Index Scale */
+  --z-base: 1;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-fixed: 300;
+  --z-modal-backdrop: 400;
+  --z-modal: 500;
+  --z-popover: 600;
+  --z-tooltip: 700;
+}
+```
+
+## Page-Specific Designs
+
+### Login/Authentication Page
+
+**Layout Structure:**
+- Centered vertical layout
+- Logo at top
+- Heading and subheading
+- Action buttons (Login/Sign up)
+- Footer with legal links
+
+**Components Used:**
+- Logo component
+- Heading component (h1)
+- Subheading component (p)
+- Primary button (Sign up)
+- Secondary button (Log in)
+- Footer link components
+
+**Responsive Behavior:**
+- Mobile: Full-width, stacked buttons, reduced spacing
+- Tablet: Centered content, moderate spacing
+- Desktop: Maximum width container, generous spacing
+
+### Chat Interface (Inferred Pattern)
+
+**Layout Structure:**
+- Full-height flex container
+- Header (fixed top)
+- Messages area (scrollable, flex-grow)
+- Input area (fixed bottom)
+
+**Components Used:**
+- Chat header with title
+- Message list with bubbles
+- Typing indicator
+- Input field with send button
+- Scroll indicators
+
+**Responsive Behavior:**
+- Mobile: Full-screen, touch-optimized
+- Tablet: Centered with max-width
+- Desktop: Sidebar navigation option
+
+## Motion Graphics and Advanced Animations
+
+### Message Appearance Animation
+
+**Description:** Messages slide in from bottom with fade
+**Trigger:** New message added to conversation
+**CSS:**
+```css
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.message-enter {
+  animation: messageSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+```
+
+### Typing Indicator Animation
+
+**Description:** Three dots pulse in sequence
+**Trigger:** Assistant is generating response
+**CSS:**
+```css
+@keyframes typingDot {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.7;
+  }
+  30% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+}
+
+.typing-dot {
+  animation: typingDot 1.4s infinite;
+}
+
+.typing-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+```
+
+### Button Ripple Effect
+
+**Description:** Ripple expands from click point
+**Trigger:** Button click
+**CSS/JS:**
+```css
+.ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.ripple::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.ripple.active::after {
+  width: 300px;
+  height: 300px;
+}
+```
+
+## Design Patterns and Best Practices
+
+### Layout Patterns
+
+**Centered Content Pattern:**
+- Maximum width containers
+- Centered alignment
+- Generous vertical spacing
+- Focus on content readability
+
+**Full-Height Chat Pattern:**
+- Flexbox column layout
+- Fixed header and footer
+- Scrollable middle section
+- Smooth scroll behavior
+
+### Component Patterns
+
+**Message Bubble Pattern:**
+- Distinct styling for user vs assistant
+- Tail indicators for visual connection
+- Consistent spacing and alignment
+- Smooth appearance animations
+
+**Input Pattern:**
+- Multi-line support
+- Auto-resize functionality
+- Send button integration
+- Keyboard shortcuts (Enter to send, Shift+Enter for new line)
+
+### Animation Patterns
+
+**Micro-Interactions:**
+- Hover state transitions (200ms)
+- Click feedback (scale transform)
+- Loading state animations
+- Smooth state changes
+
+**Page Transitions:**
+- Fade in/out for page changes
+- Slide transitions for navigation
+- Smooth scroll for anchor links
+
+## Implementation Checklist
+
+### Setup
+- [ ] Set up CSS variables/tokens
+- [ ] Configure typography system
+- [ ] Set up color palette
+- [ ] Configure spacing system
+- [ ] Set up breakpoint system
+
+### Components
+- [ ] Implement button variants (primary, secondary, ghost)
+- [ ] Implement message bubble components
+- [ ] Implement input field component
+- [ ] Implement typing indicator
+- [ ] Implement navigation components
+- [ ] Implement modal/dialog components
+- [ ] Implement loading indicators
+- [ ] Implement card components
+
+### Chatbot-Specific Components
+- [ ] Message list with scroll behavior
+- [ ] Message bubble with tail indicators
+- [ ] Typing indicator with animation
+- [ ] Chat input with auto-resize
+- [ ] Send button with states
+- [ ] Conversation history component
+- [ ] Message timestamp formatting
+- [ ] Copy message functionality
+
+### Responsive Design
+- [ ] Implement mobile layouts
+- [ ] Implement tablet layouts
+- [ ] Implement desktop layouts
+- [ ] Test at all breakpoints (320px, 375px, 414px, 768px, 1024px, 1280px, 1440px, 1920px)
+
+### Animations
+- [ ] Implement CSS transitions
+- [ ] Implement CSS animations
+- [ ] Implement scroll animations
+- [ ] Implement page transitions
+- [ ] Implement message appearance animations
+- [ ] Implement typing indicator animation
+
+## Notes and Observations
+
+### Design Philosophy
+The ChatGPT design emphasizes minimalism and focus. The interface removes unnecessary elements to keep users engaged in the conversation. Color usage is restrained, with the primary green used sparingly for brand recognition and important actions.
+
+### Chatbot-Specific Considerations
+- **Message Bubbles**: Distinct styling helps users differentiate between their messages and assistant responses
+- **Typing Indicators**: Provide immediate feedback that the system is processing
+- **Auto-Scroll**: Keeps conversation context visible without manual scrolling
+- **Input Field**: Multi-line support allows for longer messages while maintaining clean interface
+
+### Accessibility Features
+- High contrast ratios for text readability
+- Keyboard navigation support
+- Screen reader announcements for new messages
+- Focus indicators for all interactive elements
+- Semantic HTML structure
+
+### Performance Optimizations
+- GPU-accelerated animations using transform and opacity
+- Debounced scroll events
+- Lazy loading for conversation history
+- Optimized re-renders for message list
+
+### Browser Compatibility
+- Modern browser support (Chrome, Firefox, Safari, Edge)
+- Progressive enhancement for older browsers
+- CSS Grid and Flexbox for layouts
+- CSS Custom Properties for theming

@@ -1,0 +1,1188 @@
+---
+alwaysApply: false
+---
+
+# Classifiers in Machine Learning
+
+## Paper Metadata
+- **Title:** Classifiers in Machine Learning (Chapter 3)
+- **Source Book:** Artificial Intelligence, Machine Learning, and Deep Learning
+- **Author:** Oswald Campesato
+- **Year:** 2020
+- **Publisher:** Mercury Learning and Information
+- **ISBN:** 978-1-68392-467-8
+- **Chapter:** 3
+
+## Abstract / Summary
+
+This chapter presents numerous classification algorithms in machine learning, including kNN (k Nearest Neighbor), logistic regression (despite its name it is a classifier), decision trees, random forests, SVMs, and Bayesian classifiers. The emphasis on algorithms is intended to introduce you to machine learning, which includes tree-based code samples that rely on scikit-learn. The latter portion of this chapter contains Keras-based code samples for standard datasets.
+
+The chapter also provides an overview of activation functions, which are very useful for deep neural networks. You will learn how and why they are used in neural networks, along with a list of TensorFlow APIs for activation functions and descriptions of their merits.
+
+## Problem Statement
+
+### Problem Definition
+
+Classification is the task of determining the class to which a new datapoint belongs, given a dataset that contains observations whose class membership is known. Classes refer to categories and are also called targets or labels.
+
+### Motivation
+
+Classification is one of the most common machine learning tasks:
+- Spam detection in email (binary classification)
+- Image classification (MNIST dataset with 10 labels)
+- Credit approval, medical diagnosis, target marketing
+- Fraud detection
+- Sentiment analysis
+
+### Challenges
+
+- Choosing the right classifier for the dataset
+- Handling binary vs multiclass vs multilabel classification
+- Dealing with imbalanced datasets
+- Avoiding overfitting
+- Selecting appropriate activation functions
+- Understanding when to use different algorithms
+
+### Scope
+
+This chapter covers:
+- Common classification algorithms (kNN, decision trees, random forests, SVMs, Bayesian classifiers)
+- Activation functions and their use in neural networks
+- Logistic regression
+- Code examples using scikit-learn and Keras
+- Evaluation metrics for classifiers
+
+## Key Concepts and Techniques
+
+1. **Classification:** Task of determining class membership for new datapoints
+2. **Binary Classification:** Two classes (spam/not-spam, fraud/not-fraud)
+3. **Multiclass Classification:** More than two classes
+4. **Multilabel Classification:** Assigning multiple labels to an instance
+5. **kNN (k Nearest Neighbor):** Classification based on nearest neighbors
+6. **Decision Trees:** Tree-like structure for classification
+7. **Random Forests:** Multiple decision trees with majority voting
+8. **SVMs (Support Vector Machines):** Supervised ML algorithm for classification/regression
+9. **Bayesian Classifiers:** Probabilistic classifiers based on Bayes' theorem
+10. **Logistic Regression:** Classifier using sigmoid function
+11. **Activation Functions:** Nonlinear functions in neural networks
+12. **Sigmoid:** Activation function with range (0,1)
+13. **Tanh:** Hyperbolic tangent activation function with range (-1,1)
+14. **ReLU:** Rectified Linear Unit activation function
+15. **Softmax:** Activation function that creates probability distributions
+
+## Algorithms
+
+### Algorithm 1: kNN (k Nearest Neighbor)
+
+**Description:**
+The kNN algorithm is a classification algorithm where data points that are near each other are classified as belonging to the same class. When a new point is introduced, it's added to the class of the majority of its k nearest neighbors.
+
+**How It Works:**
+1. For a new data point, find its k nearest neighbors in the training set
+2. Count the classes of these k neighbors
+3. Assign the new point to the class with the majority vote
+
+**Example:**
+If k = 3 and a new data point's three nearest neighbors are A, A, and B, then by majority vote, the new data point is labeled as class A.
+
+**Characteristics:**
+- Essentially a heuristic, not a technique with complex mathematical underpinnings
+- Effective and useful despite simplicity
+- Can produce highly nonlinear decisions despite being very simple
+- Good for search applications where searching for similar items
+- Measure similarity by creating vector representation and comparing using distance metric (e.g., Euclidean distance)
+
+**Tie Handling:**
+If there's a tie in kNN:
+- Assign higher weights to closer points
+- Increase the value of k until a winner is determined
+- Decrease the value of k until a winner is determined
+- Randomly select one class
+
+**When to Use:**
+- Simple algorithm needed
+- Dataset is highly unstructured
+- Search applications for semantically similar documents
+
+**Complexity Analysis:**
+- Training: O(1) - just store the training data
+- Prediction: O(n) where n is the number of training samples (can be optimized with data structures like KD-trees)
+
+### Algorithm 2: Decision Trees
+
+**Description:**
+Decision trees are classification algorithms that involve a treelike structure. In a generic tree, the placement of a data point is determined by simple conditional logic.
+
+**How It Works:**
+1. Start with root node containing all data
+2. Split data based on a feature that best separates classes
+3. Repeat recursively for each subset
+4. Stop when a stopping criterion is met (e.g., all points in a node belong to same class)
+
+**Example:**
+For ages dataset: if first number is 50, all numbers < 50 go left, all numbers > 50 go right.
+
+**Code Example (scikit-learn):**
+```python
+from sklearn import tree
+
+# X = pairs of 2D points and Y = the class of each point
+X = [[0, 0], [1, 1], [2,2]]
+Y = [0, 1, 1]
+
+tree_clf = tree.DecisionTreeClassifier()
+tree_clf = tree_clf.fit(X, Y)
+
+# Predict the class of samples:
+print(tree_clf.predict([[-1., -1.]]))  # [0]
+print(tree_clf.predict([[2., 2.]]))    # [1]
+print(tree_clf.predict_proba([[2., 2.]]))  # [[0. 1.]]
+```
+
+**Complete Example with Wine Dataset:**
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import confusion_matrix
+
+dataset = pd.read_csv('partial_wine.csv')
+X = dataset.iloc[:, [0, 1]].values
+y = dataset.iloc[:, 2].values
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.25, random_state = 0)
+
+# Feature Scaling
+sc = StandardScaler()
+X_train = sc.fit_transform(X_train)
+X_test = sc.transform(X_test)
+
+# Classifier
+classifier = DecisionTreeClassifier(criterion='entropy', random_state=0)
+classifier.fit(X_train, y_train)
+
+# Predict
+y_pred = classifier.predict(X_test)
+
+# Confusion matrix
+cm = confusion_matrix(y_test, y_pred)
+print("confusion matrix:")
+print(cm)
+```
+
+**Complexity Analysis:**
+- Training: O(n * m * log(n)) where n is samples, m is features
+- Prediction: O(log(n)) - depth of tree
+
+### Algorithm 3: Random Forests
+
+**Description:**
+Random Forests are a generalization of decision trees: this classification algorithm involves multiple trees (the number is specified by you). If the data involves making a numeric prediction, the average of the predictions of the trees is computed. If the data involves a categorical prediction, the mode of the predictions of the trees is determined.
+
+**How It Works:**
+1. Create multiple decision trees (each trained on a random subset of data/features)
+2. Each tree makes a prediction
+3. For numeric predictions: take the mean or mode
+4. For categorical predictions: use the mode (most frequently occurring class)
+
+**Code Example:**
+```python
+from sklearn.ensemble import RandomForestClassifier
+
+classifier = RandomForestClassifier(n_estimators = 10, criterion='entropy', random_state = 0)
+classifier.fit(X_train, y_train)
+y_pred = classifier.predict(X_test)
+```
+
+**Characteristics:**
+- Operates similar to financial portfolio diversification
+- Uses majority vote to make predictions
+- Assumes majority vote is more likely to be correct than any individual prediction
+- More robust than single decision trees
+
+**Complexity Analysis:**
+- Training: O(n * m * log(n) * k) where k is number of trees
+- Prediction: O(k * log(n))
+
+### Algorithm 4: SVMs (Support Vector Machines)
+
+**Description:**
+Support Vector Machines involve a supervised ML algorithm and can be used for classification or regression problems. SVM can work with nonlinearly separable data as well as linearly separable data. SVM uses a technique called the kernel trick to transform data and then finds an optimal boundary in the transform space (which involves higher dimensionality).
+
+**How It Works:**
+1. Transform data to higher dimensionality using kernel trick
+2. Find optimal hyperplane that separates data into two classes
+3. Maximize margin between classes
+
+**Code Example:**
+```python
+from sklearn.svm import SVC
+
+classifier = SVC(kernel = 'linear', random_state = 0)
+classifier.fit(X_train, y_train)
+y_pred = classifier.predict(X_test)
+```
+
+**Use Cases:**
+- Text classification tasks: category assignment
+- Detecting spam/sentiment analysis
+- Image recognition: aspect-based recognition, color-based classification
+- Handwritten digit recognition (postal automation)
+
+**Advantages:**
+- High accuracy
+- Works well on smaller cleaner datasets
+- Can be more efficient because it uses a subset of training points
+- Can be an alternative to CNNs in cases of limited datasets
+- Captures more complex relationships between data points
+
+**Disadvantages:**
+- Not suited to larger datasets: training time can be high
+- Less effective on noisier datasets with overlapping classes
+- Involves more parameters than decision trees and random forests
+
+**Tradeoffs:**
+- More parameters to tune
+- Training time can be high for large datasets
+- Better for smaller, cleaner datasets
+
+### Algorithm 5: Bayesian Classifiers (Naive Bayes)
+
+**Description:**
+A Naive Bayes Classifier is a probabilistic classifier inspired by the Bayes theorem. An NB classifier assumes the attributes are conditionally independent and it works well even when this assumption is not true.
+
+**Bayes Theorem:**
+Given two sets A and B:
+- P(A) = probability of being in set A
+- P(B) = probability of being in set B
+- P(Both) = probability of being in A intersect B
+- P(A|B) = probability of being in A (given you're in B)
+- P(B|A) = probability of being in B (given you're in A)
+
+**Formulas:**
+$$
+P(A|B) = \frac{P(Both)}{P(B)} = \frac{P(B|A) \cdot P(A)}{P(B)}
+$$
+
+**Bayesian Terminology:**
+- **Posterior probability:** $P(h|d)$ - probability of hypothesis $h$ given the data $d$
+- **Likelihood:** $P(d|h)$ - probability of data $d$ given that hypothesis $h$ was true
+- **Prior probability:** $P(h)$ - probability of hypothesis $h$ being true (regardless of data)
+- **Evidence:** $P(d)$ - probability of the data (regardless of hypothesis)
+
+**MAP (Maximum A Posteriori):**
+The maximum a posteriori hypothesis is the hypothesis with the highest probability:
+$$
+MAP(h) = \max(P(h|d)) = \max\left(\frac{P(d|h) \cdot P(h)}{P(d)}\right) = \max(P(d|h) \cdot P(h))
+$$
+
+**Advantages:**
+- Greatly reduces computational cost (assumes conditional independence)
+- Simple algorithm to implement
+- Only requires linear time
+- Easily scalable to larger datasets
+- Good results obtained in most cases
+- Can be used for Binary & Multiclass classification
+- Provides different types of NB algorithms
+- Good choice for Text Classification problems
+- Popular choice for spam email classification
+- Can be easily trained on small datasets
+
+**Disadvantages:**
+- All features are assumed unrelated
+- Cannot learn relationships between features
+- Can suffer from the "zero probability problem"
+
+**Types of Naive Bayes Classifiers:**
+1. **Gaussian Naive Bayes**
+2. **MultinomialNB Naive Bayes**
+3. **Bernoulli Naive Bayes**
+
+**Zero Probability Problem:**
+When the conditional probability is zero for an attribute, it fails to give a valid prediction. However, this can be fixed explicitly using a Laplacian estimator.
+
+### Algorithm 6: Logistic Regression
+
+**Description:**
+Despite its name, logistic regression is a classifier and a linear model with a binary output. Logistic regression works with multiple independent variables and involves a sigmoid function for calculating probabilities. Logistic regression is essentially the result of applying the sigmoid activation function to linear regression in order to perform binary classification.
+
+**Sigmoid Function:**
+$$
+\sigma(x) = \frac{1}{1 + e^{-x}} = \frac{1}{1 + e^{-(w \cdot x + b)}}
+$$
+
+**How It Works:**
+1. Calculate linear combination: $w \cdot x + b$
+2. Apply sigmoid function to get probability between 0 and 1
+3. Use threshold value (typically 0.5) to make binary classification
+
+**Threshold Value:**
+The threshold value is a numeric value that determines which data points belong to class A and which belong to class B. For example:
+- If $p = 0.5$ is the cutoff probability
+- Assign class A to data points with probability > 0.5
+- Assign class B to data points with probability <= 0.5
+
+**Important Assumptions:**
+- Observations must be independent of each other
+- Little or no multicollinearity among independent variables
+- Handles numeric, categorical, and continuous variables
+- Assumes linearity of independent variables and log odds
+
+**Log Odds:**
+$$
+\text{odds} = \frac{p}{1-p}
+$$
+$$
+\text{logit} = \log(\text{odds}) = \log\left(\frac{p}{1-p}\right)
+$$
+
+**Linearly Separable Data:**
+Linearly separable data can be separated by a line (in 2D), a plane (in 3D), or a hyperplane (in higher dimensions). Linearly nonseparable data (clusters) cannot be separated by a line or hyperplane.
+
+**XOR Function:**
+The XOR function involves datapoints that cannot be separated by a line:
+- Points (0,0) and (1,1) belong to class 0
+- Points (0,1) and (1,0) belong to class 1
+- Solution: transform data to higher dimension so it becomes linearly separable (technique used in SVMs)
+
+**Code Example (Keras with Iris Dataset):**
+```python
+import tensorflow as tf
+import matplotlib.pyplot as plt
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+
+iris = load_iris()
+X = iris['data']
+y = iris['target']
+
+# Scale the X values
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size = 0.2)
+
+model = tf.keras.models.Sequential()
+model.add(tf.keras.layers.Dense(activation='relu', input_dim=4, units=4, kernel_initializer='uniform'))
+model.add(tf.keras.layers.Dense(activation='relu', units=4, kernel_initializer='uniform'))
+model.add(tf.keras.layers.Dense(activation='sigmoid', units=1, kernel_initializer='uniform'))
+
+model.compile(optimizer='adam', loss='mean_squared_error', metrics=['accuracy'])
+model.fit(X_train, y_train, batch_size=10, epochs=100)
+
+# Predicting values
+y_pred = model.predict(X_test)
+
+# Scatter plot
+fig, ax = plt.subplots()
+ax.scatter(y_test, y_pred)
+ax.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r*--')
+ax.set_xlabel('Calculated')
+ax.set_ylabel('Predictions')
+plt.show()
+```
+
+## Activation Functions
+
+### What Are Activation Functions?
+
+An activation function is (usually) a nonlinear function that introduces nonlinearity into a neural network, thereby preventing a "consolidation" of the hidden layers in a neural network.
+
+**Why They're Needed:**
+Without activation functions, a neural network is a linear system. If every pair of adjacent layers involves just a matrix transformation and no activation function, the layers can be consolidated into a much smaller system by multiplying the weight matrices together.
+
+**How They Work:**
+1. Start with input vector $x_1$
+2. Multiply by weight matrix $W_1$: result is vector $x_2$
+3. Apply activation function to each element of $x_2$: create vector $x_3$
+4. Repeat steps 2-3 for subsequent layers
+
+**Analogy:**
+Think of activation functions as speed bumps on a road - you cannot maintain constant speed (cannot collapse matrices into one).
+
+### Common Activation Functions
+
+#### 1. Sigmoid
+
+**Formula:**
+$$
+\sigma(x) = \frac{1}{1 + e^{-x}}
+$$
+
+**Characteristics:**
+- Range: (0, 1)
+- Based on Euler's constant $e$
+- Saturates and kills gradients
+- Outputs are not zero-centered
+- Discouraged for vanilla feed forward implementation
+- Still used in LSTMs (forget gate, input gate, output gate), GRUs, and probabilistic models
+
+**Python Implementation:**
+```python
+import numpy as np
+z = 1/(1 + np.exp(-np.dot(W, x)))
+```
+
+**Keras API:**
+```python
+tf.keras.layers.sigmoid
+tf.keras.layers.sigmoid_cross_entropy_with_logits
+```
+
+#### 2. Tanh (Hyperbolic Tangent)
+
+**Formula:**
+$$
+\tanh(x) = \frac{e^x - e^{-x}}{e^x + e^{-x}}
+$$
+
+**Characteristics:**
+- Range: (-1, 1)
+- Based on Euler's constant $e$
+- Saturates but output is zero-centered
+- In practice, tanh nonlinearity is always preferred to sigmoid nonlinearity
+- Appears in LSTMs (tanh for internal cell state) and GRUs
+
+**Python Implementation:**
+```python
+z = np.tanh(np.dot(W, x))
+```
+
+**Keras API:**
+```python
+tf.keras.layers.tanh
+```
+
+#### 3. ReLU (Rectified Linear Unit)
+
+**Formula:**
+$$
+\text{ReLU}(x) = \begin{cases}
+x & \text{if } x \geq 0 \\
+0 & \text{if } x < 0
+\end{cases}
+$$
+
+**Characteristics:**
+- Currently often the "preferred" activation function
+- Behaves close to a linear unit
+- Provides best training accuracy and validation accuracy
+- Like a switch for linearity: "off" if not needed
+- Derivative is 1 when active
+- Simplest of all current activation functions
+- Second derivative is 0 everywhere
+- Gradient is large whenever you need large values
+- Never saturates (does not shrink to zero on positive horizontal axis)
+
+**Advantages:**
+- Does not saturate in the positive region
+- Very efficient in terms of computation
+- Models with ReLU typically converge faster than those with other activation functions
+
+**Disadvantages:**
+- When activation value becomes 0, gradients of the neuron will also be 0 during back-propagation
+- Can be mitigated by judiciously assigning initial weights and learning rate
+
+**Python Implementation:**
+```python
+z = np.maximum(0, np.dot(W, x))
+```
+
+**Keras API:**
+```python
+tf.keras.layers.relu
+tf.keras.layers.leaky_relu
+tf.keras.layers.relu6
+```
+
+**ReLU6:**
+ReLU6 is specific to TensorFlow, and it's a variation of ReLU(x): the additional constraint is that ReLU(x) equals 6 when x >= 6 (hence its name).
+
+#### 4. ELU (Exponential Linear Unit)
+
+**Characteristics:**
+- Based on ReLU
+- Key difference: ELU is differentiable at the origin (ReLU is continuous but not differentiable at origin)
+- ELUs trade computational efficiency for immortality (immunity to dying)
+- RELUs are still popular and preferred over ELU because ELU introduces an additional hyper-parameter
+
+**Keras API:**
+```python
+tf.keras.layers.elu
+```
+
+#### 5. SELU (Scaled Exponential Linear Unit)
+
+**Characteristics:**
+- Slightly more complicated than other activation functions
+- Used less frequently
+
+**Keras API:**
+```python
+tf.keras.layers.selu
+```
+
+#### 6. Softmax
+
+**Formula:**
+$$
+\text{softmax}(x_i) = \frac{e^{x_i}}{\sum_{j=1}^{n} e^{x_j}}
+$$
+
+**Characteristics:**
+- Maps values in a dataset to another set of values between 0 and 1
+- Sum of all values equals 1
+- Creates a probability distribution
+- Used for multiclass classification
+- In CNNs, maps values in final hidden layer to output layer neurons
+- Index of position with largest probability is matched with index of number 1 in one-hot encoding
+
+**Keras API:**
+```python
+tf.keras.layers.softmax
+tf.keras.layers.softmax_cross_entropy_with_logits
+tf.keras.layers.softmax_cross_entropy_with_logits_v2
+```
+
+#### 7. Softplus
+
+**Formula:**
+$$
+f(x) = \ln(1 + e^x)
+$$
+
+**Characteristics:**
+- Smooth (differentiable) approximation to ReLU activation function
+- Smooths the only nondifferentiable point of ReLU (the origin)
+
+**Keras API:**
+```python
+tf.keras.layers.softplus
+```
+
+#### 8. Hardmax
+
+**Characteristics:**
+- Assigns 0 or 1 to output values (similar to step function)
+- Example: For scores [1, 7, 2], hardmax probabilities are [0, 1, 0]
+- All-or-nothing probabilities (contrast with softmax which gives "partial credit")
+
+### Complete List of TensorFlow/Keras Activation Functions
+
+Located in `tf.keras.layers` namespace:
+- `tf.keras.layers.leaky_relu`
+- `tf.keras.layers.relu`
+- `tf.keras.layers.relu6`
+- `tf.keras.layers.selu`
+- `tf.keras.layers.sigmoid`
+- `tf.keras.layers.sigmoid_cross_entropy_with_logits`
+- `tf.keras.layers.softmax`
+- `tf.keras.layers.softmax_cross_entropy_with_logits_v2`
+- `tf.keras.layers.softplus`
+- `tf.keras.layers.softsign`
+- `tf.keras.layers.softmax_cross_entropy_with_logits`
+- `tf.keras.layers.tanh`
+- `tf.keras.layers.weighted_cross_entropy_with_logits`
+
+### Activation Functions: Similarities and Differences
+
+**Sigmoid, Softmax, and Hardmax Similarities:**
+- All used in neural networks
+- All produce probability-like outputs
+
+**Differences:**
+
+1. **Sigmoid:**
+   - Used for binary classification in logistic regression
+   - Used for gates in LSTMs and GRUs
+   - Sum of probabilities is not necessarily equal to 1
+
+2. **Softmax:**
+   - Generalizes sigmoid function
+   - Used for multiclassification in logistic regression
+   - Activation function for fully connected layer in CNNs
+   - Sum of probabilities must equal 1
+   - Can use either sigmoid or softmax for binary (n=2) classification
+
+3. **Hardmax:**
+   - Assigns 0 or 1 to output values
+   - All-or-nothing probabilities
+   - Example: scores [1, 7, 2] → hardmax [0, 1, 0], softmax [0.1, 0.7, 0.2]
+
+## Code Examples and Snippets
+
+### Code Example 1: Decision Tree with scikit-learn
+
+**Context:** Basic decision tree classification with 2D points
+
+**Language:** Python
+
+```python
+from sklearn import tree
+
+# X = pairs of 2D points and Y = the class of each point
+X = [[0, 0], [1, 1], [2,2]]
+Y = [0, 1, 1]
+
+tree_clf = tree.DecisionTreeClassifier()
+tree_clf = tree_clf.fit(X, Y)
+
+# Predict the class of samples:
+print("predict class of [-1., -1.]:")
+print(tree_clf.predict([[-1., -1.]]))  # [0]
+print("predict class of [2., 2.]:")
+print(tree_clf.predict([[2., 2.]]))     # [1]
+
+# Probability of each class
+print("probability of each class in [2.,2.]:")
+print(tree_clf.predict_proba([[2., 2.]]))  # [[0. 1.]]
+```
+
+**Explanation:**
+- Creates a decision tree classifier
+- Trains on 3 labeled 2D points
+- Predicts class for new points
+- Returns probability distribution for each class
+
+### Code Example 2: Decision Tree with Wine Dataset
+
+**Context:** Complete example with data preprocessing, feature scaling, and evaluation
+
+**Language:** Python
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import confusion_matrix
+
+# Importing the dataset
+dataset = pd.read_csv('partial_wine.csv')
+X = dataset.iloc[:, [0, 1]].values
+y = dataset.iloc[:, 2].values
+
+# Split the dataset into training and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.25, random_state = 0)
+
+# Feature Scaling
+sc = StandardScaler()
+X_train = sc.fit_transform(X_train)
+X_test = sc.transform(X_test)
+
+# Classifier
+classifier = DecisionTreeClassifier(criterion='entropy', random_state=0)
+classifier.fit(X_train, y_train)
+
+# Predict the test set results
+y_pred = classifier.predict(X_test)
+
+# Generate the confusion matrix
+cm = confusion_matrix(y_test, y_pred)
+print("confusion matrix:")
+print(cm)
+```
+
+**Output Example:**
+```
+confusion matrix:
+[[13  1  2]
+ [ 0 17  4]
+ [ 1  1  6]]
+```
+Accuracy: 36/45 = 0.80 (80%)
+
+**Key Points:**
+- Uses entropy as splitting criterion
+- Feature scaling with StandardScaler
+- 75/25 train/test split
+- Confusion matrix for evaluation
+
+### Code Example 3: Random Forest
+
+**Context:** Using random forest instead of single decision tree
+
+**Language:** Python
+
+```python
+from sklearn.ensemble import RandomForestClassifier
+
+classifier = RandomForestClassifier(n_estimators = 10, criterion='entropy', random_state = 0)
+classifier.fit(X_train, y_train)
+y_pred = classifier.predict(X_test)
+```
+
+**Key Points:**
+- `n_estimators = 10` specifies 10 trees
+- Each tree makes independent prediction
+- Final prediction is mode (for classification) or mean (for regression)
+
+### Code Example 4: SVM
+
+**Context:** Using Support Vector Machine for classification
+
+**Language:** Python
+
+```python
+from sklearn.svm import SVC
+
+classifier = SVC(kernel = 'linear', random_state = 0)
+classifier.fit(X_train, y_train)
+y_pred = classifier.predict(X_test)
+```
+
+**Key Points:**
+- `kernel = 'linear'` for linear SVM
+- Can use other kernels: 'rbf', 'poly', 'sigmoid'
+- SVC for classification, SVR for regression
+
+### Code Example 5: Activation Functions in Python
+
+**Context:** Manual implementation of activation functions
+
+**Language:** Python
+
+```python
+import numpy as np
+
+# Python sigmoid example:
+z = 1/(1 + np.exp(-np.dot(W, x)))
+
+# Python tanh example:
+z = np.tanh(np.dot(W, x))
+
+# Python ReLU example:
+z = np.maximum(0, np.dot(W, x))
+```
+
+**Key Points:**
+- Requires values for `W` (weights) and `x` (input) to run
+- NumPy provides efficient implementations
+- Can be used in custom neural network implementations
+
+### Code Example 6: Logistic Regression with Keras (Iris Dataset)
+
+**Context:** Complete logistic regression example with Keras/TensorFlow 2
+
+**Language:** Python
+
+```python
+import tensorflow as tf
+import matplotlib.pyplot as plt
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+
+iris = load_iris()
+X = iris['data']
+y = iris['target']
+
+# Scale the X values so they are between 0 and 1
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size = 0.2)
+
+model = tf.keras.models.Sequential()
+model.add(tf.keras.layers.Dense(activation='relu', input_dim=4, units=4, kernel_initializer='uniform'))
+model.add(tf.keras.layers.Dense(activation='relu', units=4, kernel_initializer='uniform'))
+model.add(tf.keras.layers.Dense(activation='sigmoid', units=1, kernel_initializer='uniform'))
+
+model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae','accuracy'])
+model.fit(X_train, y_train, batch_size=10, epochs=100)
+
+# Predicting values from the test set
+y_pred = model.predict(X_test)
+
+# Scatter plot of test values-vs-predictions
+fig, ax = plt.subplots()
+ax.scatter(y_test, y_pred)
+ax.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r*--')
+ax.set_xlabel('Calculated')
+ax.set_ylabel('Predictions')
+plt.show()
+```
+
+**Key Points:**
+- Uses StandardScaler for feature scaling
+- Sequential model with Dense layers
+- ReLU activation in hidden layers, sigmoid in output layer
+- Adam optimizer with MSE loss
+- Visualizes predictions vs actual values
+
+## Mathematical Foundations
+
+### Notation
+
+- $x$: Input vector
+- $W$: Weight matrix
+- $b$: Bias vector
+- $y$: Output/prediction
+- $P(A)$: Probability of event A
+- $P(A|B)$: Conditional probability of A given B
+- $k$: Number of nearest neighbors in kNN
+- $n$: Number of classes or samples
+- $m$: Number of features
+
+### Core Formulas
+
+#### Bayes Theorem
+
+$$
+P(A|B) = \frac{P(B|A) \cdot P(A)}{P(B)} = \frac{P(Both)}{P(B)}
+$$
+
+Where:
+- $P(A|B)$: Posterior probability
+- $P(B|A)$: Likelihood
+- $P(A)$: Prior probability
+- $P(B)$: Evidence
+
+#### MAP (Maximum A Posteriori)
+
+$$
+MAP(h) = \max(P(h|d)) = \max\left(\frac{P(d|h) \cdot P(h)}{P(d)}\right) = \max(P(d|h) \cdot P(h))
+$$
+
+#### Sigmoid Function
+
+$$
+\sigma(x) = \frac{1}{1 + e^{-x}} = \frac{1}{1 + e^{-(w \cdot x + b)}}
+$$
+
+#### Tanh Function
+
+$$
+\tanh(x) = \frac{e^x - e^{-x}}{e^x + e^{-x}}
+$$
+
+#### ReLU Function
+
+$$
+\text{ReLU}(x) = \max(0, x) = \begin{cases}
+x & \text{if } x \geq 0 \\
+0 & \text{if } x < 0
+\end{cases}
+$$
+
+#### Softmax Function
+
+$$
+\text{softmax}(x_i) = \frac{e^{x_i}}{\sum_{j=1}^{n} e^{x_j}}
+$$
+
+#### Softplus Function
+
+$$
+\text{softplus}(x) = \ln(1 + e^x)
+$$
+
+#### Log Odds (for Logistic Regression)
+
+$$
+\text{odds} = \frac{p}{1-p}
+$$
+
+$$
+\text{logit} = \log(\text{odds}) = \log\left(\frac{p}{1-p}\right)
+$$
+
+### Evaluation Metrics
+
+#### Precision
+
+$$
+\text{precision} = \frac{TP}{TP + FP}
+$$
+
+#### Accuracy
+
+$$
+\text{accuracy} = \frac{TP + TN}{P + N}
+$$
+
+Where:
+- $P$ = total positive cases
+- $N$ = total negative cases
+
+#### Recall
+
+$$
+\text{recall} = \frac{TP}{TP + FN}
+$$
+
+#### F1 Score
+
+$$
+F1 = \frac{2 \cdot p \cdot r}{p + r} = \frac{1}{\frac{(1/r) + (1/p)}{2}}
+$$
+
+Where:
+- $p$ = precision
+- $r$ = recall
+
+**Best value:** 1.0  
+**Worst value:** 0.0
+
+### Variable Definitions
+
+- **TP (True Positive):** Correctly predicted positive cases
+- **FP (False Positive):** Incorrectly predicted as positive (actually negative)
+- **TN (True Negative):** Correctly predicted negative cases
+- **FN (False Negative):** Incorrectly predicted as negative (actually positive)
+- **k:** Number of nearest neighbors in kNN algorithm (usually odd number)
+- **n_estimators:** Number of trees in random forest
+- **kernel:** Type of kernel function in SVM ('linear', 'rbf', 'poly', 'sigmoid')
+- **criterion:** Splitting criterion for decision trees ('entropy', 'gini')
+- **threshold:** Cutoff probability for binary classification (typically 0.5)
+
+## Binary vs Multiclass vs Multilabel Classification
+
+### Binary Classification
+
+- Two classes only
+- Examples: spam/not-spam, fraud/not-fraud, survived/perished
+- Algorithms: SVMs (with extensions), linear classifiers
+
+### Multiclass Classification
+
+- More than two classes
+- Examples: MNIST (10 digits), wine classification (multiple types)
+- Algorithms: Random forests, Naive Bayes, kNN
+- Techniques for binary classifiers:
+  - **One-versus-All (OvA):** $n$ binary classifiers for $n$ classes
+  - **One-versus-One (OvO):** $n(n-1)/2$ binary classifiers for $n$ classes
+
+**OvA Example:**
+- 5 classes → 5 binary classifiers
+- Each detects one of the five classes
+- Select classifier with highest score
+
+**OvO Example:**
+- 5 classes (A, B, C, D, E) → 10 binary classifiers
+- One for A and B, one for A and C, etc.
+- Each classifier trained only on its two chosen classes
+- More classifiers but each trained on smaller subset
+
+### Multilabel Classification
+
+- Assigning multiple labels to an instance
+- Generalizes multiclass classification
+- Example: An image can be both "sunset" and "beach" and "ocean"
+
+**Resources:**
+- Keras-based code: https://medium.com/@vijayabhaskar96/multi-label-image-classification-tutorial-with-keras-imagedatagenerator-cd541f8eaf24
+- Can use SKLearn or PyTorch for multilabel classification
+
+## Training and Evaluation
+
+### Training Techniques
+
+1. **Holdout Method:**
+   - Divide dataset into train (80%) and test (20%)
+   - Train set for training, test set for evaluation
+
+2. **k-fold Cross-validation:**
+   - Randomly partition dataset into k mutually exclusive subsets
+   - Each partition has equal size
+   - One partition for testing, others for training
+   - Iterate through all k folds
+   - Used to verify model is not over-fitted
+
+### Evaluation Techniques
+
+1. **Precision and Recall:**
+   - Precision = TP/(TP + FP)
+   - Recall = TP/(TP + FN)
+   - Accuracy = (TP + TN)/(P + N)
+
+2. **ROC Curve (Receiver Operating Characteristics):**
+   - Plots True Positive Rate (TPR/recall) versus False Positive Rate (FPR)
+   - TNR (True Negative Rate) = Specificity
+   - Area under ROC curve measures accuracy
+   - Model closer to diagonal is less accurate
+   - Perfect accuracy has area of 1.0
+
+3. **PR Curve (Precision-Recall):**
+   - Plots Precision versus Recall
+   - Better for highly skewed datasets (strong class imbalance)
+
+4. **Confusion Matrix:**
+   - n×n matrix for n classes
+   - Diagonal entries are correct predictions
+   - Off-diagonal entries are incorrect predictions
+   - Lower FP value is better than lower FN value (for medical diagnosis)
+
+### Common Issues
+
+**Accuracy Limitations:**
+- Can be unreliable metric
+- Yields misleading results in unbalanced datasets
+- Gives equal importance to false positive and false negative
+- Example: Declaring cancer as benign is worse than incorrectly informing patients they have cancer, but accuracy won't differentiate
+
+## Best Practices and Recommendations
+
+### Choosing a Classifier
+
+1. **For Simple Problems:** Use kNN or linear classifiers
+2. **For Structured Data:** Use decision trees or random forests
+3. **For Small, Clean Datasets:** Use SVMs
+4. **For Text Classification:** Use Naive Bayes
+5. **For Complex Patterns:** Use neural networks with appropriate activation functions
+
+### Activation Function Selection
+
+1. **For Hidden Layers:** Use ReLU (preferred) or one of its variants
+2. **For Output Layer (Binary):** Use sigmoid
+3. **For Output Layer (Multiclass):** Use softmax
+4. **For LSTMs/GRUs:** Use sigmoid for gates, tanh for cell state
+5. **Avoid:** Sigmoid and tanh for vanilla feed forward (except output layer)
+
+### Handling Ties in kNN
+
+1. Use odd value for k to reduce tie likelihood
+2. Assign higher weights to closer points
+3. Increase or decrease k until winner determined
+4. Randomly select one class (or use round-robin)
+
+### Feature Scaling
+
+- Always standardize both input features and target variable
+- Data might not be normally distributed: check and apply appropriate scaler
+- Options: StandardScaler, MinMaxScaler, Normalizer, RobustScaler
+
+### Model Evaluation
+
+1. Use appropriate metrics for your problem
+2. Consider class imbalance when choosing metrics
+3. Use confusion matrix to understand error types
+4. ROC curve for balanced datasets
+5. PR curve for imbalanced datasets
+
+## Limitations and Assumptions
+
+### Stated Limitations
+
+1. **Space Constraints:** Does not cover Linear Discriminant Analysis and kMeans
+2. **Activation Functions:** Section requires basic understanding of hidden layers
+3. **Logistic Regression Accuracy:** Example shows poor accuracy (may need tuning)
+4. **SVM Limitations:** Not suited for larger datasets, training time can be high
+5. **Naive Bayes:** Assumes conditional independence (may not be true)
+6. **Zero Probability Problem:** Can occur in Naive Bayes (fixable with Laplacian estimator)
+
+### Assumptions
+
+1. **Logistic Regression:**
+   - Observations are independent
+   - Little or no multicollinearity
+   - Linearity of independent variables and log odds
+
+2. **Naive Bayes:**
+   - Attributes are conditionally independent
+   - Works well even when assumption is not true
+
+3. **kNN:**
+   - Similar instances have similar class labels
+   - Distance metric is meaningful
+
+## Related Techniques and References
+
+### Related Chapters
+
+- **Chapter 2:** Introduction to Machine Learning (linear regression, metrics)
+- **Chapter 4:** Deep Learning Introduction (MLPs, CNNs)
+- **Chapter 5:** Deep Learning: RNNs and LSTMs (uses sigmoid and tanh)
+
+### Key References
+
+**Algorithms:**
+- kNN: http://saedsayad.com/k_nearest_neighbors_reg.htm
+- Activation Functions: https://en.wikipedia.org/wiki/Activation_function
+- Multilabel Classification: https://medium.com/@vijayabhaskar96/multi-label-image-classification-tutorial-with-keras-imagedatagenerator-cd541f8eaf24
+
+**Libraries:**
+- scikit-learn: Decision trees, random forests, SVMs, Naive Bayes
+- TensorFlow/Keras: Neural network implementations, activation functions
+
+## Practical Applications
+
+### Use Cases
+
+1. **Spam Detection:** Binary classification (spam/not-spam)
+2. **Image Classification:** MNIST digits, object recognition
+3. **Medical Diagnosis:** Disease classification
+4. **Credit Approval:** Loan approval decisions
+5. **Target Marketing:** Customer segmentation
+6. **Fraud Detection:** Anomaly detection
+7. **Text Classification:** Category assignment, sentiment analysis
+8. **Handwritten Digit Recognition:** Postal automation
+
+### Application Domains
+
+- Email services
+- Healthcare
+- Finance
+- Marketing
+- Security
+- Image processing
+- Natural language processing
+
+## Implementation Checklist
+
+### Prerequisites
+
+- [ ] Understanding of basic machine learning concepts
+- [ ] Familiarity with Python
+- [ ] Knowledge of NumPy, Pandas, scikit-learn
+- [ ] Basic understanding of neural networks (for activation functions section)
+- [ ] TensorFlow 2 and Keras installed
+
+### Setup Steps
+
+1. [ ] Install required libraries:
+   ```bash
+   pip install numpy pandas scikit-learn tensorflow matplotlib
+   ```
+
+2. [ ] Prepare dataset (CSV file or use built-in datasets)
+
+3. [ ] Import necessary libraries
+
+### Implementation Steps
+
+1. [ ] Load and preprocess data
+2. [ ] Split into training and test sets
+3. [ ] Apply feature scaling if needed
+4. [ ] Choose appropriate classifier
+5. [ ] Train the model
+6. [ ] Make predictions on test set
+7. [ ] Evaluate using confusion matrix and metrics
+8. [ ] Tune hyperparameters if needed
+
+### For Neural Networks
+
+1. [ ] Define model architecture (Sequential or Functional)
+2. [ ] Add layers with appropriate activation functions
+3. [ ] Compile model with optimizer, loss function, and metrics
+4. [ ] Train model with fit()
+5. [ ] Evaluate on test set
+6. [ ] Visualize results
+
+## Summary
+
+This chapter covered:
+- Classification algorithms: kNN, decision trees, random forests, SVMs, Bayesian classifiers
+- Binary, multiclass, and multilabel classification techniques
+- Activation functions: sigmoid, tanh, ReLU, softmax, and others
+- Why activation functions are important in neural networks
+- Logistic regression with sigmoid function
+- Code examples using scikit-learn and Keras
+- Evaluation metrics: precision, recall, accuracy, F1 score, ROC curve
+- Training techniques: holdout method, k-fold cross-validation
+
+The chapter provides practical, implementable techniques for classification tasks with complete code examples that can be directly used in projects.

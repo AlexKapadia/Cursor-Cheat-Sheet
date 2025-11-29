@@ -1,0 +1,1413 @@
+---
+alwaysApply: false
+---
+
+# Determining Travel Time and Fastest Route Using Dijkstra Algorithm
+
+## Paper Metadata
+- **Title:** Determining Travel Time and Fastest Route Using Dijkstra Algorithm and Google Map
+- **Authors:** Suardinata, Rusdisal Rusmi, Muhammad Amrin Lubis
+- **Year:** 2022 (received: 30 Desember 2021, revised: 24 Februari 2022, accepted: 25 Maret 2022)
+- **Institution:** Information System, STMIK Indonesia Padang, Padang, Sumatera Barat 25137, Indonesia
+- **Contact:** suardinata@stmikindonesia.ac.id
+- **Keywords:** Travel time, fastest route, Dijkstra Algorithm, Google Map
+- **Source Paper:** Determining Travel Time and Fastest Route Using Dijkstra Algorithm and Google Map (2022)
+
+## Abstract / Summary
+
+Dijkstra's algorithm is commonly used to determine the shortest route connecting a point as a starting node to another which acts as the end node. In this study, the UNP student dormitory acted as the starting node, while the library which is frequently visited by students was sampled from the campus as the end node. Due to the fact that students generally live around campus and move on foot, an alternative route is needed to determine the fastest travel time. Therefore, this study aims to determine the route with the fastest travel time from the start to the end of nodes using the Dijkstra algorithm, in comparison with the route displayed by Google Map. Data were obtained from Google Map, which showed the availability of many routes with the possibility of students taking the fastest travel time. The results show that by using the Dijkstra algorithm there are 14 alternatives pedestrian routes with the fastest travel time of 15 minutes, while with Google map there are 3 alternative routes with the fastest travel time of 21 minutes. Based on these data, it is concluded that the travel time through the fastest route obtained using the Dijkstra algorithm was 6 minutes faster than data found in the Google Map.
+
+## Problem Statement
+
+### Problem Definition
+
+The shortest path problem uses graph theory to calculate a path between two nodes or vertices such that the sum of the weights of its constituent edges are minimized. The study addresses the problem of finding the fastest travel time route for pedestrians from a starting point (UNP student dormitory) to a destination (UNP campus library).
+
+### Motivation
+
+Padang State University (UNP) is one of the tertiary institutions in West Sumatera Province, located in the city of Padang. This campus serves students within and outside of this province. Generally, students of UNP temporarily live in rented dormitories located around the campus. These students come from families with varying levels of economic ability ranging from low to high. In addition, there is a yearly increase in campus capacity with 3,203 new students in 2019 academic year, thereby leading to road congestion due to a rise in the number of road users.
+
+Some factors considered by students when choosing dormitories include distance, rent cost, route, travel time to campus, room facilities and the availability of public facilities. However, this research only considered the time and route criteria.
+
+### Challenges
+
+1. **Multiple Route Options:** Data displayed by Google Map shows that the normal travel time on foot from the dormitory to library ranges from 21-25 minutes with 3 alternative routes, but field surveys showed there were many alternative routes that could be better.
+
+2. **Pedestrian-Specific Routing:** The route taken by pedestrian students is also accessible by cars. However, this study only examined those walking because its location is spread close to the UNP campus and the trip is relatively short.
+
+3. **Finding Optimal Routes:** It is important to determine other alternative routes that are better than those available on the Google map.
+
+### Scope
+
+**In Scope:**
+- Determining the fastest travel time route from UNP student dormitory to UNP campus library
+- Pedestrian routes only (walking)
+- Comparison between Dijkstra algorithm results and Google Maps results
+- Routes accessible by both pedestrians and cars
+
+**Out of Scope:**
+- Vehicle routes
+- Routes outside the immediate campus area
+- Other factors like rent cost, room facilities, and public facilities
+
+### Assumptions
+
+1. Students generally live around campus and move on foot
+2. The dormitory location used as sample: Patenggangan Street No.14e, Parupuk Tabing Village, Koto Tangah District, Padang City, West Sumatera Province with zip code 25173
+3. The central library is located in the front of the UNP FMIPA building
+4. The dormitory represents students in all faculties at UNP
+5. The library is used as a destination due to its importance and daily use by students
+
+## Key Concepts and Techniques
+
+- **Dijkstra's Algorithm:** A graph search algorithm that solves the single-source shortest path problem for a graph with non-negative edge weights
+- **Shortest Path Problem:** A problem in graph theory to find a path between two nodes such that the sum of the weights of its constituent edges is minimized
+- **Graph Theory:** Mathematical structures used to model pairwise relations between objects
+- **Weighted Graph:** A graph where edges have weights (in this case, travel time)
+- **Node/Vertex:** A point in the graph representing a location
+- **Edge:** A connection between two nodes representing a route segment
+- **Travel Time:** The time required to traverse an edge (used as weight)
+- **Alternative Routes:** Multiple paths between the same start and end nodes
+- **Pedestrian Routing:** Routing optimized for walking rather than vehicle travel
+
+## Related Work and Background
+
+### Previous Approaches
+
+According to previous studies, determining the shortest route is one of the solutions to routing problems. Various algorithms have been used:
+
+1. **Bellman-Ford Algorithm:** Used for routing problems (Bellman, 1956)
+2. **Floyd-Warshall Algorithm:** Algorithm for shortest path (Floyd, 1962)
+3. **Johnson's Algorithm:** Efficient algorithms for shortest paths in sparse networks (Johnson, 1977)
+4. **Dijkstra's Algorithm:** Commonly used for shortest path problems
+
+### How This Differs
+
+The authors chose Dijkstra's algorithm because:
+- There are many references available
+- This algorithm is used in many similar studies to determine the shortest distance
+- Used to save fuel, time and energy
+- Used for searching trans Semarang bus routes
+- Well-established and proven for shortest path problems
+
+### Adopted Techniques
+
+The study adopts Dijkstra's algorithm, which is a well-known graph search algorithm for finding shortest paths. The algorithm is applied to a real-world scenario comparing pedestrian routes with Google Maps routing.
+
+### Related Applications
+
+Previous research has applied Dijkstra's algorithm to:
+- Optimize routes for vehicle evacuation during incidents or emergency events
+- Emergency evacuation movement of people from incident areas to safe areas
+- Game board pathfinding with starting and finish nodes
+- Bus route searching (Trans Semarang)
+- Tourism route finding (Bali)
+- Building, dormitory, and culinary location route finding around universities
+
+## Methodology and Approach
+
+### High-Level Overview
+
+The methodology involves:
+1. **Data Collection:** Obtaining route data from Google Maps showing available paths between the dormitory and library
+2. **Graph Construction:** Creating a weighted graph where nodes represent locations and edges represent route segments with travel time as weights
+3. **Algorithm Application:** Applying Dijkstra's algorithm to find all shortest paths from the starting node (dormitory) to the end node (library)
+4. **Route Comparison:** Comparing the results with Google Maps routing suggestions
+5. **Analysis:** Analyzing the differences in travel time and number of alternative routes found
+
+### Detailed Methodology
+
+#### Step 1: Data Collection from Google Maps
+
+Data were obtained from Google Map (https://www.google.co.id/maps/dir), which showed:
+- Normal travel time on foot from dormitory to library: 21-25 minutes
+- Three alternative routes identified by Google Maps:
+  1. Srigunting street: 21 minutes, 1.7 km
+  2. Walet street: 24 minutes, 2.0 km
+  3. Bhakti / Ikhwanul Muslimin street: 25 minutes, 2.0 km
+
+#### Step 2: Field Survey and Route Mapping
+
+Field surveys using time and distance data between location points displayed by Google Map showed that there were many alternative routes to the dormitory and library. These routes were mapped as a graph structure.
+
+#### Step 3: Graph Representation
+
+The road network was represented as a weighted graph where:
+- **Nodes (Vertices):** Represent specific locations/intersections
+- **Edges:** Represent road segments connecting locations
+- **Weights:** Represent travel time in minutes
+
+#### Step 4: Dijkstra Algorithm Application
+
+Dijkstra's algorithm was applied to find the shortest path (minimum travel time) from:
+- **Start Node (0):** UNP student dormitory at Patenggangan Street No.14e
+- **End Node (T):** UNP campus library (central library in front of UNP FMIPA building)
+
+#### Step 5: Route Analysis
+
+The algorithm identified multiple alternative routes with the same minimum travel time, providing students with various path options.
+
+### Design Principles
+
+1. **Graph-Based Modeling:** The road network is modeled as a graph to leverage graph theory algorithms
+2. **Time as Weight:** Travel time is used as edge weights rather than distance, as time is more relevant for pedestrian routing
+3. **Multiple Solutions:** The algorithm finds all routes with the minimum travel time, not just one
+4. **Real-World Validation:** Results are compared with Google Maps to validate the approach
+
+### Architecture
+
+The system architecture consists of:
+
+1. **Data Input Layer:**
+   - Google Maps route data
+   - Field survey data
+   - Time and distance measurements
+
+2. **Graph Construction Layer:**
+   - Node identification and labeling
+   - Edge creation with weights
+   - Graph data structure
+
+3. **Algorithm Processing Layer:**
+   - Dijkstra's algorithm implementation
+   - Path finding and optimization
+   - Route enumeration
+
+4. **Output Layer:**
+   - Route visualization
+   - Travel time comparison
+   - Alternative route listing
+
+### Data Structures
+
+#### Graph Representation
+
+The graph is represented using:
+- **Adjacency List or Adjacency Matrix:** To store connections between nodes
+- **Node Labels:** Numeric identifiers (0, 1, 2, ..., T) where:
+  - 0 = Starting node (dormitory)
+  - T = Terminal/end node (library)
+  - Intermediate nodes = Intersection points and route waypoints
+
+#### Algorithm Data Structures
+
+- **Distance Array:** Stores shortest distance from start node to each node
+- **Previous Array:** Stores the previous node in the shortest path
+- **Visited Set:** Tracks which nodes have been processed
+- **Priority Queue:** Used to select the next node to process (node with minimum distance)
+
+## Algorithms
+
+### Algorithm 1: Dijkstra's Shortest Path Algorithm
+
+**Description:**
+
+Dijkstra's algorithm is a graph search algorithm that solves the single-source shortest path problem for a graph with non-negative edge weights. It finds the shortest paths from a source vertex to all other vertices in the graph.
+
+The algorithm works by:
+1. Initializing distances from the source to all vertices as infinite, except the source itself (distance = 0)
+2. Creating a set of unvisited vertices
+3. For the current vertex, considering all of its unvisited neighbors and calculating their tentative distances
+4. Updating the distance if a shorter path is found
+5. Marking the current vertex as visited
+6. Selecting the unvisited vertex with the smallest tentative distance as the next current vertex
+7. Repeating steps 3-6 until the destination vertex is reached or all vertices are visited
+
+**Pseudocode:**
+
+```
+function dijkstra(graph, start, end):
+    // Initialize distances
+    distance[vertex] = infinity for all vertices
+    distance[start] = 0
+    
+    // Initialize previous nodes for path reconstruction
+    previous[vertex] = null for all vertices
+    
+    // Set of unvisited vertices
+    unvisited = all vertices
+    
+    while unvisited is not empty:
+        // Select vertex with minimum distance
+        current = vertex in unvisited with minimum distance[current]
+        
+        // If we reached the end, we can stop
+        if current == end:
+            break
+        
+        // Remove current from unvisited
+        remove current from unvisited
+        
+        // For each neighbor of current
+        for each neighbor in graph.neighbors(current):
+            if neighbor in unvisited:
+                // Calculate tentative distance
+                tentative_distance = distance[current] + graph.weight(current, neighbor)
+                
+                // Update if shorter path found
+                if tentative_distance < distance[neighbor]:
+                    distance[neighbor] = tentative_distance
+                    previous[neighbor] = current
+    
+    // Reconstruct path
+    path = []
+    current = end
+    while current != null:
+        path.insert(0, current)
+        current = previous[current]
+    
+    return path, distance[end]
+```
+
+**Complexity Analysis:**
+
+- **Time Complexity:** 
+  - Using adjacency list and binary heap: O((V + E) log V) where V is number of vertices and E is number of edges
+  - Using adjacency matrix and linear search: O(V²)
+  - In this study, the implementation appears to use O(V²) approach based on the iterative table structure shown
+
+- **Space Complexity:** 
+  - O(V) for storing distances and previous nodes
+  - O(V) for the visited/unvisited set
+  - Total: O(V)
+
+**Correctness:**
+
+Dijkstra's algorithm is correct for graphs with non-negative edge weights. The algorithm uses a greedy approach: at each step, it selects the unvisited vertex with the smallest known distance, which is guaranteed to be the shortest distance to that vertex. This works because:
+- All edge weights are non-negative
+- Once a vertex is visited, its shortest distance is finalized
+- The algorithm explores vertices in order of increasing distance from the source
+
+**Optimization Strategies:**
+
+1. **Priority Queue:** Using a binary heap or Fibonacci heap instead of linear search reduces time complexity
+2. **Early Termination:** Stop when the destination vertex is reached (if only one path is needed)
+3. **Bidirectional Search:** Run Dijkstra from both start and end, meeting in the middle
+4. **A* Algorithm:** Use heuristic function for faster convergence (if applicable)
+
+**Edge Cases:**
+
+1. **No Path Exists:** If destination is unreachable, distance remains infinity
+2. **Start Equals End:** Return path with single node, distance 0
+3. **Disconnected Graph:** Some vertices may remain unreachable
+4. **Single Node:** Trivial case, return immediately
+
+**Initialization:**
+
+1. Set distance[start] = 0
+2. Set distance[v] = infinity for all other vertices v
+3. Set previous[v] = null for all vertices
+4. Mark all vertices as unvisited
+5. Add all vertices to unvisited set
+
+### Algorithm Implementation Details from Study
+
+Based on the study's results, the algorithm was implemented to find multiple alternative routes. The implementation process involved:
+
+1. **Iteration Process:** The algorithm proceeds through multiple iterations, each time selecting the unvisited node with the minimum distance
+2. **Path Tracking:** The algorithm tracks the path taken to reach each node
+3. **Multiple Routes:** The study found 14 alternative routes with the same minimum travel time
+
+**Example Iteration Process (from study):**
+
+The study shows an iterative table structure where:
+- Each iteration selects a new node to add to the visited set
+- The algorithm considers edges from visited nodes to unvisited neighbors
+- Travel times are calculated and compared
+- The node with minimum travel time is selected
+
+**Key Route Found:**
+- Fastest route: 0-4-11-17-18-T
+- Travel time: 15 minutes
+- This route passes through 7 nodes (including start and end)
+
+## Implementation Patterns
+
+### Architecture Patterns
+
+1. **Graph-Based Architecture:** The entire system is built around graph data structures
+2. **Algorithm Template Pattern:** Dijkstra's algorithm follows a standard template that can be adapted for different graph representations
+
+### Design Patterns
+
+1. **Graph Representation Pattern:** 
+   - Adjacency list for sparse graphs
+   - Adjacency matrix for dense graphs
+   - Weighted edge representation
+
+2. **Path Reconstruction Pattern:**
+   - Store previous node for each vertex
+   - Backtrack from destination to source to reconstruct path
+
+### Data Organization
+
+**Node Organization:**
+- Nodes are labeled numerically (0, 1, 2, ..., T)
+- Start node: 0 (dormitory)
+- End node: T (library)
+- Intermediate nodes represent intersections and waypoints
+
+**Edge Organization:**
+- Each edge connects two nodes
+- Each edge has a weight (travel time in minutes)
+- Edges are bidirectional (can travel in both directions)
+
+**Route Organization:**
+- Routes are sequences of nodes: [start, node1, node2, ..., end]
+- Multiple routes can have the same total travel time
+- Routes are stored as paths through the graph
+
+### Component Structure
+
+1. **Graph Builder:** Constructs graph from route data
+2. **Dijkstra Solver:** Implements the algorithm
+3. **Path Finder:** Finds and enumerates all shortest paths
+4. **Route Comparator:** Compares results with Google Maps
+5. **Result Presenter:** Formats and displays results
+
+## Code Examples and Snippets
+
+### Code Example 1: Basic Dijkstra Implementation
+
+**Context:** Core algorithm implementation for finding shortest path
+
+**Language:** Python (pseudocode-style)
+
+```python
+def dijkstra_shortest_path(graph, start, end):
+    """
+    Find shortest path from start to end using Dijkstra's algorithm.
+    
+    Args:
+        graph: Dictionary where graph[node] = [(neighbor, weight), ...]
+        start: Starting node
+        end: Destination node
+    
+    Returns:
+        tuple: (path as list of nodes, total travel time)
+    """
+    # Initialize distances
+    distances = {node: float('infinity') for node in graph}
+    distances[start] = 0
+    
+    # Track previous node for path reconstruction
+    previous = {node: None for node in graph}
+    
+    # Set of unvisited nodes
+    unvisited = set(graph.keys())
+    
+    while unvisited:
+        # Find unvisited node with minimum distance
+        current = min(unvisited, key=lambda node: distances[node])
+        
+        # If we reached the destination, we can stop
+        if current == end:
+            break
+        
+        # Remove current from unvisited
+        unvisited.remove(current)
+        
+        # Update distances to neighbors
+        for neighbor, weight in graph[current]:
+            if neighbor in unvisited:
+                tentative_distance = distances[current] + weight
+                
+                # Update if shorter path found
+                if tentative_distance < distances[neighbor]:
+                    distances[neighbor] = tentative_distance
+                    previous[neighbor] = current
+    
+    # Reconstruct path
+    if distances[end] == float('infinity'):
+        return None, None  # No path exists
+    
+    path = []
+    current = end
+    while current is not None:
+        path.insert(0, current)
+        current = previous[current]
+    
+    return path, distances[end]
+```
+
+**Explanation:**
+This implementation finds the shortest path from start to end node. It uses a dictionary to represent the graph as an adjacency list, where each node maps to a list of (neighbor, weight) tuples.
+
+**Key Points:**
+- Uses infinity to represent unreachable nodes
+- Tracks previous node for each vertex to reconstruct the path
+- Stops early when destination is reached
+- Returns None if no path exists
+
+### Code Example 2: Finding All Alternative Routes
+
+**Context:** Extension to find all routes with the same minimum travel time
+
+**Language:** Python
+
+```python
+def find_all_shortest_paths(graph, start, end):
+    """
+    Find all paths with the minimum travel time from start to end.
+    
+    Args:
+        graph: Dictionary where graph[node] = [(neighbor, weight), ...]
+        start: Starting node
+        end: Destination node
+    
+    Returns:
+        list: List of all paths with minimum travel time
+    """
+    # First, find minimum travel time
+    _, min_time = dijkstra_shortest_path(graph, start, end)
+    
+    if min_time is None:
+        return []
+    
+    # Find all paths with this minimum time using DFS
+    all_paths = []
+    
+    def dfs(current, path, total_time):
+        if current == end:
+            if total_time == min_time:
+                all_paths.append(path[:])
+            return
+        
+        for neighbor, weight in graph[current]:
+            if neighbor not in path:  # Avoid cycles
+                new_time = total_time + weight
+                # Prune if already exceeds minimum
+                if new_time <= min_time:
+                    path.append(neighbor)
+                    dfs(neighbor, path, new_time)
+                    path.pop()
+    
+    dfs(start, [start], 0)
+    return all_paths
+```
+
+**Explanation:**
+This function first finds the minimum travel time, then uses depth-first search to enumerate all paths with that exact travel time.
+
+**Key Points:**
+- Uses DFS to explore all possible paths
+- Prunes paths that exceed minimum time
+- Avoids cycles by checking if node already in path
+- Returns all paths with the minimum travel time
+
+### Code Example 3: Graph Construction from Route Data
+
+**Context:** Building the graph structure from route information
+
+**Language:** Python
+
+```python
+def build_route_graph(route_data):
+    """
+    Build graph from route data.
+    
+    Args:
+        route_data: List of tuples (node1, node2, travel_time)
+    
+    Returns:
+        dict: Graph as adjacency list
+    """
+    graph = {}
+    
+    for node1, node2, travel_time in route_data:
+        # Add edge in both directions (bidirectional)
+        if node1 not in graph:
+            graph[node1] = []
+        if node2 not in graph:
+            graph[node2] = []
+        
+        graph[node1].append((node2, travel_time))
+        graph[node2].append((node1, travel_time))
+    
+    return graph
+
+# Example usage with study data
+route_data = [
+    (0, 1, 3),   # Dormitory to node 1: 3 minutes
+    (0, 4, 4),   # Dormitory to node 4: 4 minutes
+    (4, 11, 7),  # Node 4 to node 11: 7 minutes
+    (11, 17, 4), # Node 11 to node 17: 4 minutes
+    (17, 18, 0), # Node 17 to node 18: 0 minutes (same location)
+    (18, 'T', 0), # Node 18 to library: 0 minutes
+    # ... more route segments
+]
+
+graph = build_route_graph(route_data)
+```
+
+**Explanation:**
+This function constructs a bidirectional graph from route data, where each route segment is represented as an edge with travel time as weight.
+
+**Key Points:**
+- Creates bidirectional edges (can travel both ways)
+- Uses travel time as edge weight
+- Handles nodes that don't exist yet
+- Returns adjacency list representation
+
+## Mathematical Foundations
+
+### Notation
+
+- **G = (V, E):** Graph with vertices V and edges E
+- **w(u, v):** Weight (travel time) of edge from vertex u to vertex v
+- **d[v]:** Shortest distance from source to vertex v
+- **π[v]:** Previous vertex in shortest path to v
+- **S:** Set of visited vertices
+- **Q:** Set of unvisited vertices
+- **s:** Source vertex (start node, node 0)
+- **t:** Target vertex (end node, node T)
+
+### Core Formulas
+
+#### Shortest Path Distance Update
+
+$$
+d[v] = \min(d[v], d[u] + w(u, v))
+$$
+
+**Explanation:** The distance to vertex v is updated if a shorter path is found through vertex u. This is the core relaxation step in Dijkstra's algorithm.
+
+#### Path Reconstruction
+
+$$
+\text{path} = [s, \pi[\pi[...\pi[t]]], \pi[t], t]
+$$
+
+**Explanation:** The shortest path is reconstructed by following the previous vertex pointers from the target back to the source.
+
+### Variable Definitions
+
+- **V:** Set of all vertices (nodes) in the graph
+- **E:** Set of all edges (route segments) in the graph
+- **|V|:** Number of vertices (nodes)
+- **|E|:** Number of edges (route segments)
+- **w(e):** Weight of edge e (travel time in minutes)
+- **d(s, v):** Shortest distance from source s to vertex v
+- **P(s, t):** Shortest path from source s to target t
+
+### Graph Theory Properties
+
+1. **Non-Negative Weights:** Dijkstra's algorithm requires all edge weights to be non-negative (w(u, v) ≥ 0 for all edges)
+
+2. **Optimal Substructure:** The shortest path from s to t contains the shortest path from s to any intermediate vertex
+
+3. **Greedy Choice Property:** At each step, selecting the unvisited vertex with minimum distance is optimal
+
+## Experimental Setup
+
+### Datasets
+
+**Primary Dataset:**
+- **Location:** UNP (Padang State University) campus area, Padang City, West Sumatera Province, Indonesia
+- **Start Point:** UNP student dormitory at Patenggangan Street No.14e, Parupuk Tabing Village, Koto Tangah District, Padang City, zip code 25173
+- **End Point:** UNP campus library (central library in front of UNP FMIPA building)
+- **Route Type:** Pedestrian routes (walking)
+- **Data Source:** Google Maps (https://www.google.co.id/maps/dir) and field surveys
+
+**Route Data Characteristics:**
+- Multiple alternative routes available
+- Routes accessible by both pedestrians and vehicles
+- Short distance routes (1.7-2.0 km range)
+- Urban campus area with various street options
+
+### Hardware Configuration
+
+Not specified in the paper, but typical requirements:
+- Standard computer for algorithm execution
+- Sufficient memory for graph representation
+- No special hardware requirements (algorithm is computationally efficient)
+
+### Software Environment
+
+- **Data Source:** Google Maps web interface
+- **Algorithm Implementation:** Not specified, but can be implemented in any programming language
+- **Analysis Tools:** Standard data analysis and comparison tools
+
+### Hyperparameters
+
+**Algorithm Parameters:**
+- **Graph Representation:** Adjacency list or adjacency matrix
+- **Priority Queue Implementation:** Binary heap, Fibonacci heap, or linear search
+- **Early Termination:** Enabled (stop when destination reached)
+
+**Route Parameters:**
+- **Weight Metric:** Travel time (minutes) rather than distance
+- **Graph Type:** Undirected (bidirectional routes)
+- **Edge Weights:** Non-negative integers (travel time in minutes)
+
+### Evaluation Metrics
+
+1. **Travel Time:** Primary metric - time in minutes to travel from start to end
+2. **Number of Alternative Routes:** Count of routes with the same minimum travel time
+3. **Route Distance:** Secondary metric - distance in kilometers (for comparison)
+4. **Comparison with Google Maps:** Difference in travel time and number of routes
+
+### Baseline Methods
+
+**Google Maps Routing:**
+- Provides 3 alternative routes
+- Fastest route: 21 minutes
+- Routes:
+  1. Srigunting street: 21 minutes, 1.7 km
+  2. Walet street: 24 minutes, 2.0 km
+  3. Bhakti / Ikhwanul Muslimin street: 25 minutes, 2.0 km
+
+### Experimental Protocol
+
+1. **Data Collection Phase:**
+   - Extract route data from Google Maps
+   - Conduct field surveys to identify additional routes
+   - Measure travel times between location points
+
+2. **Graph Construction Phase:**
+   - Map all identified routes as graph edges
+   - Assign travel times as edge weights
+   - Label nodes (locations/intersections)
+
+3. **Algorithm Execution Phase:**
+   - Apply Dijkstra's algorithm from start node (0) to end node (T)
+   - Find shortest path(s)
+   - Enumerate all alternative routes with minimum travel time
+
+4. **Comparison Phase:**
+   - Compare results with Google Maps suggestions
+   - Analyze differences in travel time
+   - Analyze differences in number of alternative routes
+
+5. **Validation Phase:**
+   - Verify algorithm results
+   - Confirm route feasibility
+   - Document findings
+
+## Results and Evaluation
+
+### Quantitative Results
+
+#### Dijkstra Algorithm Results
+
+- **Number of Alternative Routes Found:** 14 routes
+- **Fastest Travel Time:** 15 minutes
+- **Optimal Route Path:** 0-4-11-17-18-T (passing through 7 nodes including start and end)
+- **Route Segments:** The fastest route consists of the following segments:
+  - 0 → 4: Part of initial path
+  - 4 → 11: Part of path
+  - 11 → 17: Part of path
+  - 17 → 18: Transition segment
+  - 18 → T: Final segment to library
+
+#### Google Maps Results
+
+- **Number of Alternative Routes:** 3 routes
+- **Fastest Travel Time:** 21 minutes
+- **Routes:**
+  1. **Route 1 (Srigunting street):**
+     - Travel time: 21 minutes
+     - Distance: 1.7 km
+  2. **Route 2 (Walet street):**
+     - Travel time: 24 minutes
+     - Distance: 2.0 km
+  3. **Route 3 (Bhakti / Ikhwanul Muslimin street):**
+     - Travel time: 25 minutes
+     - Distance: 2.0 km
+
+#### Comparison Results
+
+- **Time Improvement:** 6 minutes faster (15 minutes vs 21 minutes)
+- **Route Discovery:** 14 alternative routes vs 3 alternative routes (4.67x more routes)
+- **Percentage Improvement:** 28.6% faster travel time ((21-15)/21 × 100%)
+
+### Performance Metrics
+
+**Algorithm Performance:**
+- Successfully found optimal route
+- Identified multiple alternative routes with same minimum time
+- Efficient computation for the graph size
+
+**Route Quality Metrics:**
+- **Optimality:** Dijkstra guarantees optimal solution (shortest path)
+- **Completeness:** Found all routes with minimum travel time
+- **Practicality:** Routes are feasible for pedestrian travel
+
+### Comparisons
+
+**Dijkstra Algorithm vs Google Maps:**
+
+| Metric | Dijkstra Algorithm | Google Maps | Difference |
+|--------|-------------------|-------------|------------|
+| Fastest Travel Time | 15 minutes | 21 minutes | -6 minutes (28.6% faster) |
+| Number of Routes | 14 routes | 3 routes | +11 routes (367% more) |
+| Route Path | 0-4-11-17-18-T | Various | Different paths |
+
+**Key Findings:**
+1. Dijkstra algorithm found a route that is 6 minutes (28.6%) faster than Google Maps
+2. Dijkstra algorithm discovered 11 more alternative routes than Google Maps
+3. The optimal route uses different street segments than Google Maps suggestions
+4. Multiple alternative routes provide flexibility for students
+
+### Statistical Analysis
+
+**Significance:**
+- The 6-minute difference represents a meaningful time savings for daily commutes
+- For students making this trip multiple times per day, the time savings accumulate significantly
+- The additional route options provide valuable flexibility
+
+**Practical Impact:**
+- Daily time savings: 6 minutes per trip
+- Weekly time savings (assuming 10 trips): 60 minutes (1 hour)
+- Monthly time savings (assuming 40 trips): 240 minutes (4 hours)
+
+### Ablation Studies
+
+Not conducted in this study, but potential variations could include:
+- Using distance instead of time as edge weights
+- Considering traffic conditions
+- Including elevation changes
+- Accounting for road conditions
+
+### Sensitivity Analysis
+
+Not explicitly conducted, but the study shows:
+- Different algorithms (Dijkstra vs Google Maps routing) produce different results
+- More comprehensive route exploration (Dijkstra) finds better solutions
+- Field survey data complements online mapping data
+
+### Failure Cases
+
+**Limitations Identified:**
+1. **Google Maps Limitation:** May not explore all possible pedestrian routes
+2. **Algorithm Assumption:** Assumes constant travel time (doesn't account for varying conditions)
+3. **Data Completeness:** Depends on completeness of field survey data
+
+**Edge Cases Handled:**
+- Multiple routes with same minimum time (all are returned)
+- Route segments with zero travel time (same location nodes)
+- Graph connectivity (ensures path exists)
+
+## Best Practices and Recommendations
+
+### Implementation Best Practices
+
+1. **Graph Representation:**
+   - Use adjacency list for sparse graphs (most road networks)
+   - Use adjacency matrix only for dense graphs
+   - Ensure bidirectional edges for undirected routes
+
+2. **Algorithm Implementation:**
+   - Use priority queue (binary heap) for better performance
+   - Implement early termination when destination is reached
+   - Store previous nodes for path reconstruction
+   - Handle cases where no path exists
+
+3. **Data Collection:**
+   - Combine online mapping data with field surveys
+   - Verify route feasibility through actual testing
+   - Update travel times based on real-world conditions
+   - Consider different times of day if relevant
+
+4. **Route Analysis:**
+   - Find all routes with minimum time, not just one
+   - Provide multiple alternatives for user flexibility
+   - Validate routes for pedestrian accessibility
+
+### Optimization Tips
+
+1. **Performance Optimization:**
+   - Use efficient priority queue implementation (binary heap or Fibonacci heap)
+   - Implement bidirectional Dijkstra for faster convergence
+   - Cache results for frequently queried routes
+   - Use A* algorithm with good heuristic if applicable
+
+2. **Memory Optimization:**
+   - Use sparse graph representation for large networks
+   - Only store necessary path information
+   - Clear temporary data structures after use
+
+3. **Accuracy Optimization:**
+   - Regularly update travel time data
+   - Account for seasonal variations
+   - Consider time-of-day variations
+   - Include real-time conditions if available
+
+### Common Pitfalls to Avoid
+
+1. **Incorrect Weight Assignment:**
+   - Don't confuse distance with time
+   - Ensure weights represent the actual optimization goal
+   - Verify weight units are consistent
+
+2. **Graph Connectivity:**
+   - Ensure all relevant routes are included in graph
+   - Check that start and end nodes are connected
+   - Handle disconnected components appropriately
+
+3. **Algorithm Misuse:**
+   - Don't use Dijkstra with negative weights (use Bellman-Ford instead)
+   - Don't assume single solution (multiple optimal paths may exist)
+   - Don't forget to handle unreachable destinations
+
+4. **Data Quality:**
+   - Don't rely solely on online mapping data
+   - Verify routes through field surveys
+   - Update data regularly
+   - Check for route changes or closures
+
+### Guidelines
+
+1. **Route Selection Guidelines:**
+   - Prioritize routes with minimum travel time
+   - Provide multiple alternatives when available
+   - Consider user preferences (scenic routes, safety, etc.)
+   - Validate routes for intended use (pedestrian vs vehicle)
+
+2. **Data Collection Guidelines:**
+   - Use multiple data sources (online maps + field surveys)
+   - Verify critical route segments
+   - Document data collection methodology
+   - Update data periodically
+
+3. **Implementation Guidelines:**
+   - Follow standard algorithm implementations
+   - Test with known examples
+   - Handle edge cases properly
+   - Document assumptions and limitations
+
+### Warnings
+
+1. **Algorithm Limitations:**
+   - Dijkstra only works with non-negative weights
+   - Assumes static travel times (doesn't account for traffic)
+   - May not find all paths if early termination is used
+
+2. **Data Limitations:**
+   - Online mapping data may be incomplete
+   - Field survey data may miss some routes
+   - Travel times may vary by time of day
+
+3. **Practical Considerations:**
+   - Optimal route may not always be the most practical
+   - Safety and accessibility should be considered
+   - User preferences may override optimality
+
+## Limitations and Assumptions
+
+### Stated Limitations
+
+1. **Scope Limitation:**
+   - Only considers pedestrian routes
+   - Limited to specific start and end points
+   - Doesn't account for all possible routes in the area
+
+2. **Data Limitation:**
+   - Depends on completeness of Google Maps data
+   - Field survey may not cover all routes
+   - Travel times are estimates, not exact measurements
+
+3. **Algorithm Limitation:**
+   - Assumes constant travel times (no traffic variation)
+   - Doesn't account for real-time conditions
+   - May not consider all route constraints (e.g., one-way streets for pedestrians)
+
+4. **Comparison Limitation:**
+   - Google Maps may use different optimization criteria
+   - Google Maps routing may prioritize different factors
+   - Direct comparison may not account for all variables
+
+### Assumptions
+
+1. **Graph Assumptions:**
+   - All routes are bidirectional (can travel both ways)
+   - Travel times are constant and known
+   - Graph accurately represents the road network
+
+2. **Route Assumptions:**
+   - All identified routes are accessible to pedestrians
+   - Travel times are accurate for walking speed
+   - No route closures or restrictions
+
+3. **User Assumptions:**
+   - Users are walking at average pedestrian speed
+   - Users can follow any of the identified routes
+   - Time is the primary optimization criterion
+
+4. **Data Assumptions:**
+   - Google Maps data is reasonably accurate
+   - Field survey data is comprehensive
+   - Travel time measurements are representative
+
+### Constraints
+
+1. **Geographic Constraints:**
+   - Limited to UNP campus area
+   - Specific start and end locations
+   - Urban environment constraints
+
+2. **Temporal Constraints:**
+   - Travel times measured at specific times
+   - Doesn't account for time-of-day variations
+   - Static route conditions assumed
+
+3. **Methodological Constraints:**
+   - Single algorithm (Dijkstra) used
+   - Comparison with single alternative (Google Maps)
+   - Limited to time-based optimization
+
+### Scope Limitations
+
+1. **Route Type:**
+   - Only pedestrian routes considered
+   - Vehicle routes not analyzed
+   - Public transportation not included
+
+2. **Optimization Criteria:**
+   - Only travel time optimized
+   - Distance, safety, scenery not considered
+   - Single objective optimization
+
+3. **Geographic Scope:**
+   - Limited to specific campus area
+   - Results may not generalize to other locations
+   - Urban-specific context
+
+### Future Work
+
+1. **Algorithm Enhancements:**
+   - Incorporate A* algorithm with heuristics
+   - Consider bidirectional search
+   - Implement dynamic routing with real-time data
+
+2. **Data Enhancements:**
+   - Include real-time traffic conditions
+   - Account for time-of-day variations
+   - Consider weather conditions
+   - Include elevation and terrain data
+
+3. **Multi-Criteria Optimization:**
+   - Optimize for multiple objectives (time, distance, safety)
+   - Include user preferences
+   - Consider route popularity
+
+4. **Extended Applications:**
+   - Apply to larger geographic areas
+   - Include multiple transportation modes
+   - Develop mobile application
+   - Real-time route updates
+
+## Related Techniques and References
+
+### Related Techniques
+
+1. **A* Algorithm:**
+   - Similar to Dijkstra but uses heuristic function
+   - Can be faster for single-pair shortest path
+   - Requires admissible heuristic
+
+2. **Bellman-Ford Algorithm:**
+   - Can handle negative weights
+   - Slower than Dijkstra for non-negative weights
+   - Useful for detecting negative cycles
+
+3. **Floyd-Warshall Algorithm:**
+   - Finds shortest paths between all pairs of vertices
+   - More efficient for dense graphs when all pairs needed
+   - O(V³) time complexity
+
+4. **Bidirectional Search:**
+   - Run Dijkstra from both start and end
+   - Meet in the middle
+   - Can be faster for single-pair queries
+
+5. **Contraction Hierarchies:**
+   - Preprocessing technique for faster queries
+   - Useful for repeated queries on same graph
+   - More complex implementation
+
+### Key References
+
+1. **Bellman, R. (1956):** "On a routing problem" - Original routing problem formulation
+
+2. **Dijkstra, E. W. (1959):** Original Dijkstra's algorithm paper (referenced through interview: "An interview with Edsger W. Dijkstra," Commun. ACM, Vol. 53, 2010)
+
+3. **Floyd, R. W. (1962):** "Algorithm 97: shortest path," Commun. ACM, Vol. 5 - Floyd-Warshall algorithm
+
+4. **Johnson, D. B. (1977):** "Efficient algorithms for shortest paths in sparse networks," J. ACM, Vol. 24 - Johnson's algorithm
+
+5. **Abbas, Q., et al. (2018):** "Reduced solution set shortest path problem: Capton algorithm with special reference to Dijkstra's algorithm," Malaysian J. Comput. Sci. - Algorithm variations
+
+6. **Ardiani, F. (2011):** "Penentuan jarak terpendek dan waktu tempuh menggunakan algoritma Dijkstra dengan pemrograman berbasis objek" - Shortest distance and travel time using Dijkstra
+
+7. **Ardana, D. & Saputra, R. (2016):** "Penerapan Algoritma Dijkstra pada Aplikasi Pencarian Rute Bus Trans Semarang" - Dijkstra application for bus routes
+
+8. **Chen, Y. Z., et al. (2014):** "Path optimization study for vehicles evacuation based on Dijkstra algorithm," Procedia Eng. - Evacuation route optimization
+
+9. **Shu-xi, W. (2012):** "The Improved Dijkstra's Shortest Path Algorithm and Its Application," Procedia Engineering - Algorithm improvements
+
+### Cross-References
+
+- **Graph Theory:** Fundamental theory underlying the algorithm
+- **Shortest Path Problems:** General class of problems solved
+- **Route Optimization:** Application domain
+- **Pedestrian Navigation:** Specific use case
+- **Google Maps Routing:** Comparison baseline
+
+## Practical Applications
+
+### Use Cases
+
+1. **Campus Navigation:**
+   - Finding fastest routes between campus buildings
+   - Student dormitory to academic buildings
+   - Library to various campus locations
+
+2. **Urban Pedestrian Routing:**
+   - City navigation for pedestrians
+   - Tourist route planning
+   - Daily commute optimization
+
+3. **Emergency Evacuation:**
+   - Finding fastest evacuation routes
+   - Emergency response planning
+   - Disaster management
+
+4. **Public Transportation:**
+   - Bus route optimization
+   - Transit system planning
+   - Multi-modal transportation
+
+5. **Logistics and Delivery:**
+   - Delivery route optimization
+   - Courier service routing
+   - Last-mile delivery
+
+### Application Domains
+
+1. **Transportation:**
+   - Route planning
+   - Navigation systems
+   - Traffic optimization
+
+2. **Logistics:**
+   - Supply chain optimization
+   - Delivery routing
+   - Warehouse management
+
+3. **Urban Planning:**
+   - City infrastructure planning
+   - Pedestrian pathway design
+   - Accessibility planning
+
+4. **Emergency Services:**
+   - Emergency response routing
+   - Evacuation planning
+   - Disaster management
+
+5. **Tourism:**
+   - Tourist route planning
+   - Sightseeing optimization
+   - Travel itinerary planning
+
+### Application Scenarios
+
+1. **Daily Commute:**
+   - Students finding fastest route to campus
+   - Workers optimizing daily commute
+   - Regular route optimization
+
+2. **One-Time Navigation:**
+   - Visitors finding locations
+   - Tourists exploring areas
+   - First-time route finding
+
+3. **Multi-Destination Routing:**
+   - Running errands efficiently
+   - Delivery routes with multiple stops
+   - Tour planning with multiple attractions
+
+4. **Real-Time Navigation:**
+   - Dynamic route adjustment
+   - Traffic-aware routing
+   - Weather-affected routing
+
+### Real-World Examples
+
+1. **UNP Campus Case Study:**
+   - Dormitory to library routing
+   - 14 alternative routes found
+   - 6 minutes faster than Google Maps
+
+2. **Trans Semarang Bus Routes:**
+   - Public transportation route finding
+   - Multiple bus route optimization
+
+3. **Bali Tourism Routes:**
+   - Tourist attraction routing
+   - Scenic route planning
+
+4. **Emergency Evacuation:**
+   - Vehicle evacuation during incidents
+   - People movement from incident areas to safe areas
+   - Urban traffic management during emergencies
+
+## Implementation Checklist
+
+### Prerequisites
+
+- [ ] Understanding of graph theory basics
+- [ ] Knowledge of Dijkstra's algorithm
+- [ ] Programming language proficiency (Python, Java, C++, etc.)
+- [ ] Access to route data (maps, surveys, etc.)
+- [ ] Graph data structure implementation
+
+### Setup Steps
+
+1. [ ] Collect route data from mapping services (Google Maps, OpenStreetMap, etc.)
+2. [ ] Conduct field surveys to identify additional routes
+3. [ ] Measure or estimate travel times for each route segment
+4. [ ] Organize data into structured format (node pairs with weights)
+5. [ ] Set up development environment with chosen programming language
+
+### Implementation Steps
+
+1. [ ] Implement graph data structure (adjacency list or matrix)
+2. [ ] Create function to build graph from route data
+3. [ ] Implement Dijkstra's algorithm core logic
+4. [ ] Add path reconstruction functionality
+5. [ ] Implement function to find all alternative routes with minimum time
+6. [ ] Add input/output handling for start and end nodes
+7. [ ] Implement result formatting and display
+8. [ ] Add validation and error handling
+
+### Testing Steps
+
+1. [ ] Test with simple graph (2-3 nodes)
+2. [ ] Test with known optimal solution
+3. [ ] Test path reconstruction correctness
+4. [ ] Test with disconnected graph (no path exists)
+5. [ ] Test with single node (start equals end)
+6. [ ] Test with real route data
+7. [ ] Compare results with known routing services
+8. [ ] Validate route feasibility through field testing
+
+## Figures and Visualizations
+
+### Figure 1: Road Map from UNP Student Dormitory to UNP Campus Library
+
+**Description:** 
+A road map showing the route from the UNP student dormitory to the UNP campus library, displaying the three alternative routes identified by Google Maps.
+
+**Caption:** 
+Road Map from the UNP Student Dormitory to the UNP Campus Library with Google Map
+
+**Key Elements:**
+- Starting point: UNP student dormitory
+- Ending point: UNP campus library
+- Route 1: Srigunting street (21 minutes, 1.7 km)
+- Route 2: Walet street (24 minutes, 2.0 km)
+- Route 3: Bhakti / Ikhwanul Muslimin street (25 minutes, 2.0 km)
+- Various intersections and waypoints along the routes
+
+**Relationships:** 
+Shows the geographic relationship between the dormitory and library, with multiple connecting routes through different streets in the campus area.
+
+### Figure 2: Graph Representation of Route Network
+
+**Description:** 
+(Implied from study) A graph showing nodes (locations) and edges (route segments) with weights (travel times) representing the road network between dormitory and library.
+
+**Key Elements:**
+- Nodes labeled 0, 1, 2, 3, ..., T
+- Node 0: Starting node (dormitory)
+- Node T: Terminal node (library)
+- Edges connecting nodes with travel time weights
+- Multiple paths from start to end
+
+**Relationships:** 
+Shows how different locations connect to form routes, with travel times determining the optimal path.
+
+### Figure 3: Dijkstra Algorithm Iteration Process
+
+**Description:** 
+(From study tables) Shows the step-by-step process of Dijkstra's algorithm finding the shortest path, with each iteration selecting the next node and updating distances.
+
+**Key Elements:**
+- Iteration numbers
+- Visited set at each step
+- Candidate edges being considered
+- Travel times for each candidate
+- Selected node at each iteration
+- Final path reconstruction
+
+**Relationships:** 
+Demonstrates how the algorithm progressively finds shorter paths and builds the optimal route.
+
+### Figure 4: Optimal Route Path Visualization
+
+**Description:** 
+(Referenced in study) Visualization of the optimal route found: 0-4-11-17-18-T, showing the sequence of nodes from dormitory to library.
+
+**Key Elements:**
+- Node sequence: 0 → 4 → 11 → 17 → 18 → T
+- Route segments between nodes
+- Total travel time: 15 minutes
+- 7 nodes total (including start and end)
+
+**Relationships:** 
+Shows the actual path taken by the optimal route through the graph network.
+
+## Tables
+
+### Table 1: Google Maps Route Alternatives
+
+**Caption:** Alternative routes from UNP student dormitory to UNP campus library as shown by Google Maps
+
+| Route | Street Name | Travel Time (minutes) | Distance (km) |
+|-------|-------------|----------------------|---------------|
+| 1 | Srigunting street | 21 | 1.7 |
+| 2 | Walet street | 24 | 2.0 |
+| 3 | Bhakti / Ikhwanul Muslimin street | 25 | 2.0 |
+
+**Notes:**
+- All routes are pedestrian routes
+- Travel times are estimates for walking
+- Fastest route: Route 1 (Srigunting street) with 21 minutes
+
+### Table 2: Dijkstra Algorithm Results Summary
+
+**Caption:** Summary of routes found using Dijkstra's algorithm
+
+| Metric | Value |
+|--------|-------|
+| Number of Alternative Routes | 14 |
+| Fastest Travel Time | 15 minutes |
+| Optimal Route Path | 0-4-11-17-18-T |
+| Number of Nodes in Optimal Path | 7 (including start and end) |
+| Improvement over Google Maps | 6 minutes faster (28.6% improvement) |
+
+**Notes:**
+- All 14 routes have the same minimum travel time (15 minutes)
+- Multiple alternative paths provide flexibility
+- Significant improvement over Google Maps fastest route
+
+### Table 3: Dijkstra Algorithm Iteration Process
+
+**Caption:** Step-by-step iteration process of Dijkstra's algorithm (abbreviated representation)
+
+| Iteration | Visited Set | Candidate Edges | Travel Time | Selected |
+|-----------|-------------|-----------------|-------------|-----------|
+| 0 | {0} | 0-1, 0-4 | 3, 4 | - |
+| 1 | {0,1} | 0-4, 1-2, 1-3 | 4, 5, 6 | 0-4 (4 min) |
+| 2 | {0,1,4} | 1-2, 1-3, 4-5, 4-11 | 5, 6, 8, 11 | ... |
+| ... | ... | ... | ... | ... |
+| 9 | {0,1,2,3,4,5,6,10,11} | 6-7, 6-14, 11-12, 11-17 | 11, 13, 11, 12 | 6-7 or 11-12 (11 min) |
+| ... | ... | ... | ... | ... |
+| 14 | {0,1,2,3,4,5,6,7,10,11,12,13,14,17,18} | 18-19, 18-T | 18, 15 | 18-T (15 min) |
+
+**Notes:**
+- Shows progressive selection of nodes with minimum distance
+- Multiple edges may have same minimum time at some iterations
+- Final iteration reaches destination (T) with 15 minutes total time
+- The "Fastest Time" column indicates when a new minimum is found
+
+### Table 4: Comparison Summary
+
+**Caption:** Comparison between Dijkstra algorithm and Google Maps results
+
+| Aspect | Dijkstra Algorithm | Google Maps | Difference |
+|--------|-------------------|-------------|------------|
+| Fastest Travel Time | 15 minutes | 21 minutes | -6 minutes (28.6% faster) |
+| Number of Routes | 14 routes | 3 routes | +11 routes (367% more) |
+| Route Discovery | Comprehensive exploration | Limited exploration | More thorough |
+| Optimization | Guaranteed optimal | Heuristic-based | Provably optimal |
+
+**Notes:**
+- Dijkstra provides mathematically optimal solution
+- More routes discovered through comprehensive graph exploration
+- Significant practical time savings for daily commuters
+
+## Appendices and Supplementary Material
+
+### Appendix A: Complete Node and Edge List
+
+**Note:** The study references specific nodes and edges, but the complete graph structure is not fully detailed in the available content. A complete implementation would include:
+
+- Full list of all nodes (locations/intersections)
+- Complete edge list with travel times
+- Node coordinates or addresses (if available)
+- Route segment descriptions
+
+### Appendix B: Alternative Route Enumeration
+
+The study found 14 alternative routes with 15 minutes travel time. While the specific paths are not all listed, the methodology for finding them involves:
+
+1. Finding the minimum travel time (15 minutes)
+2. Enumerating all paths with exactly that travel time
+3. Validating each path for feasibility
+4. Presenting all alternatives to users
+
+### Appendix C: Implementation Code (Full)
+
+**Note:** Complete implementation code would include:
+- Graph construction from data files
+- Full Dijkstra implementation with priority queue
+- Path enumeration algorithm
+- Result formatting and export
+- User interface (if applicable)
+
+### Appendix D: Field Survey Methodology
+
+**Data Collection Process:**
+1. Identify all possible routes between dormitory and library
+2. Walk each route segment and measure time
+3. Note any route restrictions or obstacles
+4. Document route characteristics (sidewalks, crossings, etc.)
+5. Verify route accessibility for pedestrians
+
+## References
+
+1. Bellman, R. "On a routing problem," Tech. report, DTIC Doc., 1956.
+
+2. Dijkstra, E. W. (Interview). "An interview with Edsger W. Dijkstra," Commun. ACM, Vol. 53, N, pp. 41-47., 2010.
+
+3. Floyd, R. W. "'Algorithm 97: shortest path,'" Commun. ACM, Vol. 5, No, p. 345., 1962.
+
+4. Johnson, D. B. "Efficient algorithms for shortest paths in sparse networks.," J. ACM, Vol. 24, N, pp. 1-13, 1977.
+
+5. Abbas, Q., Hussain, Q., Zia, T., and Mansoor, A. "Reduced solution set shortest path problem: Capton algoritm with special reference to Dijkstra's algorithm," Malaysian J. Comput. Sci., vol. 31, no. 3, pp. 175-187, 2018, doi: 10.22452/mjcs.vol31no3.1.
+
+6. Ardiani, F. "Penentuan jarak terpendek dan waktu tempuh menggunakan algoritma Dijkstra dengan pemrograman berbasis objek.," Skripsi Univ. Islam Negeri Sunan Kalijaga, 2011.
+
+7. KBBI, "Kamus Besar Bahasa Indonesia," 2019.
+
+8. Google, "Google Map," 2019. https://www.google.co.id/maps/dir
+
+9. Lutfi, L. "Permasalahan Dalam Penetapan Level Uang." Univesitas Negeri Padang, Padang, p. 2, 2013.
+
+10. Ardana, D. and Saputra, R. "Penerapan Algoritma Dijkstra pada Aplikasi Pencarian Rute Bus Trans Semarang," no. Snik, pp. 299-306, 2016.
+
+11. Joni, L., Dewi, E., and Lot, T. "Pencarian Rute Terpendek Tempat Wisata Di Bali Dengan Menggunakan Algoritma Dijkstra," vol. 2010, no. Snati, pp. 2008-2011, 2010.
+
+12. Purwananto, Y., Purwitasari, D., and Wibowo, W. A. "Implementasi dan Analisis Algoritma Pencarian Rute Terpendek di Kota Surabaya," J. Penelit. dan ..., vol. 10, no. 2, pp. 94-101, 2005.
+
+13. "Algoritma Branch _ And _ Bound Untuk Mencari Jarak Terpendek," pp. 3-5, 2008.
+
+14. "Aplikasi pencarian rute gedung udinus, kos-kosan dan kuliner menggunakan metode dijkstra sekitar Universitas Dian Nuswantoro," 2016.
+
+15. Kumar, G., Kumar, R., and Gandotra, N. "Algorithm for Shortest Path Problem in a Network with Interval-valued Intuitionistic Trapezoidal Fuzzy Number," vol. 70, pp. 123-129, 2015, doi: 10.1016/j.procs.2015.10.056.
+
+16. Munir, R. Diktat Kuliah IF2251 Strategi Algoritmik. Departemen Teknik Informatika, Institut Teknologi Bandung, 2007.
+
+17. Shu-xi, W. "Procedia Engineering The Improved Dijkstra ' s Shortest Path Algorithm and Its Application," vol. 29, pp. 1186-1190, 2012, doi: 10.1016/j.proeng.2012.01.110.
+
+18. Chen, Y. Z., Shen, S. F., Chen, T., and Yang, R. "Path optimization study for vehicles evacuation based on Dijkstra algorithm," Procedia Eng., vol. 71, pp. 159-165, 2014, doi: 10.1016/j.proeng.2014.04.023.
+
+19. Munir, R. Matematika Diskrit. Bandung: Informatika, 2007.
+
+20. Siang, J. J. Matematika Diskrit dan aplikasinya pada ilmu komputer. Yogyakarta: Andi, 2002.
+
+21. Bondy, J.A. and Murty, U. S. R. Graph Theory With Applications. NorthHolland, New York: University of Waterloo, 1982.
+
+22. "Geographic Information Technology Training Alliance (GITTA)."

@@ -1,0 +1,828 @@
+---
+alwaysApply: false
+---
+
+# NLP and Reinforcement Learning
+
+## Paper Metadata
+- **Title:** NLP and Reinforcement Learning (Chapter 6)
+- **Source Book:** Artificial Intelligence, Machine Learning, and Deep Learning
+- **Author:** Oswald Campesato
+- **Year:** 2020
+- **Publisher:** Mercury Learning and Information
+- **ISBN:** 978-1-68392-467-8
+- **Chapter:** 6
+
+## Abstract / Summary
+
+This chapter provides an introduction to NLP (Natural Language Processing) and Reinforcement Learning (RL). The NLP section covers techniques from rule-based approaches to deep learning, including n-grams, skip-grams, Bag of Words (BoW), TF-IDF, Transformers, BERT, and preprocessing tasks. The Reinforcement Learning section introduces RL concepts, the nchain task, epsilon-greedy algorithm, Bellman equation, TF-Agents toolkit, deep reinforcement learning, and the Google Dopamine toolkit.
+
+## Problem Statement
+
+### Problem Definition
+
+**NLP:** Processing and understanding human language using computational methods. Tasks include text classification, sentiment analysis, machine translation, question answering, and text generation.
+
+**Reinforcement Learning:** Learning to make decisions through interaction with an environment, receiving rewards or penalties, and optimizing for long-term cumulative reward.
+
+### Motivation
+
+**NLP Use Cases:**
+- Chatbots
+- Search (text and audio)
+- Text classification
+- Sentiment analysis
+- Recommendation systems
+- Question answering
+- Speech recognition
+- NLU (Natural Language Understanding)
+- NLG (Natural Language Generation)
+
+**RL Use Cases:**
+- Game playing (chess, Go, video games)
+- Robotics
+- Autonomous vehicles
+- Resource allocation
+- Recommendation systems
+- Trading algorithms
+
+### Challenges
+
+**NLP:**
+- Ambiguity in language
+- Context understanding
+- Long-range dependencies
+- Multiple languages
+- Sarcasm and sentiment
+
+**RL:**
+- Exploration vs exploitation tradeoff
+- Sparse rewards
+- Long-term planning
+- Sample efficiency
+- Stability in training
+
+### Scope
+
+This chapter covers:
+- NLP techniques (rule-based, ML-based, deep learning)
+- Text preprocessing
+- N-grams, skip-grams, BoW, TF-IDF
+- Transformers and BERT
+- Reinforcement Learning fundamentals
+- Bellman equation
+- Epsilon-greedy algorithm
+- TF-Agents and Dopamine toolkits
+
+## Key Concepts and Techniques
+
+### NLP Concepts
+
+1. **N-gram:** Adjacent words grouped together
+2. **Skip-gram:** Words on both sides of a given word
+3. **Bag of Words (BoW):** Treats words as a set, ignores order
+4. **TF-IDF:** Term Frequency-Inverse Document Frequency
+5. **Word2Vec:** Word embeddings (Google)
+6. **GloVe:** Global Vectors for Word Representation (Stanford)
+7. **Transformer:** Self-attention based architecture
+8. **BERT:** Bidirectional Encoder Representations from Transformers
+9. **ELMo:** Deep word representation using bidirectional LSTMs
+10. **Attention:** Mechanism for focusing on relevant parts
+
+### Reinforcement Learning Concepts
+
+1. **Agent:** Entity that makes decisions
+2. **Environment:** World the agent interacts with
+3. **State:** Current situation
+4. **Action:** Decision made by agent
+5. **Reward:** Feedback from environment
+6. **Policy:** Strategy for selecting actions
+7. **Value Function:** Expected cumulative reward
+8. **Q-Function:** Action-value function
+9. **Bellman Equation:** Fundamental equation in RL
+10. **Epsilon-Greedy:** Exploration strategy
+
+## Algorithms
+
+### Algorithm 1: N-gram
+
+**Description:**
+An n-gram is a technique for creating a vocabulary based on adjacent words grouped together. This technique retains some word positions (unlike BoW).
+
+**How It Works:**
+1. Specify value of $n$ (size of group)
+2. For each word, construct vocabulary term containing $n$ words on left and $n$ words on right
+3. Create all possible n-grams from text
+
+**Example - 2-grams:**
+Sentence: "This is a sentence"
+- (this, is)
+- (is, a)
+- (a, sentence)
+
+**Example - 3-grams:**
+Sentence: "This is a sentence"
+- (this, is, a)
+- (is, a, sentence)
+
+**Use Cases:**
+- Used heavily in ELMo and BERT for pretraining
+- Language modeling
+- Text classification
+
+### Algorithm 2: Skip-gram
+
+**Description:**
+Given a word in a sentence, a skip-gram creates a vocabulary term by constructing a list containing $n$ words on both sides of a given word, followed by the word itself.
+
+**Example - Skip-gram size 1:**
+Sentence: "the quick brown fox jumped over the lazy dog"
+- ([the, brown], quick)
+- ([quick, fox], brown)
+- ([brown, jumped], fox)
+- ...
+
+**Example - Skip-gram size 2:**
+- ([the, quick, fox, jumped], brown)
+- ([quick, brown, jumped, over], fox)
+- ([brown, fox, over, the], jumped)
+- ...
+
+**Use Cases:**
+- Word2Vec training
+- Word embeddings
+- Language modeling
+
+**Resources:**
+- https://www.tensorflow.org/tutorials/representation/word2vec#the_skip-gram_model
+
+### Algorithm 3: Bag of Words (BoW)
+
+**Description:**
+BoW (Bag of Words) assigns a numeric value to each word in a sentence and treats those words as a set (or bag). BoW does not keep track of adjacent words, so it's a very simple algorithm.
+
+**How It Works:**
+1. Create vocabulary from all unique words
+2. For each document, create vector with 1 if word appears, 0 otherwise
+3. Result: Binary vector representation
+
+**Code Example:**
+```python
+VOCAB = ['dog', 'cheese', 'cat', 'mouse']
+TEXT1 = 'the mouse ate the cheese'
+TEXT2 = 'the horse ate the hay'
+
+def to_bow(text):
+    words = text.split(" ")
+    return [1 if w in words else 0 for w in VOCAB]
+
+print("BOW1:", to_bow(TEXT1))  # [0, 1, 0, 1]
+print("BOW2:", to_bow(TEXT2))  # [0, 0, 0, 0]
+```
+
+**Output:**
+```
+VOCAB: ['dog', 'cheese', 'cat', 'mouse']
+TEXT1: the mouse ate the cheese
+BOW1: [0, 1, 0, 1]
+TEXT2: the horse ate the hay
+BOW2: [0, 0, 0, 0]
+```
+
+**Characteristics:**
+- Very simple algorithm
+- Does not keep track of word order
+- Loses positional information
+- Fast and efficient
+
+### Algorithm 4: TF-IDF (Term Frequency-Inverse Document Frequency)
+
+**Description:**
+TF-IDF is a basic algorithm for extracting keywords. It combines term frequency (TF) and inverse document frequency (IDF).
+
+**Term Frequency (TF):**
+Number of times a word appears in a document, normalized by document length.
+
+**Formula:**
+$$
+\text{TF}(t, d) = \frac{\text{number of times term } t \text{ appears in document } d}{\text{total number of terms in document } d}
+$$
+
+**Example:**
+Doc1 = "This is a short sentence"
+Doc2 = "yet another short sentence"
+
+- $\text{TF}(\text{is}, \text{Doc1}) = 1/5$
+- $\text{TF}(\text{is}, \text{Doc2}) = 0$
+- $\text{TF}(\text{short}, \text{Doc1}) = 1/5$
+- $\text{TF}(\text{short}, \text{Doc2}) = 1/4$
+
+**Inverse Document Frequency (IDF):**
+Measures how rare a term is across all documents.
+
+**Formula:**
+Given $N$ documents and word $w$:
+- $dc$ = number of documents containing word $w$
+- $\text{IDF}(w) = \log(N/dc)$
+
+**Example:**
+- $\text{IDF}(\text{is}) = \log(2/1) = \log(2)$
+- $\text{IDF}(\text{short}) = \log(2/2) = 0$
+
+**TF-IDF:**
+$$
+\text{TF-IDF}(t, d) = \text{TF}(t, d) \times \text{IDF}(t)
+$$
+
+**Use Cases:**
+- Keyword extraction
+- Text classification
+- Information retrieval
+- Search engines
+
+### Algorithm 5: Transformer Architecture
+
+**Description:**
+The Transformer is a Neural Network architecture introduced by Google in 2017, based on a self-attention mechanism well-suited for language understanding.
+
+**Key Features:**
+- Outperforms RNNs and CNNs for translation tasks
+- Requires less computation to train
+- Improves training time by order of magnitude
+- Processes entire sentence in single step
+
+**How It Works:**
+1. Computes next representation for given word by comparing to every other word
+2. Results in attention score for words in sentence
+3. Uses scores to determine extent other words contribute to representation
+
+**Example:**
+Sentence: "I arrived at the bank after crossing the river"
+- Transformer correctly determines "bank" refers to river shore, not financial institution
+- Makes association between "bank" and "river" in single step
+
+**Another Example:**
+- "The horse did not cross the street because it was too tired."
+- "The horse did not cross the street because it was too narrow."
+- Transformer determines different meanings of "it" in each sentence
+
+**Advantages:**
+- Much less computation time to train
+- Can outperform RNNs and LSTMs for some tasks
+- Some believe Transformers have begun to supplant RNNs and LSTMs
+
+**Resources:**
+- TF 2 code sample: https://www.tensorflow.org/alpha/tutorials/text/transformer
+
+### Algorithm 6: BERT
+
+**Description:**
+BERT (Bidirectional Encoder Representations from Transformers) is an extremely powerful framework for NLP, released by Google in 2018.
+
+**Architecture:**
+- Uses bidirectional transformers
+- Involves attention mechanism
+- Very sophisticated
+
+**Use Cases:**
+- Question answering
+- Text classification
+- Named entity recognition
+- Sentiment analysis
+- Machine translation
+
+**Note:**
+To acquire thorough grasp of BERT, need to learn about attention and transformer architecture.
+
+### Algorithm 7: Epsilon-Greedy Algorithm
+
+**Description:**
+Epsilon-greedy is an exploration strategy that balances exploration (trying new actions) and exploitation (using known best actions).
+
+**How It Works:**
+1. With probability $\epsilon$: choose random action (exploration)
+2. With probability $1-\epsilon$: choose best known action (exploitation)
+
+**Parameters:**
+- $\epsilon$: exploration rate (typically 0.1 to 0.3)
+- Decreases over time (decay)
+
+**Use Cases:**
+- Solves problems that cannot be solved using pure greedy algorithm
+- Multi-armed bandit problems
+- Reinforcement learning exploration
+
+**Nchain Task:**
+Example problem where epsilon-greedy is needed. Pure greedy algorithm cannot solve it effectively.
+
+### Algorithm 8: Bellman Equation
+
+**Description:**
+The Bellman equation is a cornerstone of reinforcement learning. It expresses the relationship between the value of a state and the values of subsequent states.
+
+**Formula:**
+For state value function:
+$$
+V(s) = \max_a \sum_{s'} P(s'|s,a)[R(s,a,s') + \gamma V(s')]
+$$
+
+For action-value function (Q-function):
+$$
+Q(s,a) = R(s,a) + \gamma \max_{a'} Q(s', a')
+$$
+
+Where:
+- $V(s)$: value of state $s$
+- $Q(s,a)$: value of taking action $a$ in state $s$
+- $R(s,a)$: reward for taking action $a$ in state $s$
+- $\gamma$: discount factor (0 to 1)
+- $P(s'|s,a)$: probability of transitioning to state $s'$ from state $s$ with action $a$
+
+**Significance:**
+- Fundamental equation in RL
+- Used in value iteration and policy iteration
+- Basis for Q-learning and other RL algorithms
+
+## Code Examples and Snippets
+
+### Code Example 1: Bag of Words
+
+**Context:** Simple BoW implementation
+
+**Language:** Python
+
+```python
+VOCAB = ['dog', 'cheese', 'cat', 'mouse']
+TEXT1 = 'the mouse ate the cheese'
+TEXT2 = 'the horse ate the hay'
+
+def to_bow(text):
+    words = text.split(" ")
+    return [1 if w in words else 0 for w in VOCAB]
+
+print("VOCAB:", VOCAB)
+print("TEXT1:", TEXT1)
+print("BOW1:", to_bow(TEXT1))  # [0, 1, 0, 1]
+print("")
+print("TEXT2:", TEXT2)
+print("BOW2:", to_bow(TEXT2))  # [0, 0, 0, 0]
+```
+
+### Code Example 2: TF-IDF Calculation
+
+**Context:** Manual TF-IDF calculation
+
+**Language:** Python
+
+```python
+import math
+
+# Documents
+Doc1 = "This is a short sentence"
+Doc2 = "yet another short sentence"
+
+# Term Frequency
+def tf(term, doc):
+    words = doc.split()
+    return words.count(term) / len(words)
+
+# Inverse Document Frequency
+def idf(term, docs):
+    N = len(docs)
+    dc = sum(1 for doc in docs if term in doc.split())
+    return math.log(N / dc) if dc > 0 else 0
+
+# TF-IDF
+def tfidf(term, doc, docs):
+    return tf(term, doc) * idf(term, docs)
+
+docs = [Doc1, Doc2]
+print("TF-IDF(is, Doc1):", tfidf("is", Doc1, docs))
+print("TF-IDF(short, Doc1):", tfidf("short", Doc1, docs))
+```
+
+## Mathematical Foundations
+
+### Notation
+
+- $N$: Total number of documents
+- $dc$: Number of documents containing a word
+- $t$: Term/word
+- $d$: Document
+- $s$: State
+- $a$: Action
+- $R(s,a)$: Reward
+- $\gamma$: Discount factor
+- $V(s)$: Value of state $s$
+- $Q(s,a)$: Action-value function
+- $\epsilon$: Exploration rate
+
+### Core Formulas
+
+#### Term Frequency
+
+$$
+\text{TF}(t, d) = \frac{\text{count of } t \text{ in } d}{\text{total terms in } d}
+$$
+
+#### Inverse Document Frequency
+
+$$
+\text{IDF}(t) = \log\left(\frac{N}{dc}\right)
+$$
+
+Where:
+- $N$: total number of documents
+- $dc$: number of documents containing term $t$
+
+#### TF-IDF
+
+$$
+\text{TF-IDF}(t, d) = \text{TF}(t, d) \times \text{IDF}(t)
+$$
+
+#### Bellman Equation (State Value)
+
+$$
+V(s) = \max_a \sum_{s'} P(s'|s,a)[R(s,a,s') + \gamma V(s')]
+$$
+
+#### Bellman Equation (Q-Function)
+
+$$
+Q(s,a) = R(s,a) + \gamma \max_{a'} Q(s', a')
+$$
+
+#### Epsilon-Greedy
+
+$$
+\text{action} = \begin{cases}
+\text{random action} & \text{with probability } \epsilon \\
+\arg\max_a Q(s,a) & \text{with probability } 1-\epsilon
+\end{cases}
+$$
+
+## NLP Techniques Evolution
+
+### 1. Rule-Based Approaches
+
+**Era:** Dominated industry for decades
+
+**Techniques:**
+- Regular Expressions (RegExs)
+- Context Free Grammars (CFGs)
+
+**Use Cases:**
+- Remove HTML tags from scraped text
+- Remove unwanted special characters
+- Pattern matching
+
+**Limitations:**
+- Require manual rule creation
+- Don't scale well
+- Brittle to variations
+
+### 2. Machine Learning Approaches
+
+**Era:** Second approach
+
+**Characteristics:**
+- Train ML model with user-defined features
+- Requires considerable feature engineering
+- Includes:
+  - Text analysis
+  - Removing undesired content
+  - Stop word removal
+  - Word transformation (lowercase, etc.)
+
+**Limitations:**
+- Feature engineering is nontrivial
+- Time-consuming
+- Domain-specific
+
+### 3. Deep Learning Approaches
+
+**Era:** Most recent approach
+
+**Characteristics:**
+- Neural network learns features automatically
+- No manual feature engineering
+- Maps words to numbers (embeddings)
+- Maps sentences to vectors
+- Uses vector space models
+- Distance between vectors measures similarity
+
+**Key Idea:**
+- Distributional hypothesis: words in same contexts tend to have similar meanings
+- Vector representations capture semantic relationships
+
+**Architectures:**
+- CNNs
+- RNNs
+- LSTMs
+- Bidirectional LSTMs
+- Transformers
+
+**Advantages:**
+- Higher accuracy than other techniques
+- Automatic feature learning
+- Better generalization
+
+**Limitations:**
+- Sometimes not as fast as rule-based methods
+- Requires more data
+- More computational resources
+
+## NLP Preprocessing Tasks
+
+### Mandatory Tasks [1]
+
+1. **Lowercasing:** Convert all text to lowercase
+2. **Noise Removal:** Remove HTML tags, special characters, etc.
+
+### Recommended Tasks [2]
+
+3. **Normalization:** Standardize text format
+
+### Task Dependent [3]
+
+4. **Text Enrichment:** Add context or metadata
+5. **Stopword Removal:** Remove common words (a, the, and, etc.)
+6. **Stemming:** Remove word endings (running → run)
+7. **Lemmatization:** Convert to base form (better → good)
+
+**Preprocessing Pipeline:**
+1. Remove redundant words
+2. Remove word endings (stemming/lemmatization)
+3. Convert to lowercase
+4. Remove noise (HTML, special characters)
+
+## Popular NLP Algorithms
+
+1. **BoW:** Bag of Words
+2. **N-grams and Skip-grams:** Word grouping techniques
+3. **TF-IDF:** Term Frequency-Inverse Document Frequency
+4. **Word2Vec (Google):** Open source project for word embeddings
+5. **GloVe (Stanford NLP Group):** Global Vectors for Word Representation
+6. **LDA:** Latent Dirichlet Allocation for text classification
+7. **CF (Collaborative Filtering):** Algorithm in news recommendation systems (Google News, Yahoo News)
+
+## Transformer Variants
+
+### Transformer-XL
+
+**Description:**
+Combines Transformer architecture with:
+- Recurrence Mechanism
+- Relative Positional Encoding
+
+**Advantages:**
+- Better results than Transformer
+- Works with word-level and character-level language modeling
+- 80% longer dependency than vanilla RNNs
+
+**How It Works:**
+- Processes first segment of tokens
+- Keeps outputs of hidden layers
+- Each hidden layer receives two inputs from previous layer
+- Concatenates them for additional information
+
+**Resources:**
+- https://hub.packtpub.com/transformer-xl-a-google-architecture-with-80-longer-dependency-than-rnns/
+
+### Reformer
+
+**Description:**
+Uses two techniques to improve efficiency:
+- Lower memory usage
+- Faster performance on long sequences
+- Lower complexity than Transformer
+
+**Resources:**
+- Paper: https://openreview.net/pdf?id=rkgNKkHtvB
+- Code: https://pastebin.com/62r5FuEW
+
+### Attention Augmented Convolutional Networks
+
+**Description:**
+Combination of CNNs with self-attention.
+
+**Advantages:**
+- Better accuracy than pure CNNs
+
+**Resources:**
+- Paper: https://arxiv.org/abs/1904.09925
+
+## Reinforcement Learning Fundamentals
+
+### Components
+
+1. **Agent:** Entity that makes decisions
+2. **Environment:** World agent interacts with
+3. **State:** Current situation
+4. **Action:** Decision made by agent
+5. **Reward:** Feedback from environment
+6. **Policy:** Strategy $\pi(s)$ for selecting actions
+7. **Value Function:** Expected cumulative reward $V(s)$
+8. **Q-Function:** Action-value function $Q(s,a)$
+
+### Types of Tasks
+
+**Well-Suited for RL:**
+- Sequential decision making
+- Long-term planning
+- Exploration vs exploitation tradeoff
+- Sparse rewards
+- Game playing
+- Robotics
+- Resource allocation
+
+### Nchain Task
+
+Example problem that demonstrates need for exploration. Pure greedy algorithm cannot solve it effectively. Epsilon-greedy algorithm can solve it.
+
+## Deep Reinforcement Learning
+
+### Description
+
+Deep Reinforcement Learning combines deep learning with reinforcement learning. Uses neural networks (CNNs, RNNs, LSTMs) as function approximators for value functions or policies.
+
+### Toolkits
+
+1. **TF-Agents (Google):**
+   - TensorFlow-based RL toolkit
+   - Pre-built agents and environments
+   - Easy to use
+
+2. **Dopamine (Google):**
+   - Research framework for RL
+   - Fast prototyping
+   - Benchmarking
+
+### Use Cases
+
+- Game playing (AlphaGo, DQN)
+- Robotics
+- Autonomous vehicles
+- Resource allocation
+- Trading algorithms
+
+## Best Practices and Recommendations
+
+### NLP Best Practices
+
+1. **Preprocessing:**
+   - Always lowercase
+   - Remove noise
+   - Normalize text
+   - Remove stopwords (if needed)
+   - Stem or lemmatize (if needed)
+
+2. **Feature Engineering:**
+   - Use deep learning to avoid manual feature engineering
+   - Use pre-trained embeddings (Word2Vec, GloVe)
+   - Consider context and word order
+
+3. **Architecture Selection:**
+   - Simple tasks: BoW, TF-IDF
+   - Sequential tasks: RNNs, LSTMs
+   - Modern tasks: Transformers, BERT
+   - Bidirectional for context understanding
+
+### RL Best Practices
+
+1. **Exploration:**
+   - Use epsilon-greedy for exploration
+   - Balance exploration and exploitation
+   - Decay epsilon over time
+
+2. **Value Functions:**
+   - Use Bellman equation for value updates
+   - Consider discount factor $\gamma$
+   - Use function approximation for large state spaces
+
+3. **Toolkits:**
+   - Use TF-Agents for production
+   - Use Dopamine for research
+   - Start with simple environments
+
+## Limitations and Assumptions
+
+### Stated Limitations
+
+1. **Cursory Introduction:** Chapter provides limited introduction
+2. **Complex Topics:** NLP and RL can fill entire books
+3. **BERT:** Requires understanding of attention and transformers
+4. **Deep RL:** Requires understanding of deep learning architectures
+
+### Assumptions
+
+1. **NLP:**
+   - Assumes text data is available
+   - Assumes preprocessing is possible
+   - Assumes sufficient training data
+
+2. **RL:**
+   - Assumes environment can be simulated
+   - Assumes rewards are defined
+   - Assumes state and action spaces are defined
+
+## Related Techniques and References
+
+### Related Chapters
+
+- **Chapter 3:** Classifiers in Machine Learning
+- **Chapter 4:** Deep Learning Introduction
+- **Chapter 5:** Deep Learning: RNNs and LSTMs (used in NLP)
+
+### Key References
+
+**NLP:**
+- Word2Vec: https://www.tensorflow.org/tutorials/representation/word2vec
+- Transformer: https://www.tensorflow.org/alpha/tutorials/text/transformer
+- Text Classification: https://www.tensorflow.org/alpha/tutorials/text/text_classification_rnn
+- Text Generation: https://www.tensorflow.org/alpha/tutorials/text/text_generation
+
+**RL:**
+- TF-Agents: TensorFlow RL toolkit
+- Dopamine: Google RL research framework
+
+## Practical Applications
+
+### NLP Applications
+
+1. **Chatbots:** Conversational AI
+2. **Search:** Text and audio search
+3. **Text Classification:** Categorize documents
+4. **Sentiment Analysis:** Determine emotion in text
+5. **Recommendation Systems:** Content recommendations
+6. **Question Answering:** Answer questions from text
+7. **Speech Recognition:** Convert speech to text
+8. **Machine Translation:** Translate between languages
+
+### RL Applications
+
+1. **Game Playing:** Chess, Go, video games
+2. **Robotics:** Robot control and navigation
+3. **Autonomous Vehicles:** Self-driving cars
+4. **Resource Allocation:** Optimal resource distribution
+5. **Trading:** Algorithmic trading
+6. **Recommendation Systems:** Personalized recommendations
+
+## Implementation Checklist
+
+### Prerequisites
+
+- [ ] Understanding of deep learning (Chapters 4-5)
+- [ ] Familiarity with Python
+- [ ] Knowledge of TensorFlow/Keras
+- [ ] Understanding of sequential data
+
+### Setup Steps
+
+1. [ ] Install TensorFlow 2:
+   ```bash
+   pip install tensorflow
+   ```
+
+2. [ ] Install NLP libraries:
+   ```bash
+   pip install nltk spacy
+   ```
+
+3. [ ] Install RL toolkits:
+   ```bash
+   pip install tf-agents
+   ```
+
+### Implementation Steps
+
+**For NLP:**
+1. [ ] Preprocess text data
+2. [ ] Choose representation (BoW, TF-IDF, embeddings)
+3. [ ] Select architecture (RNN, LSTM, Transformer)
+4. [ ] Train model
+5. [ ] Evaluate on test set
+
+**For RL:**
+1. [ ] Define environment
+2. [ ] Define state and action spaces
+3. [ ] Choose algorithm (Q-learning, policy gradient, etc.)
+4. [ ] Implement exploration strategy (epsilon-greedy)
+5. [ ] Train agent
+6. [ ] Evaluate performance
+
+## Summary
+
+This chapter covered:
+- NLP techniques evolution (rule-based → ML → deep learning)
+- Text preprocessing tasks
+- N-grams, skip-grams, BoW, TF-IDF
+- Transformers and BERT
+- Reinforcement Learning fundamentals
+- Bellman equation
+- Epsilon-greedy algorithm
+- TF-Agents and Dopamine toolkits
+- Deep reinforcement learning
+
+The chapter provides practical, implementable techniques for NLP and RL with code examples and mathematical foundations that can be directly used in projects.

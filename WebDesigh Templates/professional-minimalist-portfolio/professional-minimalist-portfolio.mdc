@@ -1,0 +1,1518 @@
+---
+alwaysApply: false
+---
+
+# Professional Minimalist Portfolio - Website Design System
+
+## Website Metadata
+- **Source URL:** https://marjoballabani.me/
+- **Design Style:** Professional Minimalist Portfolio
+- **Primary Framework:** React / Next.js (inferred from modern portfolio patterns)
+- **CSS Framework:** Custom CSS / Tailwind CSS (inferred)
+- **Analysis Date:** 2025-11-29
+- **Pages Analyzed:** 1 (Single Page Application with sections)
+- **Total Components:** 8+ (Navigation, Hero, About, Journey Timeline, Skills Grid, Contact, Footer, Social Links)
+
+## Design Overview
+
+This design system represents a **clean, professional portfolio website** with a minimalist aesthetic. The design emphasizes:
+
+- **Content-First Approach:** Typography and content hierarchy take center stage
+- **Professional Aesthetic:** Clean lines, ample whitespace, and subtle interactions
+- **Timeline-Based Journey:** Work experience presented as an elegant timeline
+- **Skills Showcase:** Technology stacks displayed as organized tag/badge systems
+- **Single-Page Architecture:** Smooth scrolling navigation between sections
+- **Modern Typography:** Clear hierarchy with readable, professional fonts
+- **Subtle Animations:** Gentle transitions and hover effects for interactivity
+
+The overall feel is **sophisticated yet approachable** - perfect for a senior software engineer's professional portfolio.
+
+## Design System Fundamentals
+
+### Color Palette
+
+**Primary Colors:**
+- Primary: `#000000` or `#1a1a1a` (usage: headings, primary text, navigation)
+- Secondary: `#666666` or `#4a4a4a` (usage: secondary text, metadata)
+- Accent: `#0066cc` or `#0070f3` (usage: links, CTAs, interactive elements)
+
+**Neutral Colors:**
+- Background: `#ffffff` (usage: main background)
+- Surface: `#f8f9fa` or `#fafafa` (usage: section backgrounds, cards)
+- Text Primary: `#000000` or `#1a1a1a` (usage: main content)
+- Text Secondary: `#666666` or `#6b7280` (usage: secondary content, dates)
+- Border: `#e5e7eb` or `#e0e0e0` (usage: dividers, card borders)
+
+**Semantic Colors:**
+- Success: `#10b981` (usage: success states, if applicable)
+- Error: `#ef4444` (usage: error states, if applicable)
+- Warning: `#f59e0b` (usage: warnings, if applicable)
+- Info: `#3b82f6` (usage: informational elements)
+
+**Gradients:**
+```css
+/* Subtle Background Gradient (if used) */
+background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
+
+/* Text Gradient (for accents, if used) */
+background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+-webkit-background-clip: text;
+-webkit-text-fill-color: transparent;
+```
+
+### Typography System
+
+**Font Families:**
+- Primary: `Inter`, `-apple-system`, `BlinkMacSystemFont`, `"Segoe UI"`, `Roboto`, `sans-serif` (usage: body text, UI elements)
+- Heading: `Inter`, `system-ui`, `sans-serif` or custom display font (usage: headings, hero text)
+- Monospace: `"JetBrains Mono"`, `"Fira Code"`, `monospace` (usage: code snippets, technical terms)
+
+**Type Scale:**
+```css
+/* Desktop */
+--font-size-xs: 0.75rem;      /* 12px - metadata, tags */
+--font-size-sm: 0.875rem;    /* 14px - small text */
+--font-size-base: 1rem;      /* 16px - body text */
+--font-size-lg: 1.125rem;    /* 18px - emphasized text */
+--font-size-xl: 1.25rem;     /* 20px - subheadings */
+--font-size-2xl: 1.5rem;     /* 24px - section headings */
+--font-size-3xl: 1.875rem;   /* 30px - large headings */
+--font-size-4xl: 2.25rem;    /* 36px - hero headings */
+--font-size-5xl: 3rem;       /* 48px - display text */
+--font-size-6xl: 3.75rem;    /* 60px - hero display */
+
+/* Mobile */
+--font-size-xs-mobile: 0.75rem;
+--font-size-sm-mobile: 0.875rem;
+--font-size-base-mobile: 1rem;
+--font-size-lg-mobile: 1.125rem;
+--font-size-xl-mobile: 1.25rem;
+--font-size-2xl-mobile: 1.5rem;
+--font-size-3xl-mobile: 1.875rem;
+--font-size-4xl-mobile: 2rem;
+```
+
+**Line Heights:**
+```css
+--line-height-tight: 1.25;      /* Headings */
+--line-height-normal: 1.5;      /* Body text */
+--line-height-relaxed: 1.75;    /* Long-form content */
+--line-height-loose: 2;          /* Spacious text */
+```
+
+**Font Weights:**
+- Light: 300 (usage: subtle text)
+- Regular: 400 (usage: body text)
+- Medium: 500 (usage: emphasized text, buttons)
+- Semibold: 600 (usage: subheadings)
+- Bold: 700 (usage: headings, strong emphasis)
+
+**Letter Spacing:**
+```css
+--letter-spacing-tighter: -0.05em;  /* Large headings */
+--letter-spacing-tight: -0.025em;   /* Headings */
+--letter-spacing-normal: 0;          /* Body text */
+--letter-spacing-wide: 0.025em;      /* Uppercase text */
+--letter-spacing-wider: 0.05em;       /* Labels, tags */
+```
+
+### Spacing System
+
+```css
+--spacing-0: 0;
+--spacing-1: 0.25rem;    /* 4px */
+--spacing-2: 0.5rem;    /* 8px */
+--spacing-3: 0.75rem;    /* 12px */
+--spacing-4: 1rem;       /* 16px */
+--spacing-5: 1.25rem;    /* 20px */
+--spacing-6: 1.5rem;     /* 24px */
+--spacing-8: 2rem;       /* 32px */
+--spacing-10: 2.5rem;    /* 40px */
+--spacing-12: 3rem;      /* 48px */
+--spacing-16: 4rem;      /* 64px */
+--spacing-20: 5rem;      /* 80px */
+--spacing-24: 6rem;      /* 96px */
+--spacing-32: 8rem;      /* 128px */
+```
+
+**Spacing Scale:** Based on 4px base unit. Used consistently for margins, padding, and gaps throughout the design.
+
+### Border Radius System
+
+```css
+--radius-none: 0;
+--radius-sm: 0.25rem;     /* 4px - small elements */
+--radius-md: 0.5rem;      /* 8px - buttons, cards */
+--radius-lg: 0.75rem;     /* 12px - larger cards */
+--radius-xl: 1rem;        /* 16px - hero sections */
+--radius-2xl: 1.5rem;     /* 24px - large containers */
+--radius-full: 9999px;    /* Pills, badges */
+```
+
+### Shadow System
+
+```css
+/* Shadow 1: Subtle elevation */
+box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+
+/* Shadow 2: Card elevation */
+box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+
+/* Shadow 3: Hover state */
+box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+
+/* Shadow 4: Modal/overlay */
+box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+/* Shadow 5: Large elevation */
+box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+```
+
+## Layout Systems
+
+### Grid System
+
+```css
+/* Main Container */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .container {
+    padding: 0 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    padding: 0 3rem;
+  }
+}
+
+/* Grid Layout */
+.grid {
+  display: grid;
+  gap: 2rem;
+}
+
+.grid-cols-1 {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.grid-cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid-cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (min-width: 768px) {
+  .md\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  
+  .md\:grid-cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+```
+
+### Breakpoints
+
+```css
+/* Mobile First Approach */
+/* Base: 0px - 767px (Mobile) */
+
+/* Tablet */
+@media (min-width: 768px) {
+  /* Tablet styles */
+}
+
+/* Desktop */
+@media (min-width: 1024px) {
+  /* Desktop styles */
+}
+
+/* Large Desktop */
+@media (min-width: 1280px) {
+  /* Large desktop styles */
+}
+
+/* Extra Large */
+@media (min-width: 1440px) {
+  /* Extra large desktop styles */
+}
+```
+
+## Component Library
+
+### Navigation
+
+**Main Navigation:**
+```css
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--color-border);
+  z-index: 1000;
+  padding: 1rem 0;
+}
+
+.nav-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-logo {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  text-decoration: none;
+  letter-spacing: var(--letter-spacing-tight);
+}
+
+.nav-menu {
+  display: flex;
+  list-style: none;
+  gap: 2rem;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-link {
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  transition: color 0.2s ease;
+  position: relative;
+}
+
+.nav-link:hover {
+  color: var(--color-text-primary);
+}
+
+.nav-link.active {
+  color: var(--color-text-primary);
+}
+
+.nav-link.active::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-accent);
+}
+```
+
+**Mobile Menu:**
+```css
+.mobile-menu-toggle {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+}
+
+@media (max-width: 767px) {
+  .mobile-menu-toggle {
+    display: block;
+  }
+  
+  .nav-menu {
+    position: fixed;
+    top: 60px;
+    left: 0;
+    right: 0;
+    background: white;
+    flex-direction: column;
+    padding: 2rem;
+    border-top: 1px solid var(--color-border);
+    transform: translateY(-100%);
+    opacity: 0;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    pointer-events: none;
+  }
+  
+  .nav-menu.open {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: all;
+  }
+}
+```
+
+### Hero Section
+
+```css
+.hero {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8rem 0 4rem;
+  text-align: center;
+}
+
+.hero-greeting {
+  font-size: var(--font-size-lg);
+  color: var(--color-text-secondary);
+  margin-bottom: 1rem;
+  font-weight: 400;
+}
+
+.hero-title {
+  font-size: clamp(2.5rem, 8vw, 5rem);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 1.5rem;
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-tight);
+}
+
+.hero-subtitle {
+  font-size: clamp(1.125rem, 2vw, 1.5rem);
+  color: var(--color-text-secondary);
+  max-width: 600px;
+  margin: 0 auto 2rem;
+  line-height: var(--line-height-relaxed);
+}
+
+.hero-location {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  margin-bottom: 2rem;
+}
+
+.hero-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--color-text-primary);
+  color: white;
+  text-decoration: none;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hero-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-3);
+}
+```
+
+### About Section
+
+```css
+.about {
+  padding: 6rem 0;
+  background: var(--color-surface);
+}
+
+.about-container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.section-title {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 3rem;
+  text-align: center;
+}
+
+.about-content {
+  font-size: var(--font-size-lg);
+  line-height: var(--line-height-relaxed);
+  color: var(--color-text-secondary);
+}
+
+.about-content p {
+  margin-bottom: 1.5rem;
+}
+```
+
+### Journey Timeline
+
+```css
+.journey {
+  padding: 6rem 0;
+}
+
+.timeline {
+  position: relative;
+  max-width: 900px;
+  margin: 0 auto;
+  padding-left: 2rem;
+}
+
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-border);
+}
+
+.timeline-item {
+  position: relative;
+  margin-bottom: 4rem;
+  padding-left: 3rem;
+}
+
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -1.5rem;
+  top: 0.5rem;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-text-primary);
+  border: 3px solid white;
+  box-shadow: 0 0 0 3px var(--color-border);
+}
+
+.timeline-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+  align-items: baseline;
+}
+
+.timeline-title {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.timeline-company {
+  font-size: var(--font-size-lg);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.timeline-date {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-weight: 400;
+}
+
+.timeline-location {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.timeline-description {
+  margin-top: 1rem;
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-relaxed);
+  color: var(--color-text-secondary);
+}
+
+.timeline-description ul {
+  margin-top: 0.5rem;
+  padding-left: 1.5rem;
+}
+
+.timeline-description li {
+  margin-bottom: 0.5rem;
+}
+```
+
+### Skills Section
+
+```css
+.skills {
+  padding: 6rem 0;
+  background: var(--color-surface);
+}
+
+.skills-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 3rem;
+  margin-top: 3rem;
+}
+
+.skill-category {
+  background: white;
+  padding: 2rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+
+.skill-category-title {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.skill-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.skill-tag {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  transition: all 0.2s ease;
+}
+
+.skill-tag:hover {
+  background: var(--color-text-primary);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-2);
+}
+```
+
+### Contact Section
+
+```css
+.contact {
+  padding: 6rem 0;
+  text-align: center;
+}
+
+.contact-title {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 1rem;
+}
+
+.contact-subtitle {
+  font-size: var(--font-size-lg);
+  color: var(--color-text-secondary);
+  margin-bottom: 3rem;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.social-links {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.social-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: white;
+  color: var(--color-text-primary);
+  text-decoration: none;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  transition: all 0.2s ease;
+}
+
+.social-link:hover {
+  background: var(--color-text-primary);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-3);
+}
+
+.social-icon {
+  width: 20px;
+  height: 20px;
+}
+```
+
+### Footer
+
+```css
+.footer {
+  padding: 3rem 0;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+  text-align: center;
+}
+
+.footer-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.footer-name {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.footer-title {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  margin-bottom: 1.5rem;
+}
+
+.footer-nav {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.footer-link {
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+  transition: color 0.2s ease;
+}
+
+.footer-link:hover {
+  color: var(--color-text-primary);
+}
+
+.footer-copyright {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin-top: 2rem;
+}
+```
+
+## Animations and Transitions
+
+### CSS Transitions
+
+```css
+/* Standard Transition */
+.transition {
+  transition: all 0.2s ease;
+}
+
+/* Fast Transition */
+.transition-fast {
+  transition: all 0.15s ease;
+}
+
+/* Slow Transition */
+.transition-slow {
+  transition: all 0.3s ease;
+}
+
+/* Smooth Scroll Behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Fade In Animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.6s ease-out;
+}
+
+/* Stagger Animation for List Items */
+.timeline-item {
+  animation: fadeIn 0.6s ease-out;
+  animation-fill-mode: both;
+}
+
+.timeline-item:nth-child(1) { animation-delay: 0.1s; }
+.timeline-item:nth-child(2) { animation-delay: 0.2s; }
+.timeline-item:nth-child(3) { animation-delay: 0.3s; }
+.timeline-item:nth-child(4) { animation-delay: 0.4s; }
+```
+
+### Scroll Animations
+
+```css
+/* Reveal on Scroll */
+.reveal-on-scroll {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.reveal-on-scroll.revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+```
+
+### Hover Effects
+
+```css
+/* Link Hover Underline */
+.link-underline {
+  position: relative;
+  text-decoration: none;
+}
+
+.link-underline::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: var(--color-accent);
+  transition: width 0.3s ease;
+}
+
+.link-underline:hover::after {
+  width: 100%;
+}
+
+/* Card Hover Lift */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-4);
+}
+```
+
+## Page Layouts
+
+### Single Page Layout Structure
+
+**Layout Structure:**
+1. Fixed Navigation Header
+2. Hero Section (full viewport height)
+3. About Section
+4. Journey/Timeline Section
+5. Skills Section
+6. Contact Section
+7. Footer
+
+**Section Spacing:**
+- Each major section has consistent vertical padding (6rem top/bottom)
+- Sections alternate background colors (white and light gray)
+- Smooth scroll navigation between sections
+
+**Container Widths:**
+- Hero: Full width, centered content
+- About: Max-width 800px, centered
+- Timeline: Max-width 900px, centered
+- Skills: Max-width 1200px, grid layout
+- Contact: Max-width 600px, centered
+
+## User Flows and Navigation
+
+### Primary User Flows
+
+1. **Homepage Visit Flow:**
+   - User lands on hero section
+   - Scrolls down to view About section
+   - Continues to Journey timeline
+   - Reviews Skills section
+   - Reaches Contact section
+   - Clicks social links or scrolls to footer
+
+2. **Navigation Flow:**
+   - User clicks navigation link
+   - Smooth scroll to target section
+   - Active state updates in navigation
+   - Section comes into view with fade-in animation
+
+3. **Social Link Flow:**
+   - User clicks social link (LinkedIn, GitHub, etc.)
+   - Opens in new tab
+   - Returns to portfolio
+
+### Navigation Structure
+
+- **Main Navigation:** Fixed header with links to Home, About, Journey, Skills, Contact
+- **Footer Navigation:** Links to same sections plus copyright
+- **Smooth Scroll:** All navigation uses smooth scroll behavior
+- **Active States:** Current section highlighted in navigation
+
+### Link Patterns
+
+- **Internal Links:** Smooth scroll to sections, no underline by default, underline on hover
+- **External Links:** Open in new tab, same styling as internal links
+- **Social Links:** Button-style with icon, hover effect with color inversion
+
+## Responsive Design Patterns
+
+### Mobile (< 768px)
+
+**Layout Changes:**
+- Navigation collapses to hamburger menu
+- Hero title scales down (clamp function handles this)
+- Timeline padding reduced
+- Skills grid becomes single column
+- Social links stack vertically
+- Container padding reduced (1.5rem)
+
+**Typography:**
+- Font sizes use clamp() for responsive scaling
+- Line heights adjusted for mobile readability
+- Reduced letter spacing on large headings
+
+**Spacing:**
+- Section padding reduced (4rem instead of 6rem)
+- Reduced gaps in grids
+- Tighter spacing in timeline
+
+### Tablet (768px - 1024px)
+
+**Layout Changes:**
+- Navigation remains horizontal
+- Skills grid becomes 2 columns
+- Timeline maintains full width
+- Container padding: 2rem
+
+**Typography:**
+- Moderate scaling between mobile and desktop
+- Maintains readability
+
+### Desktop (> 1024px)
+
+**Layout Changes:**
+- Full navigation visible
+- Skills grid: 3 columns
+- Maximum container width: 1200px
+- Container padding: 3rem
+- Generous whitespace
+
+**Typography:**
+- Full-size headings
+- Optimal line lengths (50-75 characters)
+- Comfortable reading experience
+
+## Loading States and Indicators
+
+### Page Load
+
+**Initial Render:**
+- Navigation appears immediately
+- Hero section fades in on load
+- Smooth scroll behavior enabled
+
+**Content Loading:**
+- Sections reveal on scroll (Intersection Observer)
+- Fade-in animation for timeline items
+- Staggered animation delays for list items
+
+### Smooth Scrolling
+
+```css
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scroll offset for fixed header */
+section {
+  scroll-margin-top: 80px;
+}
+```
+
+## Interactive Behaviors
+
+### Hover Effects
+
+**Navigation Links:**
+- Color transition from secondary to primary
+- Underline animation (if active state)
+- Smooth 0.2s transition
+
+**Skill Tags:**
+- Background color inversion
+- Slight lift (translateY -2px)
+- Shadow enhancement
+- Smooth 0.2s transition
+
+**Social Links:**
+- Background fills with primary color
+- Text color inverts to white
+- Slight lift effect
+- Shadow appears
+
+**Timeline Items:**
+- Subtle scale on hover (if interactive)
+- Smooth transitions
+
+### Click Interactions
+
+**Navigation:**
+- Smooth scroll to target section
+- Active state updates
+- URL hash updates (if using hash routing)
+
+**Social Links:**
+- Opens in new tab
+- No page reload
+- Maintains scroll position
+
+### Scroll Behaviors
+
+**Scroll Reveal:**
+- Sections fade in as they enter viewport
+- Uses Intersection Observer API
+- Smooth animation (0.6s ease-out)
+
+**Scroll Progress:**
+- Navigation may show scroll progress (if implemented)
+- Active section highlighted based on scroll position
+
+## Implementation Guidelines
+
+### CSS Architecture
+
+**Organization:**
+- CSS Variables for design tokens
+- Component-based CSS classes
+- Utility classes for common patterns
+- Mobile-first responsive design
+
+**Naming Convention:**
+- BEM methodology or similar
+- Semantic class names
+- Consistent prefixing (e.g., `.nav-`, `.hero-`, `.timeline-`)
+
+### Component Structure
+
+**React/Next.js Structure:**
+```
+components/
+  Navigation/
+    Navigation.tsx
+    Navigation.module.css
+  Hero/
+    Hero.tsx
+    Hero.module.css
+  About/
+    About.tsx
+    About.module.css
+  Timeline/
+    Timeline.tsx
+    TimelineItem.tsx
+    Timeline.module.css
+  Skills/
+    Skills.tsx
+    SkillCategory.tsx
+    Skills.module.css
+  Contact/
+    Contact.tsx
+    Contact.module.css
+  Footer/
+    Footer.tsx
+    Footer.module.css
+```
+
+### Animation Performance
+
+**Best Practices:**
+- Use `transform` and `opacity` for animations (GPU accelerated)
+- Avoid animating `width`, `height`, `top`, `left`
+- Use `will-change` sparingly
+- Debounce scroll events
+- Use `requestAnimationFrame` for scroll animations
+
+### Accessibility Considerations
+
+**Focus States:**
+```css
+*:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+```
+
+**ARIA Patterns:**
+- Navigation: `<nav>` with `aria-label`
+- Sections: Landmark roles (`<main>`, `<section>`)
+- Links: Descriptive text, `aria-label` if icon-only
+- Skip to main content link
+
+**Semantic HTML:**
+- Proper heading hierarchy (h1 → h2 → h3)
+- List elements for navigation and timeline
+- Article/section elements for content
+- Time elements for dates
+
+## Design Tokens
+
+```css
+:root {
+  /* Colors */
+  --color-primary: #000000;
+  --color-secondary: #666666;
+  --color-accent: #0066cc;
+  --color-background: #ffffff;
+  --color-surface: #f8f9fa;
+  --color-text-primary: #000000;
+  --color-text-secondary: #666666;
+  --color-border: #e5e7eb;
+  
+  /* Typography */
+  --font-family-primary: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-family-heading: Inter, system-ui, sans-serif;
+  --font-family-monospace: "JetBrains Mono", "Fira Code", monospace;
+  
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+  --font-size-5xl: 3rem;
+  --font-size-6xl: 3.75rem;
+  
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+  --line-height-loose: 2;
+  
+  --font-weight-light: 300;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  
+  --letter-spacing-tighter: -0.05em;
+  --letter-spacing-tight: -0.025em;
+  --letter-spacing-normal: 0;
+  --letter-spacing-wide: 0.025em;
+  --letter-spacing-wider: 0.05em;
+  
+  /* Spacing */
+  --spacing-unit: 0.25rem;
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-5: 1.25rem;
+  --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
+  --spacing-10: 2.5rem;
+  --spacing-12: 3rem;
+  --spacing-16: 4rem;
+  --spacing-20: 5rem;
+  --spacing-24: 6rem;
+  --spacing-32: 8rem;
+  
+  /* Borders */
+  --radius-none: 0;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-full: 9999px;
+  
+  /* Shadows */
+  --shadow-1: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-2: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --shadow-3: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-4: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-5: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.2s ease;
+  --transition-slow: 0.3s ease;
+  
+  /* Layout */
+  --container-max-width: 1200px;
+  --container-padding-mobile: 1.5rem;
+  --container-padding-tablet: 2rem;
+  --container-padding-desktop: 3rem;
+  
+  /* Z-Index Scale */
+  --z-base: 1;
+  --z-sticky: 100;
+  --z-fixed: 200;
+  --z-dropdown: 300;
+  --z-modal-backdrop: 400;
+  --z-modal: 500;
+  --z-tooltip: 600;
+}
+```
+
+## Page-Specific Designs
+
+### Homepage (Single Page Application)
+
+**Layout Structure:**
+1. **Fixed Navigation Header**
+   - Logo/Name on left
+   - Navigation links on right (Home, About, Journey, Skills, Contact)
+   - Transparent/glassmorphism background
+   - Border bottom on scroll
+
+2. **Hero Section**
+   - Full viewport height
+   - Centered content
+   - Greeting text (Hi there! 👋)
+   - Large name/title
+   - Subtitle/description
+   - Location (Munich, Germany)
+   - Optional CTA button
+
+3. **About Section**
+   - Section title: "ABOUT"
+   - Paragraph content describing background
+   - Professional, readable typography
+   - Light background color
+
+4. **Journey Section**
+   - Section title: "My Journey" or "Journey Timeline"
+   - Vertical timeline with work experience
+   - Each item: Title, Company, Date, Location, Description
+   - Left-aligned timeline with connecting line
+
+5. **Skills Section**
+   - Section title: "SKILLS"
+   - Categorized skills (Frontend, Languages, Backend, Cloud & DevOps, Databases, Tools, Architecture, Methodologies)
+   - Each category as a card with skill tags
+   - Grid layout (responsive)
+
+6. **Contact Section**
+   - Section title: "GET IN TOUCH"
+   - Subtitle/description
+   - Social links (LinkedIn, GitHub, Stack Overflow)
+   - Centered layout
+
+7. **Footer**
+   - Name and title
+   - Footer navigation links
+   - Copyright notice
+   - Light background
+
+**Components Used:**
+- Navigation component (fixed header)
+- Hero component (full-height intro)
+- About component (text content)
+- Timeline component (work experience)
+- Skills component (categorized tags)
+- Contact component (social links)
+- Footer component
+
+**Responsive Behavior:**
+- Mobile: Stacked layout, hamburger menu, single column skills
+- Tablet: 2-column skills grid, horizontal navigation
+- Desktop: 3-column skills grid, full navigation, optimal spacing
+
+## Motion Graphics and Advanced Animations
+
+### Scroll-Triggered Reveals
+
+**Implementation:**
+```javascript
+// Intersection Observer for scroll reveals
+const observerOptions = {
+  threshold: 0.1,
+  rootMargin: '0px 0px -50px 0px'
+};
+
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('revealed');
+    }
+  });
+}, observerOptions);
+
+document.querySelectorAll('.reveal-on-scroll').forEach(el => {
+  observer.observe(el);
+});
+```
+
+### Smooth Scroll Navigation
+
+**Implementation:**
+```javascript
+// Smooth scroll to section
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+  anchor.addEventListener('click', function (e) {
+    e.preventDefault();
+    const target = document.querySelector(this.getAttribute('href'));
+    if (target) {
+      target.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+    }
+  });
+});
+```
+
+### Active Navigation Highlighting
+
+**Implementation:**
+```javascript
+// Update active nav link based on scroll position
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('.nav-link');
+
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(section => {
+    const sectionTop = section.offsetTop;
+    const sectionHeight = section.clientHeight;
+    if (pageYOffset >= sectionTop - 200) {
+      current = section.getAttribute('id');
+    }
+  });
+
+  navLinks.forEach(link => {
+    link.classList.remove('active');
+    if (link.getAttribute('href') === `#${current}`) {
+      link.classList.add('active');
+    }
+  });
+});
+```
+
+## Design Patterns and Best Practices
+
+### Layout Patterns
+
+**Centered Content:**
+- Hero, About, Contact sections use centered, max-width containers
+- Optimal reading width (50-75 characters)
+- Generous whitespace
+
+**Grid Patterns:**
+- Skills section uses responsive grid
+- Auto-fit columns for flexibility
+- Consistent gap spacing
+
+**Timeline Pattern:**
+- Vertical timeline with connecting line
+- Left-aligned content
+- Clear visual hierarchy
+- Consistent spacing between items
+
+### Component Patterns
+
+**Card Pattern:**
+- White background
+- Subtle shadow
+- Rounded corners
+- Hover elevation effect
+
+**Tag/Badge Pattern:**
+- Pill-shaped badges
+- Subtle background
+- Hover color inversion
+- Consistent sizing
+
+**Link Pattern:**
+- No underline by default
+- Hover underline animation
+- Smooth color transition
+- Clear focus states
+
+### Animation Patterns
+
+**Fade-In on Scroll:**
+- Sections reveal as they enter viewport
+- Smooth opacity and transform transitions
+- Staggered delays for list items
+
+**Hover Interactions:**
+- Subtle lift effects (translateY)
+- Color transitions
+- Shadow enhancements
+- Smooth timing functions
+
+## Implementation Checklist
+
+### Setup
+- [ ] Set up CSS variables/tokens
+- [ ] Configure typography system
+- [ ] Set up color palette
+- [ ] Configure spacing system
+- [ ] Set up responsive breakpoints
+
+### Components
+- [ ] Implement navigation component
+- [ ] Implement hero component
+- [ ] Implement about section
+- [ ] Implement timeline component
+- [ ] Implement skills section with categories
+- [ ] Implement contact section
+- [ ] Implement footer component
+
+### Responsive Design
+- [ ] Implement mobile navigation (hamburger menu)
+- [ ] Implement mobile layouts
+- [ ] Implement tablet layouts
+- [ ] Implement desktop layouts
+- [ ] Test at all breakpoints (320px, 375px, 414px, 768px, 1024px, 1280px, 1440px, 1920px)
+
+### Animations
+- [ ] Implement CSS transitions
+- [ ] Implement scroll reveal animations
+- [ ] Implement smooth scroll navigation
+- [ ] Implement active navigation highlighting
+- [ ] Implement hover effects
+- [ ] Test animation performance
+
+### Accessibility
+- [ ] Add proper ARIA labels
+- [ ] Implement focus states
+- [ ] Ensure keyboard navigation
+- [ ] Test with screen readers
+- [ ] Verify color contrast ratios
+- [ ] Add skip to main content link
+
+### Content
+- [ ] Add hero content (greeting, name, description)
+- [ ] Add about section content
+- [ ] Add timeline items (work experience)
+- [ ] Add skills categories and tags
+- [ ] Add contact information and social links
+- [ ] Add footer content
+
+## Notes and Observations
+
+### Design Characteristics
+
+1. **Minimalist Aesthetic:**
+   - Clean, uncluttered design
+   - Generous whitespace
+   - Focus on content hierarchy
+   - Subtle visual elements
+
+2. **Professional Tone:**
+   - Sophisticated color palette
+   - Professional typography
+   - Clear information architecture
+   - Trust-building design elements
+
+3. **Content Organization:**
+   - Logical flow: Introduction → About → Experience → Skills → Contact
+   - Easy to scan and navigate
+   - Clear section divisions
+   - Consistent spacing
+
+4. **Interactive Elements:**
+   - Subtle hover effects
+   - Smooth transitions
+   - Scroll-triggered animations
+   - Clear feedback on interactions
+
+### Implementation Considerations
+
+1. **Performance:**
+   - Optimize images and assets
+   - Use CSS for animations (GPU accelerated)
+   - Lazy load content below the fold
+   - Minimize JavaScript for scroll effects
+
+2. **SEO:**
+   - Proper semantic HTML
+   - Meta tags and descriptions
+   - Structured data (JSON-LD)
+   - Accessible navigation
+
+3. **Browser Compatibility:**
+   - Test in modern browsers
+   - Provide fallbacks for older browsers
+   - Use feature detection for advanced features
+   - Progressive enhancement approach
+
+4. **Content Management:**
+   - Consider CMS for easy content updates
+   - Structured data format for timeline items
+   - Easy skill tag management
+   - Social link configuration
+
+### Verification Notes
+
+**Important:** This MDC is based on the website content structure and typical modern portfolio design patterns. For pixel-perfect implementation, verify the following against the live website:
+
+1. **Exact Color Values:**
+   - Verify primary, secondary, and accent colors
+   - Check background and surface colors
+   - Confirm text color values
+   - Verify border and shadow colors
+
+2. **Typography Details:**
+   - Confirm exact font families used
+   - Verify font sizes at all breakpoints
+   - Check line heights and letter spacing
+   - Confirm font weights
+
+3. **Spacing Values:**
+   - Verify exact padding and margin values
+   - Check gap sizes in grids
+   - Confirm section spacing
+   - Verify container max-widths
+
+4. **Component Styling:**
+   - Verify exact border radius values
+   - Check shadow definitions
+   - Confirm hover effect details
+   - Verify animation timings
+
+5. **Responsive Breakpoints:**
+   - Confirm exact breakpoint values
+   - Verify layout changes at each breakpoint
+   - Check typography scaling
+   - Confirm component variations
+
+6. **Interactive Behaviors:**
+   - Test all hover effects
+   - Verify scroll animations
+   - Check navigation behavior
+   - Confirm form interactions (if any)
+
+---
+
+**This MDC serves as a comprehensive design system reference for recreating the professional minimalist portfolio design. Use it as a guide for implementation, and verify specific values against the live website for pixel-perfect accuracy.**

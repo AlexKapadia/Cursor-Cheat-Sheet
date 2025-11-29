@@ -1,0 +1,673 @@
+---
+alwaysApply: false
+---
+
+# Introduction to TensorFlow 2
+
+## Paper Metadata
+- **Title:** Introduction to TensorFlow 2 (Appendix B)
+- **Source Book:** Artificial Intelligence, Machine Learning, and Deep Learning
+- **Author:** Oswald Campesato
+- **Year:** 2020
+- **Publisher:** Mercury Learning and Information
+- **ISBN:** 978-1-68392-467-8
+- **Appendix:** B
+
+## Abstract / Summary
+
+This appendix provides an introduction to TensorFlow 2, covering the key APIs, techniques, and code examples needed to build deep learning models. TensorFlow 2 simplifies the API compared to TensorFlow 1.x, with eager execution by default, Keras as the high-level API, and improved usability.
+
+## Problem Statement
+
+### Problem Definition
+
+TensorFlow 2 provides a comprehensive platform for building and deploying machine learning models, with particular strength in deep learning applications.
+
+### Motivation
+
+- **Simplified API:** Easier to use than TensorFlow 1.x
+- **Eager Execution:** Immediate evaluation of operations
+- **Keras Integration:** High-level API for building models
+- **Production Ready:** Deploy models to various platforms
+- **Wide Adoption:** Industry standard for deep learning
+
+### Challenges
+
+- **Learning Curve:** Understanding TensorFlow concepts
+- **API Changes:** Differences from TensorFlow 1.x
+- **Performance Optimization:** Efficient model training
+- **Deployment:** Converting models for production
+
+### Scope
+
+This appendix covers:
+- TensorFlow 2 fundamentals
+- Keras API integration
+- Model building (Sequential and Functional)
+- Training and evaluation
+- Key APIs and techniques
+- Code examples
+
+## Key Concepts and Techniques
+
+1. **Eager Execution:** Immediate evaluation of operations
+2. **Keras API:** High-level API for building models
+3. **Sequential Model:** Linear stack of layers
+4. **Functional API:** More flexible model building
+5. **Layers:** Building blocks (Dense, Conv2D, LSTM, etc.)
+6. **Optimizers:** Algorithms for training (Adam, SGD, etc.)
+7. **Loss Functions:** Measures of model error
+8. **Metrics:** Evaluation measures (accuracy, etc.)
+9. **Callbacks:** Functions called during training
+10. **Model Saving/Loading:** Persistence of trained models
+
+## TensorFlow 2 Key Features
+
+### Eager Execution
+
+- Operations execute immediately
+- No need for sessions
+- Easier debugging
+- More Pythonic code
+
+### Keras Integration
+
+- Keras is the high-level API
+- `tf.keras` namespace
+- Simplified model building
+- Pre-built layers and models
+
+### Simplified API
+
+- Removed redundant APIs
+- Clearer naming conventions
+- Better error messages
+- Improved documentation
+
+## Core APIs and Classes
+
+### Model Building
+
+**Sequential API:**
+```python
+import tensorflow as tf
+
+model = tf.keras.models.Sequential([
+    tf.keras.layers.Dense(64, activation='relu'),
+    tf.keras.layers.Dense(10, activation='softmax')
+])
+```
+
+**Functional API:**
+```python
+inputs = tf.keras.Input(shape=(784,))
+x = tf.keras.layers.Dense(64, activation='relu')(inputs)
+outputs = tf.keras.layers.Dense(10, activation='softmax')(x)
+model = tf.keras.Model(inputs=inputs, outputs=outputs)
+```
+
+### Layers
+
+**Dense Layer:**
+```python
+tf.keras.layers.Dense(units, activation=None, use_bias=True, ...)
+```
+
+**Conv2D Layer:**
+```python
+tf.keras.layers.Conv2D(filters, kernel_size, activation=None, ...)
+```
+
+**LSTM Layer:**
+```python
+tf.keras.layers.LSTM(units, return_sequences=False, ...)
+```
+
+**SimpleRNN Layer:**
+```python
+tf.keras.layers.SimpleRNN(units, return_sequences=False, ...)
+```
+
+**Dropout Layer:**
+```python
+tf.keras.layers.Dropout(rate)
+```
+
+**Flatten Layer:**
+```python
+tf.keras.layers.Flatten()
+```
+
+**MaxPooling2D Layer:**
+```python
+tf.keras.layers.MaxPooling2D(pool_size=(2, 2))
+```
+
+### Optimizers
+
+**Adam:**
+```python
+tf.keras.optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999)
+```
+
+**SGD:**
+```python
+tf.keras.optimizers.SGD(learning_rate=0.01, momentum=0.0)
+```
+
+**RMSprop:**
+```python
+tf.keras.optimizers.RMSprop(learning_rate=0.001, rho=0.9)
+```
+
+### Loss Functions
+
+**Categorical Crossentropy:**
+```python
+tf.keras.losses.CategoricalCrossentropy()
+# or
+loss='categorical_crossentropy'
+```
+
+**Sparse Categorical Crossentropy:**
+```python
+tf.keras.losses.SparseCategoricalCrossentropy()
+# or
+loss='sparse_categorical_crossentropy'
+```
+
+**Binary Crossentropy:**
+```python
+tf.keras.losses.BinaryCrossentropy()
+# or
+loss='binary_crossentropy'
+```
+
+**Mean Squared Error:**
+```python
+tf.keras.losses.MeanSquaredError()
+# or
+loss='mean_squared_error'
+```
+
+### Metrics
+
+**Accuracy:**
+```python
+metrics=['accuracy']
+# or
+tf.keras.metrics.Accuracy()
+```
+
+**Categorical Accuracy:**
+```python
+tf.keras.metrics.CategoricalAccuracy()
+```
+
+**Sparse Categorical Accuracy:**
+```python
+tf.keras.metrics.SparseCategoricalAccuracy()
+```
+
+## Code Examples and Snippets
+
+### Code Example 1: Simple Sequential Model
+
+**Context:** Basic neural network for classification
+
+**Language:** Python
+
+```python
+import tensorflow as tf
+
+model = tf.keras.models.Sequential([
+    tf.keras.layers.Dense(64, activation='relu', input_shape=(784,)),
+    tf.keras.layers.Dropout(0.2),
+    tf.keras.layers.Dense(10, activation='softmax')
+])
+
+model.compile(optimizer='adam',
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+
+model.summary()
+```
+
+### Code Example 2: Functional API Model
+
+**Context:** More flexible model architecture
+
+**Language:** Python
+
+```python
+import tensorflow as tf
+
+inputs = tf.keras.Input(shape=(784,))
+x = tf.keras.layers.Dense(64, activation='relu')(inputs)
+x = tf.keras.layers.Dropout(0.2)(x)
+outputs = tf.keras.layers.Dense(10, activation='softmax')(x)
+
+model = tf.keras.Model(inputs=inputs, outputs=outputs)
+
+model.compile(optimizer='adam',
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+```
+
+### Code Example 3: CNN Model
+
+**Context:** Convolutional neural network for images
+
+**Language:** Python
+
+```python
+import tensorflow as tf
+
+model = tf.keras.models.Sequential([
+    tf.keras.layers.Conv2D(32, (3, 3), activation='relu', 
+                           input_shape=(28, 28, 1)),
+    tf.keras.layers.MaxPooling2D((2, 2)),
+    tf.keras.layers.Conv2D(64, (3, 3), activation='relu'),
+    tf.keras.layers.MaxPooling2D((2, 2)),
+    tf.keras.layers.Flatten(),
+    tf.keras.layers.Dense(64, activation='relu'),
+    tf.keras.layers.Dense(10, activation='softmax')
+])
+
+model.compile(optimizer='adam',
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+```
+
+### Code Example 4: LSTM Model
+
+**Context:** Recurrent neural network for sequences
+
+**Language:** Python
+
+```python
+import tensorflow as tf
+
+model = tf.keras.models.Sequential([
+    tf.keras.layers.LSTM(128, input_shape=(timesteps, features)),
+    tf.keras.layers.Dropout(0.2),
+    tf.keras.layers.Dense(num_classes, activation='softmax')
+])
+
+model.compile(optimizer='adam',
+              loss='categorical_crossentropy',
+              metrics=['accuracy'])
+```
+
+### Code Example 5: Training and Evaluation
+
+**Context:** Complete training pipeline
+
+**Language:** Python
+
+```python
+import tensorflow as tf
+
+# Load and preprocess data
+(x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+x_train, x_test = x_train / 255.0, x_test / 255.0
+
+# Build model
+model = tf.keras.models.Sequential([
+    tf.keras.layers.Flatten(input_shape=(28, 28)),
+    tf.keras.layers.Dense(128, activation='relu'),
+    tf.keras.layers.Dropout(0.2),
+    tf.keras.layers.Dense(10, activation='softmax')
+])
+
+# Compile model
+model.compile(optimizer='adam',
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+
+# Train model
+model.fit(x_train, y_train, epochs=5, batch_size=32)
+
+# Evaluate model
+test_loss, test_acc = model.evaluate(x_test, y_test, verbose=2)
+print(f'\nTest accuracy: {test_acc}')
+
+# Make predictions
+predictions = model.predict(x_test)
+```
+
+### Code Example 6: Model Saving and Loading
+
+**Context:** Persisting trained models
+
+**Language:** Python
+
+```python
+import tensorflow as tf
+
+# Save entire model
+model.save('my_model.h5')
+
+# Load model
+loaded_model = tf.keras.models.load_model('my_model.h5')
+
+# Save only weights
+model.save_weights('my_weights.h5')
+
+# Load weights
+model.load_weights('my_weights.h5')
+
+# Save in SavedModel format
+model.save('saved_model')
+
+# Load SavedModel
+loaded_model = tf.keras.models.load_model('saved_model')
+```
+
+### Code Example 7: Custom Training Loop
+
+**Context:** More control over training process
+
+**Language:** Python
+
+```python
+import tensorflow as tf
+
+# Define model
+model = tf.keras.Sequential([
+    tf.keras.layers.Dense(64, activation='relu'),
+    tf.keras.layers.Dense(10)
+])
+
+# Define loss and optimizer
+loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+optimizer = tf.keras.optimizers.Adam()
+
+# Training loop
+@tf.function
+def train_step(x, y):
+    with tf.GradientTape() as tape:
+        logits = model(x)
+        loss = loss_fn(y, logits)
+    gradients = tape.gradient(loss, model.trainable_variables)
+    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+    return loss
+
+# Train
+for epoch in range(epochs):
+    for batch in dataset:
+        loss = train_step(batch[0], batch[1])
+```
+
+### Code Example 8: Callbacks
+
+**Context:** Monitoring and controlling training
+
+**Language:** Python
+
+```python
+import tensorflow as tf
+
+# Define callbacks
+callbacks = [
+    tf.keras.callbacks.EarlyStopping(patience=3, monitor='val_loss'),
+    tf.keras.callbacks.ModelCheckpoint('best_model.h5', 
+                                       save_best_only=True,
+                                       monitor='val_loss'),
+    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', 
+                                         factor=0.5, 
+                                         patience=2),
+    tf.keras.callbacks.TensorBoard(log_dir='./logs')
+]
+
+# Train with callbacks
+model.fit(x_train, y_train,
+          epochs=50,
+          validation_data=(x_val, y_val),
+          callbacks=callbacks)
+```
+
+## Key TensorFlow 2 Namespaces
+
+### tf.keras
+
+High-level API for building models:
+- `tf.keras.models.Sequential`
+- `tf.keras.models.Model`
+- `tf.keras.layers.*`
+- `tf.keras.optimizers.*`
+- `tf.keras.losses.*`
+- `tf.keras.metrics.*`
+- `tf.keras.callbacks.*`
+
+### tf.keras.layers
+
+All layer types:
+- `Dense`, `Conv2D`, `Conv1D`, `Conv3D`
+- `LSTM`, `GRU`, `SimpleRNN`
+- `Dropout`, `BatchNormalization`
+- `Flatten`, `Reshape`
+- `MaxPooling2D`, `AveragePooling2D`
+- `Bidirectional`, `TimeDistributed`
+- `Embedding`, `GlobalAveragePooling2D`
+
+### tf.keras.optimizers
+
+Optimization algorithms:
+- `Adam`, `SGD`, `RMSprop`
+- `Adagrad`, `Adadelta`
+- `Adamax`, `Nadam`
+
+### tf.keras.losses
+
+Loss functions:
+- `CategoricalCrossentropy`
+- `SparseCategoricalCrossentropy`
+- `BinaryCrossentropy`
+- `MeanSquaredError`
+- `MeanAbsoluteError`
+- `Huber`
+
+### tf.keras.metrics
+
+Evaluation metrics:
+- `Accuracy`, `CategoricalAccuracy`
+- `SparseCategoricalAccuracy`
+- `BinaryAccuracy`
+- `Precision`, `Recall`
+- `AUC`, `TruePositives`, `FalsePositives`
+
+## Best Practices and Recommendations
+
+### Model Building
+
+1. **Start Simple:** Use Sequential API for linear models
+2. **Use Functional API:** For complex architectures (multiple inputs/outputs)
+3. **Layer Organization:** Group related layers logically
+4. **Activation Functions:** Use appropriate activations (ReLU for hidden, softmax for output)
+
+### Compilation
+
+1. **Optimizer:** Adam is good default choice
+2. **Learning Rate:** Start with 0.001, adjust as needed
+3. **Loss Function:** Match to problem type (classification vs regression)
+4. **Metrics:** Choose relevant metrics for your problem
+
+### Training
+
+1. **Batch Size:** Start with 32, adjust based on memory
+2. **Epochs:** Monitor validation loss to avoid overfitting
+3. **Validation Split:** Use 20% for validation
+4. **Callbacks:** Use EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
+
+### Data Preprocessing
+
+1. **Normalization:** Scale inputs to 0-1 or standardize
+2. **One-Hot Encoding:** For categorical outputs
+3. **Data Augmentation:** For images (rotation, flip, etc.)
+4. **Shuffling:** Shuffle training data
+
+### Performance
+
+1. **Use @tf.function:** For custom training loops
+2. **Batch Processing:** Process data in batches
+3. **GPU Utilization:** Ensure GPU is being used
+4. **Mixed Precision:** Use for faster training on modern GPUs
+
+## Common Patterns
+
+### Pattern 1: Classification Model
+
+```python
+model = tf.keras.Sequential([
+    tf.keras.layers.Dense(128, activation='relu'),
+    tf.keras.layers.Dropout(0.2),
+    tf.keras.layers.Dense(num_classes, activation='softmax')
+])
+
+model.compile(optimizer='adam',
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+```
+
+### Pattern 2: Regression Model
+
+```python
+model = tf.keras.Sequential([
+    tf.keras.layers.Dense(64, activation='relu'),
+    tf.keras.layers.Dense(1)  # No activation for regression
+])
+
+model.compile(optimizer='adam',
+              loss='mean_squared_error',
+              metrics=['mae'])
+```
+
+### Pattern 3: Image Classification
+
+```python
+model = tf.keras.Sequential([
+    tf.keras.layers.Conv2D(32, 3, activation='relu'),
+    tf.keras.layers.MaxPooling2D(),
+    tf.keras.layers.Flatten(),
+    tf.keras.layers.Dense(128, activation='relu'),
+    tf.keras.layers.Dense(num_classes, activation='softmax')
+])
+```
+
+### Pattern 4: Sequence Model
+
+```python
+model = tf.keras.Sequential([
+    tf.keras.layers.LSTM(64, return_sequences=True),
+    tf.keras.layers.LSTM(64),
+    tf.keras.layers.Dense(num_classes, activation='softmax')
+])
+```
+
+## Limitations and Assumptions
+
+### Stated Limitations
+
+1. **Introduction Only:** Appendix provides introduction, not comprehensive guide
+2. **Assumes Prior Knowledge:** Assumes familiarity with deep learning concepts
+3. **API Coverage:** Not all APIs covered in detail
+
+### Assumptions
+
+1. **TensorFlow 2 Installed:** Assumes TF 2 is properly installed
+2. **Python Knowledge:** Assumes familiarity with Python
+3. **Deep Learning Basics:** Assumes understanding of neural networks
+
+## Related Techniques and References
+
+### Related Chapters
+
+- **Chapter 3:** Classifiers (uses TensorFlow/Keras)
+- **Chapter 4:** Deep Learning Introduction (uses TensorFlow/Keras)
+- **Chapter 5:** RNNs and LSTMs (uses TensorFlow/Keras)
+- **Chapter 6:** NLP and RL (uses TensorFlow)
+
+### Key References
+
+**Official Documentation:**
+- TensorFlow: https://www.tensorflow.org/
+- Keras: https://keras.io/
+- TensorFlow Tutorials: https://www.tensorflow.org/tutorials
+
+**Installation:**
+```bash
+pip install tensorflow
+# or for GPU support
+pip install tensorflow-gpu
+```
+
+## Practical Applications
+
+### Use Cases
+
+1. **Image Classification:** CNNs for recognizing objects
+2. **Text Classification:** RNNs/LSTMs for sentiment analysis
+3. **Time Series:** RNNs for forecasting
+4. **Recommendation Systems:** Embeddings and deep networks
+5. **Computer Vision:** Object detection, segmentation
+6. **NLP:** Machine translation, text generation
+
+### Application Domains
+
+- Computer vision
+- Natural language processing
+- Time series analysis
+- Reinforcement learning
+- Generative models
+
+## Implementation Checklist
+
+### Prerequisites
+
+- [ ] Python 3.6+ installed
+- [ ] Understanding of deep learning concepts
+- [ ] Familiarity with NumPy
+
+### Setup Steps
+
+1. [ ] Install TensorFlow 2:
+   ```bash
+   pip install tensorflow
+   ```
+
+2. [ ] Verify installation:
+   ```python
+   import tensorflow as tf
+   print(tf.__version__)
+   ```
+
+3. [ ] Test GPU (if available):
+   ```python
+   print(tf.config.list_physical_devices('GPU'))
+   ```
+
+### Implementation Steps
+
+1. [ ] Import TensorFlow
+2. [ ] Load/preprocess data
+3. [ ] Build model (Sequential or Functional)
+4. [ ] Compile model (optimizer, loss, metrics)
+5. [ ] Train model (fit)
+6. [ ] Evaluate model (evaluate)
+7. [ ] Make predictions (predict)
+8. [ ] Save/load model if needed
+
+## Summary
+
+This appendix covered:
+- TensorFlow 2 key features (eager execution, Keras integration)
+- Model building (Sequential and Functional APIs)
+- Core layers, optimizers, loss functions, metrics
+- Training and evaluation
+- Model saving and loading
+- Callbacks for training control
+- Common patterns for different problem types
+- Best practices and recommendations
+
+The appendix provides practical, implementable techniques for using TensorFlow 2 with complete code examples that can be directly used in projects.

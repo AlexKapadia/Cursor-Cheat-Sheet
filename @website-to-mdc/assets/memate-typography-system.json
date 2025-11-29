@@ -1,0 +1,163 @@
+{
+  "font_families": {
+    "primary": {
+      "description": "Primary font family - modern sans-serif",
+      "examples": ["Inter", "Poppins", "Roboto", "Open Sans"],
+      "usage": "Headings, body text, primary content"
+    },
+    "monospace": {
+      "description": "Monospace font for code",
+      "usage": "Code snippets, technical content (if any)"
+    }
+  },
+  "headings": {
+    "h1": {
+      "size": "Large (48px-64px on desktop, smaller on mobile)",
+      "weight": "Bold (700)",
+      "line_height": "1.1-1.2",
+      "usage": "Hero headlines, main page titles",
+      "example": "\"All-in-One Business Management Software Platform\""
+    },
+    "h2": {
+      "size": "Large (32px-40px on desktop)",
+      "weight": "Bold (700)",
+      "line_height": "1.2-1.3",
+      "usage": "Section headings, feature titles",
+      "example": "\"More Business - Less Busyness\""
+    },
+    "h3": {
+      "size": "Medium (24px-28px on desktop)",
+      "weight": "Semi-bold (600) or Bold (700)",
+      "line_height": "1.3-1.4",
+      "usage": "Subsection headings, card titles"
+    },
+    "h4": {
+      "size": "Medium (20px-24px on desktop)",
+      "weight": "Semi-bold (600)",
+      "line_height": "1.4",
+      "usage": "Feature card titles, smaller headings"
+    },
+    "h5": {
+      "size": "Small (18px-20px on desktop)",
+      "weight": "Medium (500) or Semi-bold (600)",
+      "line_height": "1.4-1.5",
+      "usage": "Minor headings, labels"
+    },
+    "h6": {
+      "size": "Small (16px-18px on desktop)",
+      "weight": "Medium (500)",
+      "line_height": "1.5",
+      "usage": "Smallest headings, labels"
+    }
+  },
+  "body_text": {
+    "large": {
+      "size": "18px-20px on desktop, 16px-18px on mobile",
+      "weight": "Regular (400)",
+      "line_height": "1.6-1.7",
+      "usage": "Lead paragraphs, important body text"
+    },
+    "regular": {
+      "size": "16px on desktop, 16px on mobile (minimum)",
+      "weight": "Regular (400)",
+      "line_height": "1.5-1.6",
+      "usage": "Standard body text, paragraphs"
+    },
+    "small": {
+      "size": "14px-15px",
+      "weight": "Regular (400)",
+      "line_height": "1.5",
+      "usage": "Captions, metadata, footer text"
+    }
+  },
+  "interactive_elements": {
+    "button": {
+      "size": "16px-18px",
+      "weight": "Semi-bold (600) or Bold (700)",
+      "line_height": "1.2",
+      "letter_spacing": "Slight (0.5px-1px) for uppercase",
+      "usage": "CTA buttons, action buttons"
+    },
+    "link": {
+      "size": "Inherits from parent",
+      "weight": "Regular (400) or Medium (500)",
+      "line_height": "Inherits",
+      "decoration": "Underline on hover or colored",
+      "usage": "Text links, navigation links"
+    },
+    "input": {
+      "size": "16px (minimum for mobile)",
+      "weight": "Regular (400)",
+      "line_height": "1.5",
+      "usage": "Form inputs, text fields"
+    },
+    "label": {
+      "size": "14px-16px",
+      "weight": "Medium (500) or Semi-bold (600)",
+      "line_height": "1.4",
+      "usage": "Form labels, field labels"
+    }
+  },
+  "special_text": {
+    "caption": {
+      "size": "12px-14px",
+      "weight": "Regular (400)",
+      "line_height": "1.4",
+      "usage": "Image captions, small print"
+    },
+    "overline": {
+      "size": "12px-14px",
+      "weight": "Semi-bold (600) or Bold (700)",
+      "line_height": "1.4",
+      "letter_spacing": "Wide (1px-2px)",
+      "text_transform": "Uppercase",
+      "usage": "Section labels, category labels"
+    },
+    "quote": {
+      "size": "18px-24px",
+      "weight": "Regular (400) or Medium (500)",
+      "line_height": "1.6",
+      "style": "Italic",
+      "usage": "Testimonials, quotes, blockquotes"
+    }
+  },
+  "responsive_typography": {
+    "mobile": {
+      "h1": "32px-40px",
+      "h2": "24px-28px",
+      "body": "16px (minimum)",
+      "approach": "Scaled down proportionally"
+    },
+    "tablet": {
+      "h1": "40px-48px",
+      "h2": "28px-32px",
+      "body": "16px-18px",
+      "approach": "Between mobile and desktop"
+    },
+    "desktop": {
+      "h1": "48px-64px",
+      "h2": "32px-40px",
+      "body": "16px-20px",
+      "approach": "Full size, maximum readability"
+    }
+  },
+  "typography_principles": {
+    "hierarchy": "Clear visual hierarchy with distinct heading sizes",
+    "readability": "Comfortable line heights (1.5-1.7 for body text)",
+    "contrast": "High contrast for readability (WCAG AA compliant)",
+    "scalability": "Responsive typography that scales appropriately",
+    "consistency": "Consistent font weights and sizes throughout",
+    "accessibility": "Minimum 16px for body text, supports zoom up to 200%"
+  },
+  "notes": {
+    "actual_fonts": "Specific font families would need to be extracted from the actual website CSS",
+    "font_loading": "Likely uses font-display: swap for performance",
+    "web_fonts": "Probably uses web fonts (Google Fonts or custom)",
+    "fallbacks": "Should have fallback fonts (sans-serif stack)",
+    "optimization": "Fonts should be subsetted and optimized for web"
+  }
+}
+
+
+
+
