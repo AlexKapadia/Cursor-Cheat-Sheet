@@ -1,0 +1,897 @@
+# Eleven Labs MCP: Complete Guide for Agentic Applications
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Platform Setup](#platform-setup)
+3. [MCP Server Configuration](#mcp-server-configuration)
+4. [Agent Workflows](#agent-workflows)
+5. [Building Agentic Applications](#building-agentic-applications)
+6. [Node Types and Configuration](#node-types-and-configuration)
+7. [Edges and Flow Control](#edges-and-flow-control)
+8. [API Integration](#api-integration)
+9. [Best Practices](#best-practices)
+10. [Troubleshooting](#troubleshooting)
+
+---
+
+## Overview
+
+Eleven Labs provides a powerful platform for building conversational AI agents with sophisticated workflow capabilities. The Model Context Protocol (MCP) server enables seamless integration of Eleven Labs' Agents Platform into your development environment, allowing you to build, test, and deploy agentic applications with visual workflow design.
+
+### Key Features
+
+- **Visual Workflow Builder:** Design complex conversation flows with graph-based workflows
+- **Dynamic Routing:** Create branching conversation paths that adapt to user needs
+- **Multiple Node Types:** Subagent nodes, tool nodes, transfer nodes, and more
+- **LLM-Powered Conditions:** Use natural language conditions for intelligent routing
+- **Voice Configuration:** Over 5,000 voices across 31 languages
+- **Knowledge Base Integration:** RAG-enabled responses grounded in your content
+- **Tool Integration:** Connect external APIs and services
+
+### When to Use Eleven Labs Agents Platform
+
+Use Eleven Labs for:
+- Customer service and support agents
+- Voice assistants and conversational interfaces
+- Multi-step workflows requiring decision-making
+- Applications needing voice synthesis with conversation
+- Complex routing based on user intent
+- Integration with telephony systems
+
+---
+
+## Platform Setup
+
+### Account Creation and API Access
+
+1. **Sign Up:**
+   - Visit [ElevenLabs](https://elevenlabs.io/) and create an account
+   - Verify your email to activate your account
+   - Choose a subscription plan that fits your needs
+   - Free tier offers 15 minutes of conversation per month for testing
+
+2. **Retrieve API Key:**
+   - Log in to your ElevenLabs account
+   - Navigate to your profile settings
+   - Generate and copy your API key
+   - Store the API key securely (never commit to version control)
+
+3. **Environment Configuration:**
+   ```bash
+   # .env file
+   ELEVENLABS_API_KEY=your_api_key_here
+   ELEVENLABS_API_URL=https://api.elevenlabs.io/v1
+   ```
+
+### Understanding Credits and Usage
+
+- Eleven Labs operates on a credit system
+- Each character processed consumes credits
+- Example: "Hello world" (11 characters) uses approximately 11 credits
+- Monitor usage in your dashboard to stay within plan limits
+- Different operations consume different credit amounts
+
+### Initial Platform Configuration
+
+1. **Access Agents Platform:**
+   - Log in to your ElevenLabs account
+   - Navigate to the Agents Platform section
+   - Familiarise yourself with the dashboard interface
+
+2. **Create Your First Agent:**
+   - Click "Create New Agent"
+   - Provide a name and description
+   - Configure basic settings (voice, language, model)
+   - Save the agent configuration
+
+3. **Test Agent:**
+   - Use the built-in testing interface
+   - Simulate conversations to verify functionality
+   - Check voice output quality
+   - Validate conversation flow
+
+---
+
+## MCP Server Configuration
+
+### Installing the MCP Server
+
+The Eleven Labs MCP server enables programmatic access to the Agents Platform from your development environment.
+
+**Prerequisites:**
+- Node.js 18+ or Python 3.9+
+- Eleven Labs API key
+- MCP-compatible client (Cursor, Claude Desktop, etc.)
+
+**Installation Options:**
+
+**Option 1: NPM Package (Recommended)**
+```bash
+npm install -g @elevenlabs/mcp-server
+```
+
+**Option 2: Python Package**
+```bash
+pip install elevenlabs-mcp
+```
+
+**Option 3: Direct Integration**
+Clone the MCP server repository and integrate directly into your project.
+
+### Configuration File
+
+Create an MCP configuration file for your client:
+
+**For Cursor/Claude Desktop:**
+```json
+{
+  "mcpServers": {
+    "elevenlabs": {
+      "command": "npx",
+      "args": ["-y", "@elevenlabs/mcp-server"],
+      "env": {
+        "ELEVENLABS_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+**For Custom Integration:**
+```javascript
+// mcp-config.js
+export default {
+  servers: {
+    elevenlabs: {
+      url: 'https://api.elevenlabs.io/v1',
+      apiKey: process.env.ELEVENLABS_API_KEY,
+      timeout: 30000,
+    }
+  }
+}
+```
+
+### Verifying MCP Connection
+
+Test the MCP server connection:
+
+```bash
+# Test connection
+npx @elevenlabs/mcp-server --test
+
+# List available tools
+npx @elevenlabs/mcp-server --list-tools
+```
+
+### Available MCP Tools
+
+The MCP server provides access to:
+
+- **Agent Management:** Create, update, delete, and list agents
+- **Workflow Operations:** Create and manage workflow graphs
+- **Conversation Handling:** Start, manage, and end conversations
+- **Knowledge Base:** Upload and manage knowledge base items
+- **Tool Integration:** Configure and manage external tools
+- **Analytics:** Retrieve conversation metrics and analytics
+
+---
+
+## Agent Workflows
+
+### Overview
+
+Agent Workflows provide a visual interface for designing complex conversation flows in the Agents Platform. Instead of relying on linear conversation paths, workflows enable you to create sophisticated, branching conversation graphs that adapt dynamically to user needs.
+
+### Workflow Architecture
+
+Workflows are composed of:
+- **Nodes:** Individual components that perform specific functions
+- **Edges:** Connections that define conversation flow between nodes
+- **Conditions:** Logic that determines routing paths
+- **State Management:** Context maintained throughout the conversation
+
+### Visual Workflow Builder
+
+The visual workflow builder allows you to:
+- Drag and drop nodes onto the canvas
+- Connect nodes with edges
+- Configure node properties
+- Set up routing conditions
+- Test workflows before deployment
+- Visualise conversation paths
+
+---
+
+## Node Types and Configuration
+
+### Subagent Nodes
+
+Subagent nodes allow you to modify agent behaviour at specific points in your workflow. These modifications are applied on top of the base agent configuration, or can override the current agent's config completely, giving you fine-grained control over each conversation phase.
+
+#### General Configuration
+
+**System Prompt:**
+- Append or override system instructions to guide agent behaviour
+- Use for specific conversation phases or contexts
+- Example: "You are now helping with technical support. Be patient and detailed."
+
+**LLM Selection:**
+- Choose a different language model for specific nodes
+- Switch from Gemini 2.0 Flash to a more powerful model for complex reasoning
+- Use faster models for simple routing decisions
+- Example: Use GPT-4 for complex decision-making, Gemini Flash for quick responses
+
+**Voice Configuration:**
+- Change voice settings including speed, tone, or voice selection
+- Adjust voice characteristics for different conversation phases
+- Match voice to conversation context (professional, friendly, technical)
+- Example: Use a calm voice for support, energetic voice for sales
+
+**Use Cases:**
+- Use a more powerful LLM for complex decision-making nodes
+- Apply stricter conversation guidelines during sensitive information gathering
+- Change voice characteristics for different conversation phases
+- Modify agent personality for specific interaction types
+
+#### Knowledge Base Configuration
+
+Attach or override knowledge base items for specific nodes:
+- Upload documents relevant to the conversation phase
+- Enable RAG for context-aware responses
+- Override base knowledge base with node-specific content
+- Example: Attach product documentation for product inquiry nodes
+
+#### Tools Configuration
+
+Modify available tools for specific nodes:
+- Add tools for specific conversation phases
+- Remove tools that aren't relevant
+- Override tool configurations
+- Example: Add payment processing tools only for checkout nodes
+
+#### Subagent Extra Agent Config
+
+Modify core agent settings for this specific node:
+
+**System Prompt:** Append or override system instructions to guide agent behaviour
+
+**LLM Selection:** Choose a different language model (e.g., switch from Gemini 2.0 Flash to a more powerful model for complex reasoning tasks)
+
+**Voice Configuration:** Change voice settings including speed, tone, or even switch to a different voice
+
+### Dispatch Tool Node
+
+Tool nodes execute a specific tool call during conversation flow. Unlike tools within subagents, tool nodes are dedicated execution points that guarantee the tool is called.
+
+**Key Characteristics:**
+- Guaranteed execution at this point in the workflow
+- Cannot be skipped or bypassed
+- Returns results that can be used for routing
+
+**Tool Node Result Edges:**
+
+Special edge configuration allows routing to a new node based on the tool execution result:
+
+**Success Path:**
+- Define where to route when the tool executes successfully
+- Use tool results in subsequent nodes
+- Example: Route to confirmation node after successful payment
+
+**Failure Path:**
+- Define where to route when the tool fails or returns an error
+- Handle errors gracefully
+- Example: Route to error handling node or retry node
+
+**Future Enhancements:**
+- Additional branching conditions will be provided
+- Custom condition evaluation
+- Multi-condition routing
+
+### Agent Transfer Node
+
+Agent transfer nodes facilitate handoffs between different conversational agents.
+
+**Use Cases:**
+- Escalate to a specialised agent
+- Transfer to a human agent
+- Switch to a different agent for different topics
+- Route based on user preference
+
+**Configuration:**
+- Target agent ID
+- Transfer message or context
+- Preserve conversation history
+- Set transfer conditions
+
+### Transfer to Number Node
+
+Transfer to number nodes transition from a conversation with an AI agent to a human agent via phone systems.
+
+**Configuration:**
+- Phone number to transfer to
+- Transfer message
+- Call routing options
+- Fallback behaviour if transfer fails
+
+**Use Cases:**
+- Escalate complex issues to human support
+- Connect users to sales teams
+- Transfer to specialised departments
+- Provide human backup for AI limitations
+
+### End Node
+
+End call nodes terminate the conversation flow gracefully.
+
+**Configuration:**
+- Final message to user
+- Conversation summary
+- Follow-up actions
+- Data collection before ending
+
+**Best Practices:**
+- Provide clear closing message
+- Offer next steps or resources
+- Collect feedback if appropriate
+- Ensure all necessary actions are completed
+
+---
+
+## Edges and Flow Control
+
+### Overview
+
+Edges define how conversations flow between nodes in your workflow. They support sophisticated routing logic that enables dynamic, context-aware conversation paths.
+
+### Forward Edges
+
+Forward edges move the conversation to subsequent nodes in the workflow. They represent the primary flow of your conversation.
+
+**Configuration Options:**
+
+**LLM Condition:**
+- Use LLM conditions to create dynamic conversation flows based on natural language evaluation
+- The LLM evaluates conditions in real-time to determine the appropriate path
+- Example: "User is asking about pricing" routes to pricing node
+
+**Expression:**
+- Use programmatic expressions for routing
+- Evaluate conversation state, variables, or tool results
+- Example: `userIntent === 'support' && priority === 'high'`
+
+**None:**
+- Unconditional routing to the next node
+- Use for linear flow without branching
+- Simplest edge type
+
+### LLM Condition Configuration
+
+**Label:**
+- Human-readable description of the edge condition
+- Not processed by LLM, used for documentation
+- Example: "User wants to make a purchase"
+
+**LLM Condition:**
+- Natural language condition evaluated by the LLM
+- Evaluated in context of current conversation
+- Example: "The user has expressed interest in purchasing a product and has provided their budget range"
+
+**Best Practices:**
+- Be specific but not overly restrictive
+- Consider conversation context
+- Test conditions with various inputs
+- Provide fallback paths
+
+### Backward Edges
+
+Backward edges allow revisiting previous nodes in the workflow, enabling loops or corrections.
+
+**Use Cases:**
+- Allow users to go back to previous steps
+- Implement retry logic
+- Create conversation loops for clarification
+- Enable users to change previous answers
+
+**Configuration:**
+- Source node (where the edge starts)
+- Target node (where it goes back to)
+- Conditions for backward routing
+- State preservation options
+
+### Edge Priority and Evaluation
+
+When multiple edges exist from a node:
+- Edges are evaluated in order
+- First matching condition determines the path
+- Set edge priority to control evaluation order
+- Use "catch-all" edges as fallbacks
+
+---
+
+## Building Agentic Applications
+
+### Planning Your Application
+
+1. **Define Objectives:**
+   - What is the primary purpose of your agent?
+   - What tasks should it accomplish?
+   - What are the success criteria?
+
+2. **Map User Journeys:**
+   - Identify all possible user paths
+   - Consider edge cases and error scenarios
+   - Plan for different user personas
+
+3. **Identify Integration Points:**
+   - What external tools or APIs are needed?
+   - What knowledge bases are required?
+   - What data sources need to be accessed?
+
+### Step-by-Step Application Development
+
+#### Step 1: Create Base Agent
+
+```javascript
+// Example: Creating a base agent via API
+const agent = await elevenlabs.agents.create({
+  name: "Customer Support Agent",
+  description: "Handles customer inquiries and support requests",
+  systemPrompt: "You are a helpful customer support agent...",
+  voiceId: "voice_id_here",
+  language: "en",
+  model: "gpt-4"
+});
+```
+
+#### Step 2: Design Workflow Structure
+
+1. **Start Node:**
+   - Initial greeting and context gathering
+   - Route to appropriate sub-workflows
+
+2. **Main Conversation Nodes:**
+   - Handle primary user intents
+   - Use subagent nodes for different topics
+   - Implement tool nodes for actions
+
+3. **Decision Points:**
+   - Use LLM conditions for routing
+   - Evaluate user intent
+   - Route to specialised handlers
+
+4. **Action Nodes:**
+   - Execute tools (payments, bookings, etc.)
+   - Handle success and failure paths
+   - Update conversation state
+
+5. **End Nodes:**
+   - Provide closing messages
+   - Collect feedback
+   - Set up follow-ups
+
+#### Step 3: Configure Knowledge Base
+
+```javascript
+// Upload knowledge base items
+const knowledgeBase = await elevenlabs.knowledgeBase.upload({
+  agentId: agent.id,
+  file: "product_documentation.pdf",
+  name: "Product Documentation"
+});
+```
+
+#### Step 4: Integrate Tools
+
+```javascript
+// Configure external tool
+const tool = await elevenlabs.tools.create({
+  agentId: agent.id,
+  name: "check_inventory",
+  description: "Checks product inventory levels",
+  endpoint: "https://api.example.com/inventory",
+  method: "GET",
+  headers: {
+    "Authorization": "Bearer token"
+  }
+});
+```
+
+#### Step 5: Build Workflow Graph
+
+```javascript
+// Create workflow with nodes and edges
+const workflow = await elevenlabs.workflows.create({
+  agentId: agent.id,
+  nodes: [
+    {
+      type: "start",
+      id: "start_1"
+    },
+    {
+      type: "subagent",
+      id: "greeting",
+      config: {
+        systemPrompt: "Greet the user warmly..."
+      }
+    },
+    {
+      type: "tool",
+      id: "check_inventory",
+      toolId: tool.id
+    },
+    {
+      type: "end",
+      id: "end_1"
+    }
+  ],
+  edges: [
+    {
+      from: "start_1",
+      to: "greeting",
+      condition: null
+    },
+    {
+      from: "greeting",
+      to: "check_inventory",
+      condition: {
+        type: "llm",
+        prompt: "User is asking about product availability"
+      }
+    },
+    {
+      from: "check_inventory",
+      to: "end_1",
+      condition: {
+        type: "result",
+        onSuccess: true
+      }
+    }
+  ]
+});
+```
+
+#### Step 6: Test and Iterate
+
+1. **Unit Testing:**
+   - Test individual nodes
+   - Verify tool executions
+   - Validate edge conditions
+
+2. **Integration Testing:**
+   - Test complete workflows
+   - Verify state management
+   - Check error handling
+
+3. **User Testing:**
+   - Simulate real conversations
+   - Gather feedback
+   - Identify improvements
+
+#### Step 7: Deploy
+
+```javascript
+// Deploy agent to production
+const deployment = await elevenlabs.agents.deploy({
+  agentId: agent.id,
+  workflowId: workflow.id,
+  channels: ["web", "phone"]
+});
+```
+
+### Example: Customer Support Agent
+
+**Workflow Structure:**
+
+```
+Start → Greeting → Intent Detection → [Support | Sales | Technical]
+  ↓
+Support → Issue Classification → [Simple | Complex]
+  ↓
+Simple → Knowledge Base Lookup → Solution → End
+  ↓
+Complex → Human Transfer → End
+```
+
+**Implementation:**
+
+1. **Start Node:** Welcome message and initial context
+2. **Intent Detection:** LLM condition routes based on user intent
+3. **Support Branch:** Subagent with support-focused prompt
+4. **Issue Classification:** Tool node that categorises the issue
+5. **Knowledge Base Lookup:** RAG-enabled response generation
+6. **Human Transfer:** Escalation for complex issues
+
+---
+
+## API Integration
+
+### Authentication
+
+All API requests require authentication using your API key:
+
+```javascript
+const headers = {
+  "xi-api-key": process.env.ELEVENLABS_API_KEY,
+  "Content-Type": "application/json"
+};
+```
+
+### Core API Endpoints
+
+**Agents:**
+- `POST /v1/agents` - Create agent
+- `GET /v1/agents` - List agents
+- `GET /v1/agents/{agent_id}` - Get agent details
+- `PATCH /v1/agents/{agent_id}` - Update agent
+- `DELETE /v1/agents/{agent_id}` - Delete agent
+
+**Workflows:**
+- `POST /v1/agents/{agent_id}/workflows` - Create workflow
+- `GET /v1/agents/{agent_id}/workflows` - List workflows
+- `GET /v1/workflows/{workflow_id}` - Get workflow details
+- `PATCH /v1/workflows/{workflow_id}` - Update workflow
+- `DELETE /v1/workflows/{workflow_id}` - Delete workflow
+
+**Conversations:**
+- `POST /v1/conversations` - Start conversation
+- `POST /v1/conversations/{conversation_id}/messages` - Send message
+- `GET /v1/conversations/{conversation_id}` - Get conversation
+- `DELETE /v1/conversations/{conversation_id}` - End conversation
+
+**Knowledge Base:**
+- `POST /v1/agents/{agent_id}/knowledge-base` - Upload document
+- `GET /v1/agents/{agent_id}/knowledge-base` - List documents
+- `DELETE /v1/knowledge-base/{item_id}` - Delete document
+
+**Tools:**
+- `POST /v1/agents/{agent_id}/tools` - Create tool
+- `GET /v1/agents/{agent_id}/tools` - List tools
+- `PATCH /v1/tools/{tool_id}` - Update tool
+- `DELETE /v1/tools/{tool_id}` - Delete tool
+
+### Error Handling
+
+```javascript
+try {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail?.message || 'API request failed');
+  }
+  return await response.json();
+} catch (error) {
+  if (error.response?.status === 401) {
+    // Handle authentication error
+  } else if (error.response?.status === 429) {
+    // Handle rate limiting
+  } else {
+    // Handle other errors
+  }
+}
+```
+
+### Rate Limiting
+
+- Monitor rate limits in response headers
+- Implement exponential backoff for retries
+- Use request queuing for high-volume applications
+- Cache responses when appropriate
+
+---
+
+## Best Practices
+
+### Workflow Design
+
+1. **Keep Workflows Focused:**
+   - Each workflow should have a clear purpose
+   - Avoid overly complex branching
+   - Use sub-workflows for complex sections
+
+2. **Plan for Edge Cases:**
+   - Always provide fallback paths
+   - Handle errors gracefully
+   - Include "I don't understand" paths
+
+3. **Optimise for User Experience:**
+   - Minimise steps to complete tasks
+   - Provide clear progress indicators
+   - Allow users to go back or cancel
+
+4. **Test Thoroughly:**
+   - Test all conversation paths
+   - Verify edge conditions
+   - Check error handling
+
+### Prompt Engineering
+
+1. **System Prompts:**
+   - Be specific about agent role and behaviour
+   - Include examples of good responses
+   - Set clear boundaries and constraints
+
+2. **LLM Conditions:**
+   - Write clear, unambiguous conditions
+   - Test with various phrasings
+   - Provide context in conditions
+
+3. **Iterative Refinement:**
+   - Start with simple prompts
+   - Refine based on real conversations
+   - A/B test different prompt variations
+
+### Tool Integration
+
+1. **Tool Design:**
+   - Each tool should have a single, clear purpose
+   - Provide detailed descriptions
+   - Include parameter validation
+
+2. **Error Handling:**
+   - Always handle tool failures
+   - Provide meaningful error messages
+   - Implement retry logic where appropriate
+
+3. **Security:**
+   - Never expose API keys in tool configurations
+   - Validate all inputs
+   - Sanitise outputs
+
+### Performance Optimization
+
+1. **Model Selection:**
+   - Use faster models for simple tasks
+   - Reserve powerful models for complex reasoning
+   - Balance cost and performance
+
+2. **Caching:**
+   - Cache knowledge base lookups
+   - Store frequently accessed data
+   - Implement response caching
+
+3. **Parallel Processing:**
+   - Execute independent tools in parallel
+   - Use async/await for concurrent operations
+   - Optimise workflow paths
+
+### Monitoring and Analytics
+
+1. **Track Key Metrics:**
+   - Conversation success rates
+   - Average conversation length
+   - Tool execution success rates
+   - User satisfaction scores
+
+2. **Logging:**
+   - Log all conversation interactions
+   - Track workflow path taken
+   - Monitor error rates
+   - Record tool execution times
+
+3. **Analytics:**
+   - Analyse conversation patterns
+   - Identify common failure points
+   - Track user journey completion
+   - Measure agent effectiveness
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**Issue: Agent not responding correctly**
+- Check system prompt clarity
+- Verify knowledge base is properly attached
+- Review conversation context
+- Test with simpler prompts first
+
+**Issue: Workflow not routing correctly**
+- Verify edge conditions are properly configured
+- Test LLM conditions with various inputs
+- Check edge priority order
+- Ensure fallback paths exist
+
+**Issue: Tools not executing**
+- Verify tool configuration and endpoints
+- Check authentication credentials
+- Test tool endpoints independently
+- Review error logs
+
+**Issue: High API costs**
+- Optimise model selection
+- Reduce unnecessary tool calls
+- Implement caching
+- Monitor usage patterns
+
+**Issue: Poor voice quality**
+- Check voice settings
+- Verify audio format compatibility
+- Test with different voices
+- Review audio output settings
+
+### Debugging Workflows
+
+1. **Enable Debug Mode:**
+   - Turn on detailed logging
+   - Track node execution
+   - Monitor edge evaluations
+   - Log tool results
+
+2. **Test Individual Components:**
+   - Test nodes in isolation
+   - Verify edge conditions separately
+   - Check tool executions independently
+   - Validate state management
+
+3. **Use Test Conversations:**
+   - Create test scenarios
+   - Simulate various user inputs
+   - Track conversation paths
+   - Identify failure points
+
+### Getting Help
+
+- **Documentation:** [ElevenLabs Docs](https://elevenlabs.io/docs/)
+- **Community Forums:** Engage with other developers
+- **Support:** Contact ElevenLabs support for technical issues
+- **Status Page:** Check [status.elevenlabs.io](https://status.elevenlabs.io) for service status
+
+---
+
+## Quick Reference
+
+### Workflow Checklist
+
+- [ ] Define clear objectives for your agent
+- [ ] Map out user journeys and conversation paths
+- [ ] Create base agent with appropriate settings
+- [ ] Design workflow structure with nodes and edges
+- [ ] Configure knowledge base items
+- [ ] Integrate necessary tools
+- [ ] Set up routing conditions
+- [ ] Test all conversation paths
+- [ ] Handle errors and edge cases
+- [ ] Deploy and monitor performance
+
+### Node Type Quick Reference
+
+- **Subagent:** Modify agent behaviour at specific points
+- **Tool:** Execute guaranteed tool calls
+- **Transfer:** Hand off to another agent
+- **Transfer to Number:** Connect to human via phone
+- **End:** Terminate conversation gracefully
+
+### Edge Type Quick Reference
+
+- **LLM Condition:** Natural language routing
+- **Expression:** Programmatic routing
+- **None:** Unconditional routing
+- **Result-based:** Route based on tool results
+
+---
+
+## Conclusion
+
+Eleven Labs' Agents Platform with MCP integration provides a powerful foundation for building sophisticated agentic applications. By following this guide, you can:
+
+1. Set up your development environment
+2. Configure the MCP server
+3. Design complex conversation workflows
+4. Integrate external tools and knowledge bases
+5. Deploy and monitor your agents
+
+Remember to:
+- Start simple and iterate
+- Test thoroughly before deployment
+- Monitor performance and user feedback
+- Continuously refine based on data
+- Follow security best practices
+
+For the latest updates and features, refer to the [ElevenLabs Documentation](https://elevenlabs.io/docs/).
+
+---
+
+**Last Updated:** 2024
+**Version:** 1.0
