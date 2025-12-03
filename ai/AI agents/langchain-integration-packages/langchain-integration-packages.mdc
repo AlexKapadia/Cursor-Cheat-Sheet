@@ -1,0 +1,1444 @@
+---
+alwaysApply: false
+---
+
+# LangChain Integration Packages - Comprehensive Guide
+
+## Document Metadata
+- **Title:** LangChain Python Integration Packages
+- **Source:** LangChain Official Documentation
+- **Documentation URL:** https://docs.langchain.com
+- **Last Updated:** 2025
+- **Total Integrations:** 1000+ integrations
+- **Categories:** Chat models, Embedding models, Tools & toolkits, Document loaders, Vector stores, Key-value stores, and more
+
+## Abstract / Summary
+
+LangChain Python offers an extensive ecosystem with 1000+ integrations across chat & embedding models, tools & toolkits, document loaders, vector stores, and more. This comprehensive guide documents all available integration packages, their installation procedures, usage examples, and implementation details. The integration ecosystem enables developers to seamlessly connect LangChain applications with virtually any AI service, database, tool, or data source.
+
+## Problem Statement
+
+### Problem Definition
+Building AI agent applications requires integrating multiple components:
+- Language models from various providers (OpenAI, Anthropic, Google, etc.)
+- Embedding models for semantic search
+- Vector databases for storing and retrieving embeddings
+- Document loaders for processing various data sources
+- Tools and toolkits for extending agent capabilities
+- Key-value stores for caching and state management
+
+### Challenges
+1. **Provider Diversity:** Each provider has different APIs, authentication methods, and configuration requirements
+2. **Integration Complexity:** Manually integrating each service requires significant development effort
+3. **Standardization:** Different providers use different data formats and interfaces
+4. **Maintenance:** Keeping integrations up-to-date with provider API changes
+5. **Documentation:** Finding and understanding how to use each integration
+
+### Solution
+LangChain provides a standardized interface and comprehensive integration packages that:
+- Abstract away provider-specific implementation details
+- Provide consistent APIs across all integrations
+- Handle authentication, error handling, and retries automatically
+- Include comprehensive documentation and examples
+- Support both synchronous and asynchronous operations
+
+## Key Concepts and Techniques
+
+### Core Integration Concepts
+1. **Integration Packages:** Separate Python packages for each provider/service (e.g., `langchain-openai`, `langchain-anthropic`)
+2. **Base Interfaces:** Standardized base classes that all integrations implement
+3. **Serialization:** Support for serializing and deserializing chains and agents
+4. **Streaming:** Token-level streaming support for real-time responses
+5. **Async Support:** Native asynchronous operations for improved performance
+6. **Tool Calling:** Standardized interface for function/tool calling across providers
+7. **Structured Output:** Support for generating structured outputs from LLMs
+8. **Multimodal Inputs:** Support for images, PDFs, audio, and video inputs
+
+### Integration Categories
+
+#### 1. Chat Models
+Language models that support conversational interfaces with chat completion APIs.
+
+#### 2. Embedding Models
+Models that convert text into vector embeddings for semantic search and similarity matching.
+
+#### 3. Vector Stores
+Databases optimized for storing and querying vector embeddings with similarity search capabilities.
+
+#### 4. Document Loaders
+Components that load documents from various sources (files, databases, APIs, web pages) into LangChain's Document format.
+
+#### 5. Tools & Toolkits
+External tools and services that agents can use to extend their capabilities (search, calculators, APIs, etc.).
+
+#### 6. Key-Value Stores
+Storage systems for caching embeddings and managing state.
+
+## Popular Providers
+
+The following table lists the most popular integration providers with their package names, download statistics, and JavaScript/TypeScript support:
+
+| Provider | Package | Downloads | Latest Version | JS/TS Support |
+|----------|---------|-----------|----------------|---------------|
+| OpenAI | `langchain-openai` | High | Latest | ✅ |
+| Google (Vertex AI) | `langchain-google-vertexai` | High | Latest | ✅ |
+| Anthropic (Claude) | `langchain-anthropic` | High | Latest | ✅ |
+| AWS | `langchain-aws` | High | Latest | ✅ |
+| Google (GenAI) | `langchain-google-genai` | High | Latest | ✅ |
+| Groq | `langchain-groq` | Medium | Latest | ✅ |
+| Ollama | `langchain-ollama` | High | Latest | ✅ |
+| Chroma | `langchain-chroma` | High | Latest | ✅ |
+| Huggingface | `langchain-huggingface` | High | Latest | ✅ |
+| Pinecone | `langchain-pinecone` | High | Latest | ✅ |
+| Cohere | `langchain-cohere` | Medium | Latest | ✅ |
+| Postgres | `langchain-postgres` | High | Latest | ✅ |
+| Fireworks | `langchain-fireworks` | Medium | Latest | ✅ |
+| MistralAI | `langchain-mistralai` | High | Latest | ✅ |
+| Databricks | `databricks-langchain` | Medium | Latest | ✅ |
+| Perplexity | `langchain-perplexity` | Medium | Latest | ✅ |
+| IBM | `langchain-ibm` | Medium | Latest | ✅ |
+| Nvidia AI Endpoints | `langchain-nvidia-ai-endpoints` | Medium | Latest | ❌ |
+| MongoDB | `langchain-mongodb` | High | Latest | ✅ |
+| Deepseek | `langchain-deepseek` | Medium | Latest | ✅ |
+| Qdrant | `langchain-qdrant` | High | Latest | ✅ |
+| Milvus | `langchain-milvus` | High | Latest | ✅ |
+| Tavily | `langchain-tavily` | Medium | Latest | ✅ |
+| Elasticsearch | `langchain-elasticsearch` | High | Latest | ✅ |
+| Together | `langchain-together` | Medium | Latest | ✅ |
+| Redis | `langchain-redis` | High | Latest | ✅ |
+| LiteLLM | `langchain-litellm` | Medium | Latest | N/A |
+| xAI (Grok) | `langchain-xai` | Medium | Latest | ✅ |
+| DataStax Astra DB | `langchain-astradb` | High | Latest | ✅ |
+| Azure AI | `langchain-azure-ai` | High | Latest | ✅ |
+| MCP Toolbox (Google) | `toolbox-langchain` | Low | Latest | ❌ |
+| Google (Community) | `langchain-google-community` | Medium | Latest | ❌ |
+| Unstructured | `langchain-unstructured` | Medium | Latest | ✅ |
+| Neo4J | `langchain-neo4j` | Medium | Latest | ✅ |
+| Graph RAG | `langchain-graph-retriever` | Low | Latest | ❌ |
+
+## All Providers
+
+LangChain supports integrations with hundreds of providers. The complete list includes:
+
+### AI/ML Providers
+- Abso, Acreom, ActiveLoop DeepLake, Ads4GPTs, AgentQL, AI21, AIM Tracking, AI/ML API, AI Network, Airbyte, Airtable, Alchemy, Aleph Alpha, Alibaba Cloud, AnalyticDB, Anchor Browser, Annoy, Anthropic, Anyscale, Apache Doris, Apache, Apify, Apple, ArangoDB, Arcee, ArcGIS, Argilla, Arize, Arthur Tracking, arXiv, Ascend, Ask News, AssemblyAI, AstraDB, Atlas, AwaDB, AWS, AZLyrics, Azure AI, BAAI, Bagel, BagelDB, Baichuan, Baidu, BananaDev, Baseten, Beam, Beautiful Soup, BibTeX, Bilibili, Bittensor, Blackboard, Bodo DataFrames, BookendAI, Box, Brave Search, Breebs, Brightdata, Browserbase, Browserless, ByteDance, Cassandra, Cerebras, CerebriumAI, Chaindesk, Chroma, Clarifai, ClearML Tracking, ClickHouse, ClickUp, Cloudflare, Clova, CnosDB, Cognee, CogniSwitch, Cohere, College Confidential, Comet Tracking, Confident, Confluence, Connery, Context, Contextual, Couchbase, Coze, CrateDB, CTransformers, CTranslate2, Cube, Dappier, DashVector, Databricks, Datadog, Datadog Logs, DataForSEO, DataHerald, Daytona, Dedoc, DeepInfra, DeepLake, DeepSeek, DeepSparse, Dell, Diffbot, Dingo, Discord, Discord Shikenso, DocArray, Docling, Doctran, Docugami, Docusaurus, Dria, Dropbox, DuckDB, DuckDuckGo Search, E2B, EdenAI, Elasticsearch, ElevenLabs, EmbedChain, Epsilla, Etherscan, EverlyAI, Evernote, Exa Search, Facebook, FalkorDB, Fauna, Featherless AI, Fiddler, Figma, FireCrawl, Fireworks, Flyte, FMP Data, ForefrontAI, Friendli, Galaxia, Gel, GeoPandas, Git, GitBook, GitHub, GitLab, GOAT, Golden, Google, Google Serper, GooseAI, GPT4All, Gradient, DigitalOcean Gradient AI Platform, Graph RAG, GraphSignal, GreenNode, GROBID, Groq, Gutenberg, Hacker News, Hazy Research, Helicone, Hologres, HTML2Text, Huawei, Hugging Face, HyperBrowser, IBM, IEIT Systems, iFixit, iFlytek, IMSDb, InfinispanVS, Infinity, Infino, Intel, Isaacus, IUGU, Jaguar, Javelin AI Gateway, Jenkins, Jina, John Snow Labs, Joplin, KDB.AI, Kinetica, KoboldAI, Konko, KoNLPy, Kuzu, Label Studio, LakeFS, LanceDB, LangChain Decorators, LangFair, LangFuse, Lantern, Lindorm, LinkUp, LiteLLM, LlamaIndex, LlamaCPP, LlamaEdge, LlamaFile, LLMonitor, LocalAI, Log10, MariaDB, MaritALK, Marqo, MediaWiki Dump, Meilisearch, Memcached, Memgraph, Metal, Microsoft, Milvus, MindsDB, Minimax, MistralAI, MLflow, MLflow Tracking, MLX, Modal, ModelScope, Modern Treasury, Momento, MongoDB, MongoDB Atlas, MotherDuck, Motorhead, MyScale, Naver, Nebius, Neo4j, NetMind, Nimble, NLP Cloud, Nomic, Notion, Nuclia, NVIDIA, Obsidian, OceanBase, OCI, OctoAI, Ollama, Ontotext GraphDB, OpenAI, OpenDataLoader PDF, OpenGradient, OpenLLM, OpenSearch, OpenWeatherMap, Oracle AI, Outline, Outlines, Oxylabs, Pandas, Parallel, Perigon, Permit, Perplexity, Petals, PG Embedding, pgvector, Pinecone, PipelineAI, Pipeshift, PolarisAIDataInsight, Portkey, Predibase, PredictionGuard, PreMAI, Privy, Prolog, PromptLayer, Psychic, PubMed, Pull MD, PygmalionAI, PyMuPDF4LLM, Qdrant, Ragatouille, Rank BM25, Ray Serve, Rebuff, Reddit, Redis, Remembrall, Replicate, Roam, Robocorp, Rockset, RunPod, Salesforce, SambaNova, SAP, ScrapeGraph, Scrapeless, SearchAPI, SearX, SemaDB, SerpAPI, Shale Protocol, SingleStore, scikit-learn, Slack, Snowflake, spaCy, Spark, SparkLLM, Spreedly, SQLite, StackExchange, StarRocks, StochasticAI, Streamlit, Stripe, Supabase, SurrealDB, Symbl.ai Nebula, Tableau, Taiga, Tair, Tavily, Telegram, Tencent, TensorFlow Datasets, TensorLake, TiDB, TigerGraph, Tigris, Tilores, Timbr, Together, ToMarkdown, Toolbox LangChain, Transwarp, Trello, Trubrics, TrueFoundry, TrueLens, Twitter, Typesense, UnDatasIO, Unstructured, Upstage, Upstash, UpTrain, USearch, Valthera, Valyu, VDMS, Vearch, Vectara, Vectorize, Vespa, VLite, VoyageAI, Weights & Biases, Weights & Biases Tracking, Weights & Biases Tracing, Weather, Weaviate, WhatsApp, WhyLabs Profiling, Wikipedia, Wolfram Alpha, WRITER, XAI, Xata, Xinference, Yahoo, Yandex, YDB, YeagerAI, Yellowbrick, Yi, You, YouTube, Zep, ZeusDB, ZhipuAI, Zilliz, Zotero
+
+## Chat Models Integration
+
+### Overview
+Chat models are language models that support conversational interfaces. They implement the `BaseChatModel` interface and support message-based interactions.
+
+### Key Features
+- **Tool Calling:** Support for function/tool calling
+- **Structured Output:** Generate structured outputs from models
+- **Image Input:** Support for image inputs (multimodal)
+- **Audio Input:** Support for audio inputs
+- **Video Input:** Support for video inputs (limited)
+- **Token-level Streaming:** Real-time token streaming
+- **Native Async:** Asynchronous operation support
+- **Token Usage:** Track token consumption
+- **Logprobs:** Log probability outputs
+
+### Popular Chat Model Integrations
+
+#### ChatOpenAI
+**Package:** `langchain-openai`
+
+**Installation:**
+```bash
+pip install -U langchain-openai
+# or
+uv add langchain-openai
+```
+
+**Setup:**
+```python
+import getpass
+import os
+
+if not os.environ.get("OPENAI_API_KEY"):
+    os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter your OpenAI API key: ")
+```
+
+**Instantiation:**
+```python
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(
+    model="gpt-5-nano",
+    # stream_usage=True,
+    # temperature=None,
+    # max_tokens=None,
+    # timeout=None,
+    # reasoning_effort="low",
+    # max_retries=2,
+    # api_key="...",  # If you prefer to pass api key in directly
+    # base_url="...",
+    # organization="...",
+    # other params...
+)
+```
+
+**Invocation:**
+```python
+messages = [
+    (
+        "system",
+        "You are a helpful assistant that translates English to French. Translate the user sentence.",
+    ),
+    ("human", "I love programming."),
+]
+ai_msg = llm.invoke(messages)
+print(ai_msg.text)
+```
+
+**Tool Calling:**
+```python
+from pydantic import BaseModel, Field
+
+class GetWeather(BaseModel):
+    """Get the current weather in a given location"""
+    location: str = Field(..., description="The city and state, e.g. San Francisco, CA")
+
+llm_with_tools = llm.bind_tools([GetWeather])
+ai_msg = llm_with_tools.invoke("what is the weather like in San Francisco")
+print(ai_msg.tool_calls)
+```
+
+**Responses API Features:**
+- Web search
+- Image generation
+- File search
+- Computer use
+- Code interpreter
+- Remote MCP
+- Conversation state management
+- Reasoning output
+
+**Multimodal Inputs:**
+- Images (URLs or base64)
+- PDFs (with filename requirement)
+- Audio (base64 encoded)
+
+**Prompt Caching:**
+```python
+response = llm.invoke(
+    messages,
+    prompt_cache_key="translation-assistant-v1"
+)
+```
+
+**Flex Processing:**
+```python
+llm = ChatOpenAI(model="o4-mini", service_tier="flex")
+```
+
+#### AzureChatOpenAI
+**Package:** `langchain-openai`
+
+**Setup:**
+```python
+import getpass
+import os
+
+if "AZURE_OPENAI_API_KEY" not in os.environ:
+    os.environ["AZURE_OPENAI_API_KEY"] = getpass.getpass("Enter your AzureOpenAI API key: ")
+os.environ["AZURE_OPENAI_ENDPOINT"] = "https://YOUR-ENDPOINT.openai.azure.com/"
+```
+
+**Instantiation:**
+```python
+from langchain_openai import AzureChatOpenAI
+
+llm = AzureChatOpenAI(
+    azure_deployment="gpt-35-turbo",  # or your deployment
+    api_version="2023-06-01-preview",  # or your api version
+    temperature=0,
+    max_tokens=None,
+    timeout=None,
+    max_retries=2,
+)
+```
+
+## Embedding Models Integration
+
+### Overview
+Embedding models convert text into vector embeddings for semantic search, similarity matching, and retrieval-augmented generation (RAG) applications.
+
+### Key Features
+- **Batch Processing:** Efficient batch embedding generation
+- **Caching:** Support for embedding caching via key-value stores
+- **Multiple Dimensions:** Support for various embedding dimensions
+- **Async Support:** Asynchronous embedding generation
+
+### Popular Embedding Model Integrations
+
+#### OpenAI Embeddings
+**Package:** `langchain-openai`
+
+```python
+from langchain_openai import OpenAIEmbeddings
+
+embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
+```
+
+#### Google Vertex AI Embeddings
+**Package:** `langchain-google-vertexai`
+
+```python
+from langchain_google_vertexai import VertexAIEmbeddings
+
+embeddings = VertexAIEmbeddings(model="text-embedding-005")
+```
+
+#### AWS Bedrock Embeddings
+**Package:** `langchain-aws`
+
+```python
+from langchain_aws import BedrockEmbeddings
+
+embeddings = BedrockEmbeddings(model_id="amazon.titan-embed-text-v2:0")
+```
+
+#### HuggingFace Embeddings
+**Package:** `langchain-huggingface`
+
+```python
+from langchain_huggingface import HuggingFaceEmbeddings
+
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+```
+
+#### Ollama Embeddings
+**Package:** `langchain-ollama`
+
+```python
+from langchain_ollama import OllamaEmbeddings
+
+embeddings = OllamaEmbeddings(model="llama3")
+```
+
+#### Cohere Embeddings
+**Package:** `langchain-cohere`
+
+```python
+from langchain_cohere import CohereEmbeddings
+
+embeddings = CohereEmbeddings(model="embed-english-v3.0")
+```
+
+#### MistralAI Embeddings
+**Package:** `langchain-mistralai`
+
+```python
+from langchain_mistralai import MistralAIEmbeddings
+
+embeddings = MistralAIEmbeddings(model="mistral-embed")
+```
+
+#### Nomic Embeddings
+**Package:** `langchain-nomic`
+
+```python
+from langchain_nomic import NomicEmbeddings
+
+embeddings = NomicEmbeddings(model="nomic-embed-text-v1.5")
+```
+
+#### NVIDIA Embeddings
+**Package:** `langchain-nvidia-ai-endpoints`
+
+```python
+from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings
+
+embeddings = NVIDIAEmbeddings(model="NV-Embed-QA")
+```
+
+#### VoyageAI Embeddings
+**Package:** `langchain-voyageai`
+
+```python
+from langchain_voyageai import VoyageAIEmbeddings
+
+embeddings = VoyageAIEmbeddings(model="voyage-3")
+```
+
+#### IBM watsonx Embeddings
+**Package:** `langchain-ibm`
+
+```python
+from langchain_ibm import WatsonxEmbeddings
+
+embeddings = WatsonxEmbeddings(
+    model_id="ibm/slate-125m-english-rtrvr",
+    url="https://us-south.ml.cloud.ibm.com",
+    project_id="<WATSONX PROJECT_ID>",
+)
+```
+
+#### xAI Embeddings
+**Package:** `langchain-xai`
+
+```python
+from langchain.chat_models import init_chat_model
+
+model = init_chat_model("grok-2", model_provider="xai")
+```
+
+## Vector Stores Integration
+
+### Overview
+Vector stores are databases optimized for storing and querying vector embeddings. They enable semantic search and similarity matching for RAG applications.
+
+### Key Features
+- **Similarity Search:** Find similar vectors using cosine similarity, Euclidean distance, or dot product
+- **Metadata Filtering:** Filter results by metadata attributes
+- **Batch Operations:** Efficient batch insertions and queries
+- **Indexing:** Support for various indexing methods (HNSW, FLAT, etc.)
+- **Async Support:** Asynchronous operations for improved performance
+
+### Similarity Metrics & Indexing
+Embedding similarity may be computed using:
+- **Cosine similarity**
+- **Euclidean distance**
+- **Dot product**
+
+Efficient search often employs indexing methods such as HNSW (Hierarchical Navigable Small World), though specifics depend on the vector store.
+
+### Metadata Filtering
+Filtering by metadata (e.g., source, date) can refine search results:
+
+```python
+vector_store.similarity_search(
+  "query",
+  k=3,
+  filter={"source": "tweets"}
+)
+```
+
+### Popular Vector Store Integrations
+
+#### In-Memory Vector Store
+**Package:** `langchain-core`
+
+```python
+from langchain_core.vectorstores import InMemoryVectorStore
+
+vector_store = InMemoryVectorStore(embeddings)
+```
+
+#### Astra DB Vector Store
+**Package:** `langchain-astradb`
+
+```python
+from langchain_astradb import AstraDBVectorStore
+
+vector_store = AstraDBVectorStore(
+    embedding=embeddings,
+    api_endpoint=ASTRA_DB_API_ENDPOINT,
+    collection_name="astra_vector_langchain",
+    token=ASTRA_DB_APPLICATION_TOKEN,
+    namespace=ASTRA_DB_NAMESPACE,
+)
+```
+
+#### Azure Cosmos DB NoSQL
+**Package:** `langchain-azure-ai`, `azure-cosmos`
+
+```python
+from langchain_azure_ai.vectorstores.azure_cosmos_db_no_sql import (
+    AzureCosmosDBNoSqlVectorSearch,
+)
+vector_search = AzureCosmosDBNoSqlVectorSearch.from_documents(
+    documents=docs,
+    embedding=openai_embeddings,
+    cosmos_client=cosmos_client,
+    database_name=database_name,
+    container_name=container_name,
+    vector_embedding_policy=vector_embedding_policy,
+    full_text_policy=full_text_policy,
+    indexing_policy=indexing_policy,
+    cosmos_container_properties=cosmos_container_properties,
+    cosmos_database_properties={},
+    full_text_search_enabled=True,
+)
+```
+
+#### Azure Cosmos DB Mongo vCore
+**Package:** `langchain-azure-ai`, `pymongo`
+
+```python
+from langchain_azure_ai.vectorstores.azure_cosmos_db_mongo_vcore import (
+    AzureCosmosDBMongoVCoreVectorSearch,
+)
+
+vectorstore = AzureCosmosDBMongoVCoreVectorSearch.from_documents(
+    docs,
+    openai_embeddings,
+    collection=collection,
+    index_name=INDEX_NAME,
+)
+```
+
+#### Chroma
+**Package:** `langchain-chroma`
+
+```python
+from langchain_chroma import Chroma
+
+vector_store = Chroma(
+    collection_name="example_collection",
+    embedding_function=embeddings,
+    persist_directory="./chroma_langchain_db",  # Where to save data locally, remove if not necessary
+)
+```
+
+#### FAISS
+**Package:** `langchain-community`
+
+```python
+import faiss
+from langchain_community.docstore.in_memory import InMemoryDocstore
+from langchain_community.vectorstores import FAISS
+
+embedding_dim = len(embeddings.embed_query("hello world"))
+index = faiss.IndexFlatL2(embedding_dim)
+
+vector_store = FAISS(
+    embedding_function=embeddings,
+    index=index,
+    docstore=InMemoryDocstore(),
+    index_to_docstore_id={},
+)
+```
+
+#### Milvus
+**Package:** `langchain-milvus`
+
+```python
+from langchain_milvus import Milvus
+
+URI = "./milvus_example.db"
+
+vector_store = Milvus(
+    embedding_function=embeddings,
+    connection_args={"uri": URI},
+    index_params={"index_type": "FLAT", "metric_type": "L2"},
+)
+```
+
+#### MongoDB Atlas Vector Search
+**Package:** `langchain-mongodb`
+
+```python
+from langchain_mongodb import MongoDBAtlasVectorSearch
+
+vector_store = MongoDBAtlasVectorSearch(
+    embedding=embeddings,
+    collection=MONGODB_COLLECTION,
+    index_name=ATLAS_VECTOR_SEARCH_INDEX_NAME,
+    relevance_score_fn="cosine",
+)
+```
+
+#### PGVector
+**Package:** `langchain-postgres`
+
+```python
+from langchain_postgres import PGVector
+
+vector_store = PGVector(
+    embeddings=embeddings,
+    collection_name="my_docs",
+    connection="postgresql+psycopg://..."
+)
+```
+
+#### PGVectorStore
+**Package:** `langchain-postgres`
+
+```python
+from langchain_postgres import PGEngine, PGVectorStore
+
+pg_engine = PGEngine.from_connection_string(
+    url="postgresql+psycopg://..."
+)
+
+vector_store = PGVectorStore.create_sync(
+    engine=pg_engine,
+    table_name='test_table',
+    embedding_service=embedding
+)
+```
+
+#### Pinecone Vector Store
+**Package:** `langchain-pinecone`
+
+```python
+from langchain_pinecone import PineconeVectorStore
+from pinecone import Pinecone
+
+pc = Pinecone(api_key=...)
+index = pc.Index(index_name)
+
+vector_store = PineconeVectorStore(embedding=embeddings, index=index)
+```
+
+#### Qdrant Vector Store
+**Package:** `langchain-qdrant`
+
+```python
+from qdrant_client.models import Distance, VectorParams
+from langchain_qdrant import QdrantVectorStore
+from qdrant_client import QdrantClient
+
+client = QdrantClient(":memory:")
+
+vector_size = len(embeddings.embed_query("sample text"))
+
+if not client.collection_exists("test"):
+    client.create_collection(
+        collection_name="test",
+        vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
+    )
+vector_store = QdrantVectorStore(
+    client=client,
+    collection_name="test",
+    embedding=embeddings,
+)
+```
+
+### Vector Store Feature Comparison
+
+| Vectorstore | Delete by ID | Filtering | Search by Vector | Search with score | Async | Passes Standard Tests | Multi Tenancy | IDs in add Documents |
+|-------------|--------------|-----------|------------------|-------------------|-------|----------------------|--------------|---------------------|
+| AstraDBVectorStore | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| AzureCosmosDBNoSqlVectorStore | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
+| AzureCosmosDBMongoVCoreVectorStore | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
+| Chroma | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Clickhouse | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| CouchbaseSearchVectorStore | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| DatabricksVectorSearch | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
+| ElasticsearchStore | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
+| FAISS | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
+| InMemoryVectorStore | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ |
+| Milvus | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Moorcheh | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| MongoDBAtlasVectorSearch | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| openGauss | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
+| PGVector | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
+| PGVectorStore | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| PineconeVectorStore | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ |
+| QdrantVectorStore | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Weaviate | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| SQLServer | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| ZeusDB | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Oracle AI Vector Search | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+
+### All Vector Stores
+The complete list includes: Activeloop Deep Lake, Alibaba Cloud OpenSearch, AnalyticDB, Annoy, Apache Doris, ApertureDB, Astra DB Vector Store, Atlas, AwaDB, Azure Cosmos DB Mongo vCore, Azure Cosmos DB No SQL, Azure Database for PostgreSQL - Flexible Server, Azure AI Search, Bagel, BagelDB, Baidu Cloud ElasticSearch VectorSearch, Baidu VectorDB, Apache Cassandra, Chroma, Clarifai, ClickHouse, Couchbase, DashVector, Databricks, IBM Db2, DingoDB, DocArray HnswSearch, DocArray InMemorySearch, Amazon Document DB, DuckDB, China Mobile ECloud ElasticSearch, Elasticsearch, Epsilla, Faiss, Faiss (Async), FalkorDB, Gel, Google AlloyDB, Google BigQuery Vector Search, Google Cloud SQL for MySQL, Google Cloud SQL for PostgreSQL, Firestore, Google Memorystore for Redis, Google Spanner, Google Vertex AI Feature Store, Google Vertex AI Vector Search, Hippo, Hologres, Jaguar Vector Database, Kinetica, LanceDB, Lantern, Lindorm, LLMRails, ManticoreSearch, MariaDB, Marqo, Meilisearch, Amazon MemoryDB, Milvus, Momento Vector Index, Moorcheh, MongoDB Atlas, MyScale, Neo4j Vector Index, NucliaDB, Oceanbase, openGauss, OpenSearch, Oracle AI Vector Search, Pathway, Postgres Embedding, PGVecto.rs, PGVector, PGVectorStore, Pinecone, Pinecone (sparse), Qdrant, Relyt, Rockset, SAP HANA Cloud Vector Engine, ScaNN, SemaDB, SingleStore, scikit-learn, SQLiteVec, SQLite-VSS, SQLServer, StarRocks, Supabase, SurrealDB, Tablestore, Tair, Tencent Cloud VectorDB, Teradata VectorStore, ThirdAI NeuralDB, TiDB Vector, Tigris, TileDB, Timescale Vector, Typesense, Upstash Vector, USearch, Vald, VDMS, Vearch, Vectara, Vespa, viking DB, vlite, Weaviate, Xata, YDB, Yellowbrick, Zep, Zep Cloud, ZeusDB, Zilliz
+
+## Document Loaders Integration
+
+### Overview
+Document loaders provide a **standard interface** for reading data from different sources (such as Slack, Notion, or Google Drive) into LangChain's Document format. This ensures that data can be handled consistently regardless of the source.
+
+All document loaders implement the `BaseLoader` interface.
+
+### Interface
+Each document loader may define its own parameters, but they share a common API:
+
+- `.load()` – Loads all documents at once.
+- `.lazy_load()` – Streams documents lazily, useful for large datasets.
+
+```python
+from langchain_community.document_loaders.csv_loader import CSVLoader
+
+loader = CSVLoader(
+    ...  # Integration-specific parameters here
+)
+
+# Load all documents
+documents = loader.load()
+
+# For large datasets, lazily load documents
+for document in loader.lazy_load():
+    print(document)
+```
+
+### Document Loaders by Category
+
+#### Webpages
+| Document Loader | Description | Package/API |
+|----------------|-------------|-------------|
+| Web | Uses urllib and BeautifulSoup to load and parse HTML web pages | Package |
+| Unstructured | Uses Unstructured to load and parse web pages | Package |
+| RecursiveURL | Recursively scrapes all child links from a root URL | Package |
+| Sitemap | Scrapes all pages on a given sitemap | Package |
+| Spider | Crawler and scraper that returns LLM-ready data | API |
+| Firecrawl | API service that can be deployed locally | API |
+| Docling | Uses Docling to load and parse web pages | Package |
+| Hyperbrowser | Platform for running and scaling headless browsers, can be used to scrape/crawl any site | API |
+| AgentQL | Web interaction and structured data extraction from any web page using an AgentQL query or a Natural Language prompt | API |
+
+#### PDFs
+| Document Loader | Description | Package/API |
+|----------------|-------------|-------------|
+| PyPDF | Uses `pypdf` to load and parse PDFs | Package |
+| Unstructured | Uses Unstructured's open source library to load PDFs | Package |
+| Amazon Textract | Uses AWS API to load PDFs | API |
+| MathPix | Uses MathPix to load PDFs | Package |
+| PDFPlumber | Load PDF files using PDFPlumber | Package |
+| PyPDFDirectry | Load a directory with PDF files | Package |
+| PyPDFium2 | Load PDF files using PyPDFium2 | Package |
+| PyMuPDF | Load PDF files using PyMuPDF | Package |
+| PyMuPDF4LLM | Load PDF content to Markdown using PyMuPDF4LLM | Package |
+| PDFMiner | Load PDF files using PDFMiner | Package |
+| Upstage Document Parse Loader | Load PDF files using UpstageDocumentParseLoader | Package |
+| Docling | Load PDF files using Docling | Package |
+| UnDatasIO | Load PDF files using UnDatasIO | Package |
+| OpenDataLoader PDF | Load PDF files using OpenDataLoader PDF | Package |
+
+#### Cloud Providers
+| Document Loader | Description | Partner Package | API reference |
+|----------------|-------------|-----------------|---------------|
+| AWS S3 Directory | Load documents from an AWS S3 directory | ❌ | S3DirectoryLoader |
+| AWS S3 File | Load documents from an AWS S3 file | ❌ | S3FileLoader |
+| Azure AI Data | Load documents from Azure AI services | ❌ | AzureAIDataLoader |
+| Azure Blob Storage | Load documents from Azure Blob Storage | ✅ | AzureBlobStorageLoader |
+| Dropbox | Load documents from Dropbox | ❌ | DropboxLoader |
+| Google Cloud Storage Directory | Load documents from GCS bucket | ✅ | GCSDirectoryLoader |
+| Google Cloud Storage File | Load documents from GCS file object | ✅ | GCSFileLoader |
+| Google Drive | Load documents from Google Drive (Google Docs only) | ✅ | GoogleDriveLoader |
+| Huawei OBS Directory | Load documents from Huawei Object Storage Service Directory | ❌ | OBSDirectoryLoader |
+| Huawei OBS File | Load documents from Huawei Object Storage Service File | ❌ | OBSFileLoader |
+| Microsoft OneDrive | Load documents from Microsoft OneDrive | ❌ | OneDriveLoader |
+| Microsoft SharePoint | Load documents from Microsoft SharePoint | ❌ | SharePointLoader |
+| Tencent COS Directory | Load documents from Tencent Cloud Object Storage Directory | ❌ | TencentCOSDirectoryLoader |
+| Tencent COS File | Load documents from Tencent Cloud Object Storage File | ❌ | TencentCOSFileLoader |
+
+#### Social Platforms
+| Document Loader | API reference |
+|----------------|---------------|
+| Twitter | TwitterTweetLoader |
+| Reddit | RedditPostsLoader |
+
+#### Messaging Services
+| Document Loader | API reference |
+|----------------|---------------|
+| Telegram | TelegramChatFileLoader |
+| WhatsApp | WhatsAppChatLoader |
+| Discord | DiscordChatLoader |
+| Facebook Chat | FacebookChatLoader |
+| Mastodon | MastodonTootsLoader |
+
+#### Productivity Tools
+| Document Loader | API reference |
+|----------------|---------------|
+| Figma | FigmaFileLoader |
+| Notion | NotionDirectoryLoader |
+| Slack | SlackDirectoryLoader |
+| Quip | QuipLoader |
+| Trello | TrelloLoader |
+| Roam | RoamLoader |
+| GitHub | GithubFileLoader |
+
+#### Common File Types
+| Document Loader | Data Type |
+|----------------|-----------|
+| CSVLoader | CSV files |
+| Unstructured | Many file types (see https://docs.unstructured.io/platform/supported-file-types) |
+| JSONLoader | JSON files |
+| BSHTMLLoader | HTML files |
+| DoclingLoader | Various file types (see https://ds4sd.github.io/docling/) |
+| PolarisAIDataInsightLoader | Various file types (see https://datainsight.polarisoffice.com/documentation?docType=doc_extract) |
+
+### All Document Loaders
+The complete list includes: acreom, AgentQLLoader, AirbyteLoader, Airtable, Alibaba Cloud MaxCompute, Amazon Textract, Apify Dataset, ArxivLoader, AssemblyAI Audio Transcripts, AstraDB, Async Chromium, AsyncHtml, Athena, AWS S3 Directory, AWS S3 File, AZLyrics, Azure AI Data, Azure Blob Storage, Azure AI Document Intelligence, BibTeX, BiliBili, Blackboard, Blockchain, Box, Brave Search, Browserbase, Browserless, BSHTMLLoader, Cassandra, ChatGPT Data, College Confidential, Concurrent Loader, Confluence, CoNLL-U, Copy Paste, Couchbase, CSV, Cube Semantic Layer, Datadog Logs, Dedoc, Diffbot, Discord, Docling, Docugami, Docusaurus, Dropbox, Email, EPub, Etherscan, EverNote, Facebook Chat, Fauna, Figma, FireCrawl, Geopandas, Git, GitBook, GitHub, Glue Catalog, Google AlloyDB for PostgreSQL, Google BigQuery, Google Bigtable, Google Cloud SQL for SQL Server, Google Cloud SQL for MySQL, Google Cloud SQL for PostgreSQL, Google Cloud Storage Directory, Google Cloud Storage File, Google Firestore in Datastore Mode, Google Drive, Google El Carro for Oracle Workloads, Google Firestore (Native Mode), Google Memorystore for Redis, Google Spanner, Google Speech-to-Text, Grobid, Gutenberg, Hacker News, Huawei OBS Directory, Huawei OBS File, HuggingFace Dataset, HyperbrowserLoader, iFixit, Images, Image Captions, IMSDb, Iugu, Joplin, JSONLoader, Jupyter Notebook, Kinetica, lakeFS, LangSmith, LarkSuite (FeiShu), LLM Sherpa, Mastodon, MathPixPDFLoader, MediaWiki Dump, Merge Documents Loader, MHTML, Microsoft Excel, Microsoft OneDrive, Microsoft OneNote, Microsoft PowerPoint, Microsoft SharePoint, Microsoft Word, Near Blockchain, Modern Treasury, MongoDB, Needle Document Loader, News URL, Notion DB, Nuclia, Obsidian, OpenDataLoader PDF, Open Document Format (ODT), Open City Data, Oracle Autonomous Database, Oracle AI Vector Search, Org-mode, Outline Document Loader, Pandas DataFrame, PDFMinerLoader, PDFPlumber, Pebblo Safe DocumentLoader, Polaris AI DataInsight, Polars DataFrame, Dell PowerScale, Psychic, PubMed, PullMdLoader, PyMuPDFLoader, PyMuPDF4LLM, PyPDFDirectoryLoader, PyPDFium2Loader, PyPDFLoader, PySpark, Quip, ReadTheDocs Documentation, Recursive URL, Reddit, Roam, Rockset, rspace, RSS Feeds, RST, scrapfly, ScrapingAnt, SingleStore, Sitemap, Slack, Snowflake, Source Code, Spider, Spreedly, Stripe, Subtitle, SurrealDB, Telegram, Tencent COS Directory, Tencent COS File, TensorFlow Datasets, TiDB, 2Markdown, TOML, Trello, TSV, Twitter, UnDatasIO, Unstructured, UnstructuredMarkdownLoader, UnstructuredPDFLoader, Upstage, URL, Vsdx, Weather, WebBaseLoader, WhatsApp Chat, Wikipedia, UnstructuredXMLLoader, Xorbits Pandas DataFrame, YouTube Audio, YouTube Transcripts, YoutubeLoaderDL, Yuque, ZeroxPDFLoader
+
+## Key-Value Stores Integration
+
+### Overview
+LangChain provides a key-value store interface for storing and retrieving data by key. The key-value store interface in LangChain is primarily used for caching embeddings.
+
+### Interface
+All `BaseStores` support the following interface:
+
+- `mget(key: Sequence[str]) -> List[Optional[bytes]]`: get the contents of multiple keys, returning `None` if the key does not exist
+- `mset(key_value_pairs: Sequence[Tuple[str, bytes]]) -> None`: set the contents of multiple keys
+- `mdelete(key: Sequence[str]) -> None`: delete multiple keys
+- `yield_keys(prefix: Optional[str] = None) -> Iterator[str]`: yield all keys in the store, optionally filtering by a prefix
+
+**Note:** Base stores are designed to work **multiple** key-value pairs at once for efficiency. This saves on network round-trips and may allow for more efficient batch operations in the underlying store.
+
+### Built-in Stores for Local Development
+
+#### InMemoryByteStore
+**Package:** `langchain-core`
+
+```python
+from langchain_core.stores import InMemoryByteStore
+
+store = InMemoryByteStore()
+```
+
+#### LocalFileStore
+**Package:** `langchain-core`
+
+```python
+from langchain_core.stores import LocalFileStore
+
+store = LocalFileStore(path="./cache")
+```
+
+### Custom Stores
+You can also implement your own custom store by extending the `BaseStore` class. See the store interface documentation for more details.
+
+### All Key-Value Stores
+- AstraDBByteStore
+- CassandraByteStore
+- ElasticsearchEmbeddingsCache
+- RedisStore
+- UpstashRedisByteStore
+
+## Tools and Toolkits Integration
+
+### Overview
+Tools and toolkits extend agent capabilities by providing access to external services, APIs, and functions. Agents can use tools to perform actions, retrieve information, and interact with external systems.
+
+### Popular Tool Integrations
+- **Tavily:** AI-optimized search API
+- **SerpAPI:** Google Search results scraping API
+- **DuckDuckGo Search:** Privacy-focused search engine
+- **Brave Search:** Privacy-focused search engine API
+- **Wikipedia:** Wikipedia content access and search
+- **Wolfram Alpha:** Computational knowledge engine
+- **Calculator:** Mathematical calculations
+- **Python REPL:** Execute Python code
+- **Bash:** Execute bash commands
+- **File System:** Read and write files
+- **GitHub:** Interact with GitHub repositories
+- **Slack:** Send messages and interact with Slack
+- **Email:** Send and receive emails
+- **SQL Database:** Execute SQL queries
+- **Web Browser:** Navigate and interact with web pages
+
+## Implementation Patterns
+
+### Architecture Patterns
+1. **Provider Abstraction:** All integrations implement standardized base interfaces
+2. **Lazy Loading:** Support for lazy loading of documents and data
+3. **Batch Operations:** Efficient batch processing for embeddings and vector operations
+4. **Caching:** Built-in support for caching embeddings and responses
+5. **Streaming:** Token-level streaming for real-time responses
+6. **Async/Await:** Native async support for concurrent operations
+
+### Design Patterns
+1. **Factory Pattern:** Provider-specific factories for creating model instances
+2. **Adapter Pattern:** Adapters that translate between LangChain interfaces and provider APIs
+3. **Strategy Pattern:** Different strategies for similarity search, indexing, etc.
+4. **Observer Pattern:** Callbacks and handlers for monitoring operations
+
+### Data Organization
+- **Documents:** Standardized Document format with content and metadata
+- **Messages:** Standardized message format for chat models
+- **Embeddings:** Vector representations stored in standardized formats
+- **Metadata:** Key-value pairs for filtering and organization
+
+### Component Structure
+```
+LangChain Application
+├── Chat Models (LLMs)
+├── Embedding Models
+├── Vector Stores
+├── Document Loaders
+├── Tools & Toolkits
+├── Chains
+├── Agents
+└── Memory
+```
+
+## Code Examples and Snippets
+
+### Example 1: Basic RAG Pipeline
+**Context:** Complete RAG (Retrieval-Augmented Generation) pipeline using OpenAI, Chroma, and document loaders.
+
+```python
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_chroma import Chroma
+from langchain_community.document_loaders import TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain.chains import RetrievalQA
+
+# Load documents
+loader = TextLoader("document.txt")
+documents = loader.load()
+
+# Split documents
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+texts = text_splitter.split_documents(documents)
+
+# Create embeddings and vector store
+embeddings = OpenAIEmbeddings()
+vector_store = Chroma.from_documents(texts, embeddings)
+
+# Create LLM
+llm = ChatOpenAI(model="gpt-4")
+
+# Create retrieval chain
+qa_chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    chain_type="stuff",
+    retriever=vector_store.as_retriever()
+)
+
+# Query
+result = qa_chain.invoke({"query": "What is the main topic?"})
+print(result["result"])
+```
+
+**Key Points:**
+- Demonstrates complete RAG pipeline setup
+- Shows document loading, splitting, embedding, and retrieval
+- Uses Chroma for vector storage
+- Implements question-answering chain
+
+### Example 2: Multi-Provider Chat Model
+**Context:** Using multiple chat model providers with fallback.
+
+```python
+from langchain_openai import ChatOpenAI as OpenAIChat
+from langchain_anthropic import ChatAnthropic
+from langchain_core.runnables import RunnableLambda
+
+# Create multiple models
+openai_model = OpenAIChat(model="gpt-4")
+anthropic_model = ChatAnthropic(model="claude-3-opus-20240229")
+
+# Fallback chain
+def try_openai_then_anthropic(input_text):
+    try:
+        return openai_model.invoke(input_text)
+    except Exception as e:
+        print(f"OpenAI failed: {e}, trying Anthropic...")
+        return anthropic_model.invoke(input_text)
+
+chain = RunnableLambda(try_openai_then_anthropic)
+result = chain.invoke("Hello, how are you?")
+```
+
+**Key Points:**
+- Shows multi-provider setup
+- Implements fallback mechanism
+- Error handling for provider failures
+
+### Example 3: Custom Document Loader
+**Context:** Creating a custom document loader for a specific data source.
+
+```python
+from langchain_core.document_loaders import BaseLoader
+from langchain_core.documents import Document
+from typing import Iterator, List
+
+class CustomAPILoader(BaseLoader):
+    def __init__(self, api_url: str, api_key: str):
+        self.api_url = api_url
+        self.api_key = api_key
+    
+    def lazy_load(self) -> Iterator[Document]:
+        import requests
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        response = requests.get(self.api_url, headers=headers)
+        data = response.json()
+        
+        for item in data:
+            yield Document(
+                page_content=item["content"],
+                metadata={"source": item["id"], "title": item["title"]}
+            )
+    
+    def load(self) -> List[Document]:
+        return list(self.lazy_load())
+
+# Usage
+loader = CustomAPILoader(api_url="https://api.example.com/data", api_key="key")
+documents = loader.load()
+```
+
+**Key Points:**
+- Implements BaseLoader interface
+- Supports both lazy_load and load methods
+- Includes metadata extraction
+- Shows API integration pattern
+
+### Example 4: Vector Store with Metadata Filtering
+**Context:** Using metadata filtering for precise document retrieval.
+
+```python
+from langchain_openai import OpenAIEmbeddings
+from langchain_chroma import Chroma
+from langchain_core.documents import Document
+
+# Create documents with metadata
+documents = [
+    Document(
+        page_content="Python is a programming language",
+        metadata={"category": "programming", "language": "python", "year": 2024}
+    ),
+    Document(
+        page_content="JavaScript is used for web development",
+        metadata={"category": "programming", "language": "javascript", "year": 2024}
+    ),
+    Document(
+        page_content="Machine learning is a subset of AI",
+        metadata={"category": "ai", "language": "general", "year": 2023}
+    ),
+]
+
+# Create vector store
+embeddings = OpenAIEmbeddings()
+vector_store = Chroma.from_documents(documents, embeddings)
+
+# Search with metadata filter
+results = vector_store.similarity_search(
+    "programming languages",
+    k=2,
+    filter={"category": "programming", "year": 2024}
+)
+
+for doc in results:
+    print(f"Content: {doc.page_content}")
+    print(f"Metadata: {doc.metadata}\n")
+```
+
+**Key Points:**
+- Demonstrates metadata filtering
+- Shows how to structure documents with metadata
+- Filters results by multiple metadata fields
+- Useful for multi-tenant or categorized data
+
+### Example 5: Streaming Chat Response
+**Context:** Streaming chat responses for real-time user experience.
+
+```python
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(model="gpt-4", streaming=True)
+
+messages = [
+    ("system", "You are a helpful assistant."),
+    ("human", "Write a short story about a robot.")
+]
+
+# Stream tokens
+for chunk in llm.stream(messages):
+    if chunk.content:
+        print(chunk.content, end="", flush=True)
+```
+
+**Key Points:**
+- Enables real-time response streaming
+- Improves user experience
+- Shows token-level streaming
+- Useful for long responses
+
+### Example 6: Tool-Using Agent
+**Context:** Creating an agent that can use multiple tools.
+
+```python
+from langchain_openai import ChatOpenAI
+from langchain.agents import create_openai_tools_agent, AgentExecutor
+from langchain_core.tools import Tool
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+# Define tools
+def get_weather(location: str) -> str:
+    """Get the current weather for a location."""
+    return f"The weather in {location} is sunny, 72°F"
+
+def calculate(expression: str) -> str:
+    """Evaluate a mathematical expression."""
+    try:
+        result = eval(expression)
+        return f"The result is {result}"
+    except:
+        return "Invalid expression"
+
+tools = [
+    Tool(name="get_weather", func=get_weather, description="Get weather for a location"),
+    Tool(name="calculate", func=calculate, description="Evaluate mathematical expressions"),
+]
+
+# Create agent
+llm = ChatOpenAI(model="gpt-4")
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a helpful assistant with access to tools."),
+    ("human", "{input}"),
+    MessagesPlaceholder(variable_name="agent_scratchpad"),
+])
+
+agent = create_openai_tools_agent(llm, tools, prompt)
+agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+
+# Use agent
+result = agent_executor.invoke({"input": "What's the weather in San Francisco and what is 15 * 23?"})
+print(result["output"])
+```
+
+**Key Points:**
+- Shows tool definition and registration
+- Creates tool-using agent
+- Demonstrates agent execution
+- Combines multiple tools in single query
+
+## Best Practices and Recommendations
+
+### Implementation Best Practices
+1. **Use Environment Variables:** Store API keys and credentials in environment variables, not in code
+2. **Implement Error Handling:** Always wrap API calls in try-except blocks
+3. **Use Lazy Loading:** For large datasets, use lazy loading to avoid memory issues
+4. **Cache Embeddings:** Use key-value stores to cache embeddings and reduce API costs
+5. **Batch Operations:** Use batch operations for embeddings and vector operations when possible
+6. **Connection Pooling:** Reuse connections for database and API integrations
+7. **Rate Limiting:** Implement rate limiting for API calls to avoid hitting limits
+8. **Logging:** Use LangSmith or similar for logging and monitoring
+9. **Version Pinning:** Pin package versions in production for stability
+10. **Testing:** Test integrations with mock data before production deployment
+
+### Optimization Tips
+1. **Embedding Caching:** Cache embeddings to avoid redundant API calls
+2. **Vector Store Indexing:** Use appropriate indexing methods (HNSW for large datasets)
+3. **Async Operations:** Use async operations for concurrent API calls
+4. **Streaming:** Use streaming for better user experience and lower latency
+5. **Batch Processing:** Process documents in batches for efficiency
+6. **Connection Reuse:** Reuse database and API connections
+7. **Metadata Filtering:** Use metadata filtering to reduce search space
+8. **Chunking Strategy:** Optimize chunk sizes for your use case
+
+### Common Pitfalls to Avoid
+1. **API Key Exposure:** Never commit API keys to version control
+2. **Memory Issues:** Don't load all documents at once for large datasets
+3. **Rate Limits:** Be aware of API rate limits and implement backoff strategies
+4. **Cost Management:** Monitor token usage and API costs
+5. **Version Compatibility:** Ensure package versions are compatible
+6. **Error Handling:** Don't ignore errors; implement proper error handling
+7. **Security:** Validate and sanitize user inputs
+8. **Resource Cleanup:** Properly close connections and clean up resources
+
+### Guidelines
+1. **Start Simple:** Begin with basic integrations before adding complexity
+2. **Read Documentation:** Always read provider-specific documentation
+3. **Test Locally:** Test integrations locally before deploying
+4. **Monitor Performance:** Monitor latency, costs, and error rates
+5. **Update Regularly:** Keep packages updated for security and features
+6. **Use Type Hints:** Use type hints for better code maintainability
+7. **Document Code:** Document integration-specific configurations
+8. **Follow Patterns:** Follow LangChain patterns for consistency
+
+### Warnings
+1. **API Costs:** Be aware of API costs, especially for high-volume applications
+2. **Rate Limits:** Respect API rate limits to avoid service disruptions
+3. **Data Privacy:** Ensure compliance with data privacy regulations
+4. **Security:** Secure API keys and sensitive data
+5. **Dependencies:** Be aware of dependency conflicts
+6. **Version Breaking Changes:** Test thoroughly when upgrading packages
+
+## Limitations and Assumptions
+
+### Stated Limitations
+1. **Provider-Specific:** Some features are provider-specific and not available across all integrations
+2. **Rate Limits:** All providers have rate limits that may affect high-volume applications
+3. **Costs:** API usage incurs costs that scale with usage
+4. **Latency:** Network latency affects response times
+5. **Availability:** Dependent on third-party service availability
+6. **Version Compatibility:** Some features require specific package versions
+
+### Assumptions
+1. **Internet Connectivity:** Assumes stable internet connectivity for API calls
+2. **API Access:** Assumes valid API keys and access to services
+3. **Python Environment:** Assumes Python 3.8+ environment
+4. **Dependencies:** Assumes all required dependencies are installed
+5. **Data Format:** Assumes data is in expected formats
+
+### Constraints
+1. **Memory:** Large datasets may require significant memory
+2. **Storage:** Vector stores require storage space
+3. **Compute:** Some operations require significant compute resources
+4. **Network:** Network bandwidth affects performance
+5. **Time:** Some operations may take significant time
+
+### Scope Limitations
+1. **Provider Coverage:** Not all providers are supported
+2. **Feature Parity:** Not all features are available across all providers
+3. **Documentation:** Some integrations have limited documentation
+4. **Community Support:** Community integrations may have less support
+
+## Related Techniques and References
+
+### Related Techniques
+1. **RAG (Retrieval-Augmented Generation):** Combining retrieval with generation
+2. **Agent Frameworks:** Building autonomous agents with tools
+3. **Chain Composition:** Combining multiple chains for complex workflows
+4. **Memory Management:** Managing conversation history and context
+5. **Prompt Engineering:** Optimizing prompts for better results
+6. **Fine-tuning:** Fine-tuning models for specific tasks
+7. **Evaluation:** Evaluating model and system performance
+
+### Key References
+- **LangChain Documentation:** https://docs.langchain.com
+- **LangChain Python API Reference:** https://python.langchain.com
+- **LangChain GitHub:** https://github.com/langchain-ai/langchain
+- **LangChain Community:** https://github.com/langchain-ai/langchain-community
+- **LangSmith:** https://docs.smith.langchain.com
+
+### Cross-References
+- See `langchain-comprehensive-guide.mdc` for core LangChain concepts
+- See `langgraph-comprehensive-guide.mdc` for LangGraph agent orchestration
+- See provider-specific documentation for detailed integration guides
+
+## Practical Applications
+
+### Use Cases
+1. **Question-Answering Systems:** RAG-based Q&A over documents
+2. **Chatbots:** Conversational interfaces with tool access
+3. **Document Analysis:** Analyzing and summarizing documents
+4. **Code Generation:** Generating and explaining code
+5. **Data Extraction:** Extracting structured data from unstructured sources
+6. **Content Generation:** Generating content for various purposes
+7. **Translation:** Multi-language translation services
+8. **Search:** Semantic search over large document collections
+9. **Automation:** Automating repetitive tasks with agents
+10. **Analytics:** Analyzing data and generating insights
+
+### Application Domains
+1. **Enterprise:** Internal knowledge bases, customer support, document management
+2. **Education:** Tutoring systems, content generation, research assistance
+3. **Healthcare:** Medical document analysis, patient information systems
+4. **Legal:** Contract analysis, legal research, document review
+5. **Finance:** Market analysis, report generation, risk assessment
+6. **E-commerce:** Product recommendations, customer support, content generation
+7. **Media:** Content creation, summarization, translation
+8. **Research:** Literature review, data analysis, hypothesis generation
+
+### Application Scenarios
+1. **Customer Support:** Automated customer support with knowledge base
+2. **Content Creation:** Automated content generation for marketing
+3. **Research Assistant:** AI-powered research and analysis
+4. **Code Assistant:** AI-powered coding assistance and debugging
+5. **Data Analysis:** Automated data analysis and reporting
+6. **Document Management:** Intelligent document organization and search
+7. **Translation Services:** Multi-language translation and localization
+8. **Personal Assistant:** AI-powered personal assistants with tool access
+
+### Real-World Examples
+1. **GitHub Copilot:** Code generation and assistance
+2. **ChatGPT Plugins:** Tool-using conversational AI
+3. **Perplexity AI:** AI-powered search with citations
+4. **Jasper AI:** Content generation for marketing
+5. **Notion AI:** AI-powered note-taking and organization
+6. **Coda AI:** AI-powered document collaboration
+7. **Zapier AI:** AI-powered workflow automation
+
+## Implementation Checklist
+
+### Prerequisites
+- [ ] Python 3.8+ installed
+- [ ] pip or uv package manager
+- [ ] API keys for required services
+- [ ] Internet connectivity
+- [ ] Required system dependencies (if any)
+
+### Setup Steps
+1. [ ] Install LangChain core: `pip install langchain-core`
+2. [ ] Install required integration packages
+3. [ ] Set up environment variables for API keys
+4. [ ] Configure authentication credentials
+5. [ ] Test basic connectivity to services
+6. [ ] Set up logging and monitoring (LangSmith recommended)
+
+### Implementation Steps
+1. [ ] Choose appropriate chat model provider
+2. [ ] Choose appropriate embedding model
+3. [ ] Select vector store for your use case
+4. [ ] Set up document loaders for data sources
+5. [ ] Configure tools and toolkits (if needed)
+6. [ ] Implement error handling and retries
+7. [ ] Add caching for embeddings (if applicable)
+8. [ ] Implement streaming (if needed)
+9. [ ] Set up monitoring and logging
+10. [ ] Test with sample data
+
+### Testing Steps
+1. [ ] Test individual components
+2. [ ] Test integration between components
+3. [ ] Test error handling and edge cases
+4. [ ] Test with production-like data volumes
+5. [ ] Performance testing and optimization
+6. [ ] Security testing
+7. [ ] Cost analysis and optimization
+8. [ ] User acceptance testing
+
+## Tables
+
+### Popular Providers Table
+See "Popular Providers" section above for complete table with package names, downloads, versions, and JS/TS support.
+
+### Vector Store Feature Comparison Table
+See "Vector Store Feature Comparison" section above for complete feature comparison matrix.
+
+### Document Loader Categories Tables
+See "Document Loaders by Category" section above for tables organized by category (Webpages, PDFs, Cloud Providers, Social Platforms, Messaging Services, Productivity Tools, Common File Types).
+
+## Appendices and Supplementary Material
+
+### Appendix A: Installation Commands
+Complete list of installation commands for all integration packages:
+
+```bash
+# Core
+pip install langchain-core
+
+# Popular Chat Models
+pip install langchain-openai
+pip install langchain-anthropic
+pip install langchain-google-genai
+pip install langchain-google-vertexai
+pip install langchain-aws
+pip install langchain-groq
+pip install langchain-ollama
+pip install langchain-mistralai
+pip install langchain-cohere
+pip install langchain-fireworks
+pip install langchain-perplexity
+pip install langchain-deepseek
+pip install langchain-xai
+
+# Popular Embeddings
+pip install langchain-openai  # Also includes embeddings
+pip install langchain-huggingface
+pip install langchain-ollama
+pip install langchain-cohere
+pip install langchain-mistralai
+pip install langchain-nomic
+pip install langchain-nvidia-ai-endpoints
+pip install langchain-voyageai
+pip install langchain-ibm
+
+# Popular Vector Stores
+pip install langchain-chroma
+pip install langchain-pinecone
+pip install langchain-qdrant
+pip install langchain-milvus
+pip install langchain-mongodb
+pip install langchain-postgres
+pip install langchain-astradb
+pip install langchain-elasticsearch
+pip install langchain-redis
+
+# Document Loaders (in langchain-community)
+pip install langchain-community
+
+# Tools
+pip install langchain-tavily
+pip install langchain-serpapi
+pip install langchain-wolfram-alpha
+
+# Key-Value Stores
+pip install langchain-astradb  # Includes byte store
+pip install langchain-redis
+pip install langchain-upstash-redis
+```
+
+### Appendix B: Environment Variables
+Common environment variables for integrations:
+
+```bash
+# OpenAI
+export OPENAI_API_KEY="your-key-here"
+export OPENAI_ORGANIZATION="your-org-id"
+
+# Anthropic
+export ANTHROPIC_API_KEY="your-key-here"
+
+# Google
+export GOOGLE_API_KEY="your-key-here"
+export GOOGLE_APPLICATION_CREDENTIALS="path-to-credentials.json"
+
+# AWS
+export AWS_ACCESS_KEY_ID="your-key"
+export AWS_SECRET_ACCESS_KEY="your-secret"
+export AWS_REGION="us-east-1"
+
+# Azure
+export AZURE_OPENAI_API_KEY="your-key"
+export AZURE_OPENAI_ENDPOINT="https://your-endpoint.openai.azure.com/"
+export AZURE_OPENAI_API_VERSION="2023-06-01-preview"
+
+# Pinecone
+export PINECONE_API_KEY="your-key"
+
+# Chroma
+# No API key needed for local usage
+
+# Qdrant
+export QDRANT_API_KEY="your-key"  # If using cloud
+
+# MongoDB
+export MONGODB_URI="mongodb://..."
+
+# LangSmith (for logging)
+export LANGSMITH_API_KEY="your-key"
+export LANGSMITH_TRACING="true"
+```
+
+### Appendix C: Common Error Codes and Solutions
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `APIKeyNotFoundError` | Missing API key | Set environment variable or pass key directly |
+| `RateLimitError` | Rate limit exceeded | Implement exponential backoff, reduce request rate |
+| `AuthenticationError` | Invalid credentials | Verify API key and credentials |
+| `ConnectionError` | Network issue | Check internet connectivity, retry with backoff |
+| `TimeoutError` | Request timeout | Increase timeout parameter, check network |
+| `ValueError` | Invalid parameter | Check parameter types and values |
+| `ImportError` | Missing package | Install required integration package |
+| `AttributeError` | Method not available | Check provider support for feature |
+
+### Appendix D: Version Compatibility Matrix
+Key version requirements:
+
+- Python: 3.8+
+- langchain-core: Latest stable
+- Integration packages: Check individual package requirements
+- Some features require specific minimum versions (noted in documentation)
+
+## References
+
+### Official Documentation
+- LangChain Documentation: https://docs.langchain.com
+- LangChain Python API Reference: https://python.langchain.com
+- LangChain JavaScript/TypeScript: https://js.langchain.com
+
+### Community Resources
+- LangChain GitHub: https://github.com/langchain-ai/langchain
+- LangChain Community GitHub: https://github.com/langchain-ai/langchain-community
+- LangChain Discord: Community support and discussions
+- LangChain Twitter: @LangChainAI
+
+### Provider Documentation
+- OpenAI API: https://platform.openai.com/docs
+- Anthropic API: https://docs.anthropic.com
+- Google AI: https://ai.google.dev/docs
+- AWS Bedrock: https://docs.aws.amazon.com/bedrock
+- Azure OpenAI: https://learn.microsoft.com/en-us/azure/ai-services/openai
+
+### Additional Resources
+- LangSmith: https://docs.smith.langchain.com (Monitoring and debugging)
+- LangChain Cookbook: Community examples and recipes
+- LangChain Templates: Pre-built templates for common use cases
+
+---
+
+**END OF DOCUMENT**
+
+This comprehensive guide covers all aspects of LangChain integration packages, providing developers with the information needed to successfully integrate any supported service into their AI agent applications. For the most up-to-date information, always refer to the official LangChain documentation at https://docs.langchain.com.

@@ -1,0 +1,1589 @@
+---
+alwaysApply: false
+---
+
+# LangGraph - Comprehensive Agent Orchestration Framework Guide
+
+## Paper Metadata
+- **Title:** LangGraph Documentation - Building Stateful, Long-Running AI Agents
+- **Source:** LangGraph Official Documentation
+- **Version:** LangGraph v1.x
+- **Language:** Python 3.10+
+- **Documentation URL:** https://docs.langchain.com/oss/python/langgraph/
+- **Keywords:** AI Agents, Agent Orchestration, Stateful Workflows, LangGraph, Durable Execution, Streaming, Human-in-the-Loop, Persistence, Memory, Subgraphs, Graph API, Functional API
+
+## Abstract / Summary
+
+LangGraph is a low-level orchestration framework and runtime for building, managing, and deploying long-running, stateful agents. Trusted by companies like Klarna, Replit, and Elastic, LangGraph provides the underlying infrastructure essential for agent orchestration without abstracting prompts or architecture.
+
+LangGraph focuses on core capabilities for agent orchestration:
+- **Durable Execution:** Build agents that persist through failures and can run for extended periods, resuming from where they left off
+- **Human-in-the-Loop:** Incorporate human oversight by inspecting and modifying agent state at any point
+- **Comprehensive Memory:** Create stateful agents with both short-term working memory for ongoing reasoning and long-term memory across sessions
+- **Debugging with LangSmith:** Gain deep visibility into complex agent behavior with visualization tools
+- **Production-ready Deployment:** Deploy sophisticated agent systems with scalable infrastructure
+
+LangGraph is inspired by Pregel and Apache Beam, with a public interface drawing inspiration from NetworkX. It can be used standalone or integrated seamlessly with LangChain products.
+
+## Problem Statement
+
+### Problem Definition
+
+Building reliable, stateful AI agents that can:
+1. Maintain context across multiple interactions
+2. Handle long-running workflows that may span hours or days
+3. Recover from failures and interruptions
+4. Incorporate human oversight at critical decision points
+5. Stream real-time progress to users
+6. Coordinate complex multi-step processes with multiple agents
+
+Traditional agent frameworks lack the infrastructure needed for these production requirements.
+
+### Motivation
+
+Large Language Models (LLMs) are powerful but have limitations:
+- **Finite context** - they can't ingest entire corpora at once
+- **Static knowledge** - their training data is frozen at a point in time
+- **No direct actions** - they can't interact with external systems directly
+- **No state persistence** - traditional frameworks lose state between interactions
+- **No recovery mechanisms** - failures require restarting from the beginning
+
+LangGraph addresses these limitations by providing:
+- Stateful execution with persistence across sessions
+- Durable execution that can pause and resume
+- Human-in-the-loop capabilities for oversight
+- Streaming for real-time feedback
+- Comprehensive memory management
+
+### Challenges
+
+1. **State Management:** Maintaining consistent state across long-running workflows
+2. **Fault Tolerance:** Recovering from failures without losing progress
+3. **Human Integration:** Seamlessly incorporating human input at decision points
+4. **Performance:** Balancing durability with execution speed
+5. **Complexity:** Managing complex multi-agent coordination
+
+### Scope
+
+LangGraph focuses on:
+- **Agent Orchestration:** Low-level infrastructure for building agents
+- **State Management:** Persistent state across executions
+- **Execution Control:** Pausing, resuming, and controlling agent execution
+- **Memory Systems:** Both short-term (conversation) and long-term (cross-session) memory
+- **Production Features:** Streaming, observability, deployment infrastructure
+
+### Assumptions
+
+- Python 3.10+ is available
+- Access to at least one LLM provider (OpenAI, Anthropic, Google, etc.)
+- Understanding of basic Python programming
+- Familiarity with graph-based computation concepts (helpful but not required)
+
+## Key Concepts and Techniques
+
+### Core Concepts
+
+1. **Graph:** A directed graph where nodes represent computation steps and edges represent control flow
+2. **State:** Shared memory accessible to all nodes, defined as a TypedDict
+3. **Nodes:** Functions that take state, perform work, and return state updates
+4. **Edges:** Connections between nodes that define execution flow
+5. **Checkpoints:** Snapshots of graph state saved at each super-step
+6. **Threads:** Unique identifiers for tracking execution history
+7. **Persistence:** Saving state to durable storage for recovery
+8. **Streaming:** Real-time output as the graph executes
+9. **Interrupts:** Pausing execution to wait for external input
+10. **Subgraphs:** Nested graphs for modular agent design
+
+### Architecture Patterns
+
+1. **Graph API:** Explicit graph construction with nodes and edges
+2. **Functional API:** Single function with control flow logic
+3. **State Reducers:** Functions that combine state updates (e.g., `operator.add` for lists)
+4. **Command Pattern:** Nodes returning `Command` objects to control routing
+5. **Task Pattern:** Wrapping operations in `@task` decorator for durable execution
+
+## Installation and Setup
+
+### Basic Installation
+
+```bash
+# Install LangGraph core package
+pip install -U langgraph
+
+# Or with uv
+uv add langgraph
+```
+
+### Additional Dependencies
+
+For LLM integration (using LangChain):
+```bash
+pip install -U langchain
+# Requires Python 3.10+
+```
+
+For specific LLM providers:
+```bash
+# OpenAI
+pip install langchain-openai
+
+# Anthropic
+pip install langchain-anthropic
+
+# Google
+pip install langchain-google-genai
+```
+
+### Checkpointer Installation
+
+For production persistence:
+```bash
+# PostgreSQL (recommended for production)
+pip install "psycopg[binary,pool]" langgraph-checkpoint-postgres
+
+# SQLite (for local development)
+pip install langgraph-checkpoint-sqlite
+
+# MongoDB
+pip install pymongo langgraph-checkpoint-mongodb
+
+# Redis
+pip install langgraph-checkpoint-redis
+```
+
+### Store Installation
+
+For long-term memory:
+```bash
+# PostgreSQL store
+pip install langgraph-checkpoint-postgres
+
+# Redis store
+pip install langgraph-checkpoint-redis
+```
+
+## Quickstart
+
+### Hello World Example
+
+```python
+from langgraph.graph import StateGraph, MessagesState, START, END
+
+def mock_llm(state: MessagesState):
+    return {"messages": [{"role": "ai", "content": "hello world"}]}
+
+graph = StateGraph(MessagesState)
+graph.add_node(mock_llm)
+graph.add_edge(START, "mock_llm")
+graph.add_edge("mock_llm", END)
+graph = graph.compile()
+
+graph.invoke({"messages": [{"role": "user", "content": "hi!"}]})
+```
+
+### Calculator Agent Example (Graph API)
+
+```python
+from langchain.tools import tool
+from langchain.chat_models import init_chat_model
+from langgraph.graph import StateGraph, MessagesState, START, END
+from langchain.messages import SystemMessage, ToolMessage
+from typing import Literal
+
+# 1. Define tools and model
+model = init_chat_model("claude-sonnet-4-5-20250929", temperature=0)
+
+@tool
+def multiply(a: int, b: int) -> int:
+    """Multiply `a` and `b`."""
+    return a * b
+
+@tool
+def add(a: int, b: int) -> int:
+    """Adds `a` and `b`."""
+    return a + b
+
+@tool
+def divide(a: int, b: int) -> float:
+    """Divide `a` and `b`."""
+    return a / b
+
+tools = [add, multiply, divide]
+tools_by_name = {tool.name: tool for tool in tools}
+model_with_tools = model.bind_tools(tools)
+
+# 2. Define state
+class MessagesState(TypedDict):
+    messages: Annotated[list[AnyMessage], operator.add]
+    llm_calls: int
+
+# 3. Define model node
+def llm_call(state: dict):
+    """LLM decides whether to call a tool or not"""
+    return {
+        "messages": [
+            model_with_tools.invoke(
+                [
+                    SystemMessage(
+                        content="You are a helpful assistant tasked with performing arithmetic."
+                    )
+                ]
+                + state["messages"]
+            )
+        ],
+        "llm_calls": state.get('llm_calls', 0) + 1
+    }
+
+# 4. Define tool node
+def tool_node(state: dict):
+    """Performs the tool call"""
+    result = []
+    for tool_call in state["messages"][-1].tool_calls:
+        tool = tools_by_name[tool_call["name"]]
+        observation = tool.invoke(tool_call["args"])
+        result.append(ToolMessage(content=observation, tool_call_id=tool_call["id"]))
+    return {"messages": result}
+
+# 5. Define conditional edge
+def should_continue(state: MessagesState) -> Literal["tool_node", END]:
+    """Decide if we should continue or stop"""
+    messages = state["messages"]
+    last_message = messages[-1]
+    
+    if last_message.tool_calls:
+        return "tool_node"
+    return END
+
+# 6. Build and compile the agent
+agent_builder = StateGraph(MessagesState)
+agent_builder.add_node("llm_call", llm_call)
+agent_builder.add_node("tool_node", tool_node)
+agent_builder.add_edge(START, "llm_call")
+agent_builder.add_conditional_edges(
+    "llm_call",
+    should_continue,
+    ["tool_node", END]
+)
+agent_builder.add_edge("tool_node", "llm_call")
+
+agent = agent_builder.compile()
+
+# Invoke
+from langchain.messages import HumanMessage
+messages = [HumanMessage(content="Add 3 and 4.")]
+result = agent.invoke({"messages": messages})
+```
+
+### Calculator Agent Example (Functional API)
+
+```python
+from langgraph.func import entrypoint, task
+from langgraph.graph import add_messages
+from langchain.messages import SystemMessage, HumanMessage, ToolCall
+from langchain_core.messages import BaseMessage
+
+@task
+def call_llm(messages: list[BaseMessage]):
+    """LLM decides whether to call a tool or not"""
+    return model_with_tools.invoke(
+        [
+            SystemMessage(
+                content="You are a helpful assistant tasked with performing arithmetic."
+            )
+        ]
+        + messages
+    )
+
+@task
+def call_tool(tool_call: ToolCall):
+    """Performs the tool call"""
+    tool = tools_by_name[tool_call["name"]]
+    return tool.invoke(tool_call)
+
+@entrypoint()
+def agent(messages: list[BaseMessage]):
+    model_response = call_llm(messages).result()
+    
+    while True:
+        if not model_response.tool_calls:
+            break
+        
+        # Execute tools
+        tool_result_futures = [
+            call_tool(tool_call) for tool_call in model_response.tool_calls
+        ]
+        tool_results = [fut.result() for fut in tool_result_futures]
+        messages = add_messages(messages, [model_response, *tool_results])
+        model_response = call_llm(messages).result()
+    
+    messages = add_messages(messages, model_response)
+    return messages
+
+# Invoke
+messages = [HumanMessage(content="Add 3 and 4.")]
+for chunk in agent.stream(messages, stream_mode="updates"):
+    print(chunk)
+```
+
+## Thinking in LangGraph
+
+### Five-Step Process
+
+1. **Map out your workflow as discrete steps** - Each step becomes a node
+2. **Identify what each step needs to do** - LLM steps, data steps, action steps, user input steps
+3. **Design your state** - Store raw data, not formatted text
+4. **Build your nodes** - Functions that take state and return updates
+5. **Wire it together** - Connect nodes with edges
+
+### State Design Principles
+
+**Key Principle:** Store raw data in state, format prompts on-demand inside nodes.
+
+Benefits:
+- Different nodes can format the same data differently
+- Change prompt templates without modifying state schema
+- Clearer debugging - see exactly what data each node received
+- Agent can evolve without breaking existing state
+
+Example state design:
+```python
+from typing import TypedDict, Literal
+
+class EmailClassification(TypedDict):
+    intent: Literal["question", "bug", "billing", "feature", "complex"]
+    urgency: Literal["low", "medium", "high", "critical"]
+    topic: str
+    summary: str
+
+class EmailAgentState(TypedDict):
+    # Raw email data
+    email_content: str
+    sender_email: str
+    email_id: str
+    
+    # Classification result (raw dict from LLM)
+    classification: EmailClassification | None
+    
+    # Raw search/API results
+    search_results: list[str] | None
+    customer_history: dict | None
+    
+    # Generated content
+    draft_response: str | None
+    messages: list[str] | None
+```
+
+### Error Handling Strategies
+
+| Error Type | Who Fixes It | Strategy | When to Use |
+|------------|--------------|----------|-------------|
+| Transient errors (network issues, rate limits) | System (automatic) | Retry policy | Temporary failures that usually resolve on retry |
+| LLM-recoverable errors (tool failures, parsing issues) | LLM | Store error in state and loop back | LLM can see the error and adjust its approach |
+| User-fixable errors (missing information, unclear instructions) | Human | Pause with `interrupt()` | Need user input to proceed |
+| Unexpected errors | Developer | Let them bubble up | Unknown issues that need debugging |
+
+### Node Granularity Trade-offs
+
+**Smaller nodes:**
+- More frequent checkpoints
+- Better observability
+- Easier testing and reuse
+- Isolation of external services
+
+**Larger nodes:**
+- Fewer checkpoints
+- Less overhead
+- Simpler graph structure
+
+**Recommendation:** Start with smaller nodes for better debugging and observability, then combine if needed for performance.
+
+## Graph API Overview
+
+### State Definition
+
+State is defined as a TypedDict where each key is a "channel":
+
+```python
+from typing_extensions import TypedDict, Annotated
+from typing import Annotated
+import operator
+
+class State(TypedDict):
+    # Simple channel - overwrites on update
+    topic: str
+    
+    # Channel with reducer - appends on update
+    messages: Annotated[list[str], operator.add]
+    
+    # Optional channel
+    result: NotRequired[str]
+```
+
+### Reducers
+
+Reducers define how state updates are combined:
+
+```python
+from typing import Annotated
+import operator
+
+class State(TypedDict):
+    # Overwrite (default behavior)
+    current_value: str
+    
+    # Append to list
+    messages: Annotated[list[str], operator.add]
+    
+    # Custom reducer
+    counter: Annotated[int, lambda x, y: x + y]
+```
+
+### Nodes
+
+Nodes are functions that take state and return updates:
+
+```python
+def my_node(state: State) -> dict:
+    # Read from state
+    topic = state["topic"]
+    
+    # Do work
+    result = process(topic)
+    
+    # Return updates
+    return {"result": result}
+```
+
+### Edges
+
+Three types of edges:
+
+1. **Simple Edge:** Always follows the same path
+```python
+graph.add_edge("node_a", "node_b")
+```
+
+2. **Conditional Edge:** Routes based on state
+```python
+def route_decision(state: State) -> Literal["node_a", "node_b"]:
+    if state["condition"]:
+        return "node_a"
+    return "node_b"
+
+graph.add_conditional_edges(
+    "source_node",
+    route_decision,
+    {
+        "node_a": "node_a",
+        "node_b": "node_b"
+    }
+)
+```
+
+3. **Command-based Routing:** Nodes return Command objects
+```python
+from langgraph.types import Command
+from typing import Literal
+
+def routing_node(state: State) -> Command[Literal["node_a", "node_b"]]:
+    if condition:
+        return Command(update={"key": "value"}, goto="node_a")
+    return Command(update={"key": "value"}, goto="node_b")
+```
+
+### Compilation
+
+```python
+from langgraph.checkpoint.memory import InMemorySaver
+
+# Basic compilation
+graph = builder.compile()
+
+# With persistence
+checkpointer = InMemorySaver()
+graph = builder.compile(checkpointer=checkpointer)
+
+# With store (long-term memory)
+from langgraph.store.memory import InMemoryStore
+store = InMemoryStore()
+graph = builder.compile(checkpointer=checkpointer, store=store)
+```
+
+### Execution
+
+```python
+# Invoke (blocking)
+result = graph.invoke({"input": "value"})
+
+# Stream (iterator)
+for chunk in graph.stream({"input": "value"}, stream_mode="updates"):
+    print(chunk)
+
+# Async invoke
+result = await graph.ainvoke({"input": "value"})
+
+# Async stream
+async for chunk in graph.astream({"input": "value"}, stream_mode="updates"):
+    print(chunk)
+```
+
+### Input and Output Schemas
+
+Define schemas for validation:
+
+```python
+from pydantic import BaseModel
+
+class InputSchema(BaseModel):
+    query: str
+
+class OutputSchema(BaseModel):
+    answer: str
+
+class StateSchema(TypedDict):
+    query: str
+    answer: str
+
+graph = builder.compile(
+    input_schema=InputSchema,
+    output_schema=OutputSchema
+)
+```
+
+### Private State
+
+Nodes can have private state not shared with other nodes:
+
+```python
+def node_1(state: State) -> dict:
+    return {
+        "__private__": {"internal_data": "value"},  # Private
+        "public_data": "value"  # Public
+    }
+
+def node_2(state: State, *, __private__: dict):
+    # node_2 can access private data from node_1
+    internal = __private__["internal_data"]
+    return {"result": process(internal)}
+```
+
+### Configuration Schema
+
+Define runtime configuration:
+
+```python
+from pydantic import BaseModel
+
+class ConfigSchema(BaseModel):
+    user_id: str
+    api_key: str
+
+def node(state: State, config: RunnableConfig):
+    user_id = config["configurable"]["user_id"]
+    return {"user_id": user_id}
+
+graph = builder.compile(config_schema=ConfigSchema)
+```
+
+## Functional API Overview
+
+The Functional API allows you to define agents as a single function with standard control flow.
+
+### Entrypoint
+
+The `@entrypoint()` decorator marks the main function:
+
+```python
+from langgraph.func import entrypoint
+
+@entrypoint()
+def my_agent(input: str) -> str:
+    # Standard Python control flow
+    if condition:
+        return process_a(input)
+    else:
+        return process_b(input)
+```
+
+### Tasks
+
+The `@task` decorator marks functions that can be executed asynchronously:
+
+```python
+from langgraph.func import task
+
+@task
+def expensive_operation(data: str) -> str:
+    # This can run in parallel with other tasks
+    return process(data)
+
+@entrypoint()
+def agent(input: str):
+    # Create futures
+    future1 = expensive_operation("data1")
+    future2 = expensive_operation("data2")
+    
+    # Wait for results
+    result1 = future1.result()
+    result2 = future2.result()
+    
+    return combine(result1, result2)
+```
+
+### Parallel Execution
+
+Tasks execute in parallel when possible:
+
+```python
+@entrypoint()
+def parallel_agent(topic: str):
+    # These execute in parallel
+    joke_fut = generate_joke(topic)
+    poem_fut = generate_poem(topic)
+    story_fut = generate_story(topic)
+    
+    # Wait for all
+    return combine(
+        joke_fut.result(),
+        poem_fut.result(),
+        story_fut.result()
+    )
+```
+
+### Error Handling
+
+Tasks can be retried automatically:
+
+```python
+from langgraph.types import RetryPolicy
+
+@task(retry_policy=RetryPolicy(max_attempts=3, initial_interval=1.0))
+def unreliable_operation(data: str) -> str:
+    # This will retry on failure
+    return risky_api_call(data)
+```
+
+### Resuming After Errors
+
+```python
+@entrypoint()
+def resilient_agent(input: str):
+    try:
+        return process(input)
+    except Exception as e:
+        # Store error and retry
+        return retry_with_error(input, str(e))
+```
+
+## Persistence
+
+### Checkpointers
+
+Checkpointers save graph state at each super-step:
+
+```python
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.postgres import PostgresSaver
+
+# In-memory (development)
+checkpointer = InMemorySaver()
+
+# PostgreSQL (production)
+DB_URI = "postgresql://user:pass@localhost:5432/db"
+checkpointer = PostgresSaver.from_conn_string(DB_URI)
+checkpointer.setup()  # First time only
+
+graph = builder.compile(checkpointer=checkpointer)
+```
+
+### Threads
+
+Threads track execution history:
+
+```python
+config = {"configurable": {"thread_id": "unique-thread-id"}}
+result = graph.invoke({"input": "value"}, config=config)
+```
+
+### Checkpoints
+
+Checkpoints are snapshots of state:
+
+```python
+# Get latest state
+state = graph.get_state(config)
+
+# Get state at specific checkpoint
+config_with_checkpoint = {
+    "configurable": {
+        "thread_id": "1",
+        "checkpoint_id": "checkpoint-id"
+    }
+}
+state = graph.get_state(config_with_checkpoint)
+
+# Get state history
+history = list(graph.get_state_history(config))
+```
+
+### State Snapshots
+
+StateSnapshot contains:
+- `values`: State channel values
+- `next`: Next nodes to execute
+- `config`: Configuration
+- `metadata`: Execution metadata
+- `created_at`: Timestamp
+
+### Replay
+
+Replay execution from a checkpoint:
+
+```python
+config = {
+    "configurable": {
+        "thread_id": "1",
+        "checkpoint_id": "checkpoint-id"
+    }
+}
+# Replay from checkpoint
+graph.invoke(None, config=config)
+```
+
+### Update State
+
+Modify state at a checkpoint:
+
+```python
+new_config = graph.update_state(
+    config,
+    values={"key": "new_value"},
+    as_node="node_name"  # Optional: mark as coming from specific node
+)
+```
+
+### Memory Store
+
+Store for long-term memory across threads:
+
+```python
+from langgraph.store.memory import InMemoryStore
+from langgraph.store.postgres import PostgresStore
+
+# In-memory
+store = InMemoryStore()
+
+# PostgreSQL
+store = PostgresStore.from_conn_string(DB_URI)
+store.setup()
+
+graph = builder.compile(checkpointer=checkpointer, store=store)
+```
+
+### Using Store in Nodes
+
+```python
+from langgraph.store.base import BaseStore
+from langchain_core.runnables import RunnableConfig
+
+def node_with_store(
+    state: State,
+    config: RunnableConfig,
+    *,
+    store: BaseStore
+):
+    user_id = config["configurable"]["user_id"]
+    namespace = (user_id, "memories")
+    
+    # Search memories
+    memories = store.search(namespace, query="food preferences", limit=3)
+    
+    # Store new memory
+    memory_id = str(uuid.uuid4())
+    store.put(namespace, memory_id, {"data": "User likes pizza"})
+    
+    return {"result": "processed"}
+```
+
+### Semantic Search
+
+Enable semantic search in store:
+
+```python
+from langchain.embeddings import init_embeddings
+
+store = InMemoryStore(
+    index={
+        "embed": init_embeddings("openai:text-embedding-3-small"),
+        "dims": 1536,
+        "fields": ["food_preference", "$"]  # Fields to embed
+    }
+)
+
+# Search with natural language
+memories = store.search(
+    namespace,
+    query="What does the user like to eat?",
+    limit=3
+)
+```
+
+## Durable Execution
+
+### Requirements
+
+1. Enable persistence with a checkpointer
+2. Specify thread_id when executing
+3. Wrap non-deterministic operations in tasks
+
+### Determinism
+
+When resuming, code restarts from the beginning of the node/entrypoint where execution stopped. Wrap non-deterministic operations in tasks:
+
+```python
+@task
+def non_deterministic_operation():
+    # Random, time-based, or external calls
+    return random.choice([1, 2, 3])
+
+@entrypoint()
+def agent():
+    result = non_deterministic_operation().result()
+    return result
+```
+
+### Durability Modes
+
+```python
+# Exit mode: persist only on completion (fastest)
+graph.stream(inputs, durability="exit")
+
+# Async mode: persist asynchronously (balanced)
+graph.stream(inputs, durability="async")
+
+# Sync mode: persist synchronously (most durable)
+graph.stream(inputs, durability="sync")
+```
+
+### Using Tasks in Nodes
+
+```python
+from langgraph.func import task
+
+@task
+def _make_request(url: str):
+    return requests.get(url).text[:100]
+
+def call_api(state: State):
+    requests = [_make_request(url) for url in state['urls']]
+    results = [request.result() for request in requests]
+    return {"results": results}
+```
+
+### Resuming Workflows
+
+```python
+# Resume after interrupt
+graph.invoke(Command(resume=response), config=config)
+
+# Resume after error
+graph.invoke(None, config=config)  # Resumes from last checkpoint
+```
+
+## Streaming
+
+### Stream Modes
+
+```python
+# Updates: state changes after each step
+for chunk in graph.stream(inputs, stream_mode="updates"):
+    print(chunk)
+
+# Values: full state after each step
+for chunk in graph.stream(inputs, stream_mode="values"):
+    print(chunk)
+
+# Messages: LLM tokens
+for msg, metadata in graph.stream(inputs, stream_mode="messages"):
+    print(msg.content, end="")
+
+# Custom: user-defined data
+for chunk in graph.stream(inputs, stream_mode="custom"):
+    print(chunk)
+
+# Debug: maximum information
+for chunk in graph.stream(inputs, stream_mode="debug"):
+    print(chunk)
+
+# Multiple modes
+for mode, chunk in graph.stream(inputs, stream_mode=["updates", "messages"]):
+    print(f"{mode}: {chunk}")
+```
+
+### Streaming LLM Tokens
+
+```python
+for message_chunk, metadata in graph.stream(
+    inputs,
+    stream_mode="messages"
+):
+    if message_chunk.content:
+        print(message_chunk.content, end="", flush=True)
+```
+
+### Filtering by Tags
+
+```python
+model = init_chat_model("gpt-4o-mini", tags=["joke"])
+
+for msg, metadata in graph.astream(inputs, stream_mode="messages"):
+    if metadata["tags"] == ["joke"]:
+        print(msg.content, end="")
+```
+
+### Custom Streaming
+
+```python
+from langgraph.config import get_stream_writer
+
+def node(state: State):
+    writer = get_stream_writer()
+    writer({"progress": "50%", "status": "processing"})
+    return {"result": "done"}
+
+for chunk in graph.stream(inputs, stream_mode="custom"):
+    print(chunk)
+```
+
+### Streaming from Subgraphs
+
+```python
+for chunk in graph.stream(
+    inputs,
+    stream_mode="updates",
+    subgraphs=True  # Include subgraph outputs
+):
+    print(chunk)  # (namespace, data) tuples
+```
+
+## Interrupts
+
+### Basic Usage
+
+```python
+from langgraph.types import interrupt, Command
+
+def approval_node(state: State):
+    # Pause execution
+    approved = interrupt("Do you approve this action?")
+    
+    # Resume value becomes return value of interrupt()
+    if approved:
+        return {"status": "approved"}
+    return {"status": "rejected"}
+```
+
+### Resuming
+
+```python
+# Initial run - pauses at interrupt
+config = {"configurable": {"thread_id": "1"}}
+result = graph.invoke({"input": "data"}, config=config)
+
+# Check interrupt payload
+print(result["__interrupt__"])
+
+# Resume with response
+graph.invoke(Command(resume=True), config=config)
+```
+
+### Common Patterns
+
+**Approval Workflow:**
+```python
+def approval_node(state: State) -> Command[Literal["proceed", "cancel"]]:
+    is_approved = interrupt({
+        "question": "Do you want to proceed?",
+        "details": state["action_details"]
+    })
+    
+    if is_approved:
+        return Command(goto="proceed")
+    return Command(goto="cancel")
+```
+
+**Review and Edit:**
+```python
+def review_node(state: State):
+    edited = interrupt({
+        "content": state["draft"],
+        "action": "Please review and edit"
+    })
+    return {"final": edited}
+```
+
+### Important Notes
+
+- `interrupt()` must come first in a node - any code before it will re-run on resume
+- Don't perform non-idempotent operations before `interrupt()`
+- Use checkpointer for persistence
+- Thread ID must be consistent between interrupt and resume
+
+## Time Travel
+
+### Use Cases
+
+1. Understand reasoning: Analyze steps that led to success
+2. Debug mistakes: Identify where and why errors occurred
+3. Explore alternatives: Test different paths
+
+### Process
+
+```python
+# 1. Run the graph
+config = {"configurable": {"thread_id": "1"}}
+state = graph.invoke({}, config)
+
+# 2. Get state history
+states = list(graph.get_state_history(config))
+
+# 3. Select a checkpoint
+selected_state = states[1]  # Second-to-last checkpoint
+
+# 4. Optionally update state
+new_config = graph.update_state(
+    selected_state.config,
+    values={"topic": "chickens"}
+)
+
+# 5. Resume from checkpoint
+graph.invoke(None, new_config)
+```
+
+## Memory
+
+### Short-Term Memory (Checkpointer)
+
+For conversation state within a thread:
+
+```python
+from langgraph.checkpoint.memory import InMemorySaver
+
+checkpointer = InMemorySaver()
+graph = builder.compile(checkpointer=checkpointer)
+
+config = {"configurable": {"thread_id": "1"}}
+graph.invoke({"messages": [{"role": "user", "content": "hi"}]}, config)
+graph.invoke({"messages": [{"role": "user", "content": "what's my name?"}]}, config)
+```
+
+### Long-Term Memory (Store)
+
+For cross-thread, user-specific data:
+
+```python
+from langgraph.store.memory import InMemoryStore
+
+store = InMemoryStore()
+graph = builder.compile(checkpointer=checkpointer, store=store)
+
+def node_with_memory(
+    state: MessagesState,
+    config: RunnableConfig,
+    *,
+    store: BaseStore
+):
+    user_id = config["configurable"]["user_id"]
+    namespace = (user_id, "memories")
+    
+    # Search memories
+    memories = store.search(namespace, query=state["messages"][-1].content)
+    
+    # Store new memory
+    if "remember" in state["messages"][-1].content.lower():
+        memory_id = str(uuid.uuid4())
+        store.put(namespace, memory_id, {"data": "User name is Bob"})
+    
+    return {"messages": response}
+```
+
+## Subgraphs
+
+### Basic Usage
+
+```python
+# Define subgraph
+class SubgraphState(TypedDict):
+    foo: str
+
+def subgraph_node(state: SubgraphState):
+    return {"foo": state["foo"] + "bar"}
+
+subgraph_builder = StateGraph(SubgraphState)
+subgraph_builder.add_node(subgraph_node)
+subgraph_builder.add_edge(START, "subgraph_node")
+subgraph = subgraph_builder.compile()
+
+# Use in parent graph
+class ParentState(TypedDict):
+    foo: str
+
+def parent_node(state: ParentState):
+    return {"foo": "hi! " + state["foo"]}
+
+builder = StateGraph(ParentState)
+builder.add_node("node_1", parent_node)
+builder.add_node("node_2", subgraph)  # Add subgraph as node
+builder.add_edge(START, "node_1")
+builder.add_edge("node_1", "node_2")
+graph = builder.compile()
+```
+
+### Subgraph with Own Memory
+
+```python
+subgraph = subgraph_builder.compile(checkpointer=True)
+```
+
+### Streaming from Subgraphs
+
+```python
+for chunk in graph.stream(
+    inputs,
+    stream_mode="updates",
+    subgraphs=True
+):
+    print(chunk)  # (namespace, data) where namespace includes subgraph path
+```
+
+## Workflow and Agent Patterns
+
+### Prompt Chaining
+
+Sequential LLM calls where each processes the previous output:
+
+```python
+def generate_joke(state: State):
+    msg = llm.invoke(f"Write a joke about {state['topic']}")
+    return {"joke": msg.content}
+
+def improve_joke(state: State):
+    msg = llm.invoke(f"Make this funnier: {state['joke']}")
+    return {"improved_joke": msg.content}
+
+graph.add_node("generate", generate_joke)
+graph.add_node("improve", improve_joke)
+graph.add_edge(START, "generate")
+graph.add_edge("generate", "improve")
+```
+
+### Parallelization
+
+Run multiple independent tasks simultaneously:
+
+```python
+def call_llm_1(state: State):
+    return {"joke": llm.invoke(f"Write a joke about {state['topic']}").content}
+
+def call_llm_2(state: State):
+    return {"poem": llm.invoke(f"Write a poem about {state['topic']}").content}
+
+graph.add_edge(START, "call_llm_1")
+graph.add_edge(START, "call_llm_2")  # Both start from START
+graph.add_edge("call_llm_1", "aggregator")
+graph.add_edge("call_llm_2", "aggregator")
+```
+
+### Routing
+
+Route to different paths based on input:
+
+```python
+def router(state: State):
+    decision = llm.with_structured_output(Route).invoke(state["input"])
+    return {"decision": decision.step}
+
+def route_decision(state: State):
+    if state["decision"] == "story":
+        return "write_story"
+    elif state["decision"] == "joke":
+        return "write_joke"
+    return "write_poem"
+
+graph.add_conditional_edges("router", route_decision, {
+    "write_story": "write_story",
+    "write_joke": "write_joke",
+    "write_poem": "write_poem"
+})
+```
+
+### Orchestrator-Worker
+
+Break tasks into subtasks and delegate to workers:
+
+```python
+from langgraph.types import Send
+
+def orchestrator(state: State):
+    sections = planner.invoke(state["topic"])
+    return {"sections": sections.sections}
+
+def assign_workers(state: State):
+    return [Send("worker", {"section": s}) for s in state["sections"]]
+
+def worker(state: WorkerState):
+    result = llm.invoke(f"Write section: {state['section']}")
+    return {"completed_sections": [result.content]}
+
+graph.add_conditional_edges("orchestrator", assign_workers, ["worker"])
+```
+
+### Evaluator-Optimizer
+
+Generate, evaluate, and refine in a loop:
+
+```python
+def generator(state: State):
+    if state.get("feedback"):
+        return {"joke": llm.invoke(f"Write joke: {state['feedback']}").content}
+    return {"joke": llm.invoke("Write a joke").content}
+
+def evaluator(state: State):
+    feedback = evaluator_llm.invoke(state["joke"])
+    return {"funny_or_not": feedback.grade, "feedback": feedback.feedback}
+
+def route_joke(state: State):
+    if state["funny_or_not"] == "funny":
+        return "accepted"
+    return "generator"  # Loop back
+
+graph.add_edge("generator", "evaluator")
+graph.add_conditional_edges("evaluator", route_joke, {
+    "accepted": END,
+    "generator": "generator"
+})
+```
+
+### Agents
+
+LLM with tools in a continuous loop:
+
+```python
+def llm_call(state: MessagesState):
+    return {"messages": [llm_with_tools.invoke(state["messages"])]}
+
+def tool_node(state: MessagesState):
+    results = []
+    for tool_call in state["messages"][-1].tool_calls:
+        tool = tools_by_name[tool_call["name"]]
+        result = tool.invoke(tool_call["args"])
+        results.append(ToolMessage(content=result, tool_call_id=tool_call["id"]))
+    return {"messages": results}
+
+def should_continue(state: MessagesState) -> Literal["tool_node", END]:
+    if state["messages"][-1].tool_calls:
+        return "tool_node"
+    return END
+
+graph.add_edge(START, "llm_call")
+graph.add_conditional_edges("llm_call", should_continue, ["tool_node", END])
+graph.add_edge("tool_node", "llm_call")
+```
+
+## Deployment
+
+### Local Server
+
+```bash
+# Install CLI
+pip install -U "langgraph-cli[inmem]"
+
+# Create app
+langgraph new my-app --template new-langgraph-project-python
+
+# Install dependencies
+cd my-app
+pip install -e .
+
+# Create .env file
+echo "LANGSMITH_API_KEY=lsv2..." > .env
+
+# Run server
+langgraph dev
+```
+
+### Application Structure
+
+```
+my-app/
+├── langgraph.json      # Configuration
+├── .env               # Environment variables
+├── src/
+│   └── my_app/
+│       └── graph.py   # Graph definition
+└── pyproject.toml     # Dependencies
+```
+
+### LangGraph API Deployment
+
+Deploy to LangSmith for production:
+- Automatic persistence
+- Scalable infrastructure
+- Built-in observability
+- Studio UI for debugging
+
+### Testing
+
+```python
+# Test graph
+result = graph.invoke({"input": "test"})
+assert result["output"] == "expected"
+
+# Test with config
+config = {"configurable": {"thread_id": "test"}}
+result = graph.invoke({"input": "test"}, config=config)
+```
+
+## Best Practices and Recommendations
+
+### State Design
+
+1. **Store raw data, not formatted text**
+2. **Use reducers for accumulating data** (lists, counters)
+3. **Keep state minimal** - only what's needed across nodes
+4. **Use NotRequired for optional fields**
+
+### Node Design
+
+1. **One responsibility per node**
+2. **Handle errors appropriately** (retry, interrupt, or bubble up)
+3. **Use tasks for non-deterministic operations**
+4. **Keep nodes idempotent when possible**
+
+### Error Handling
+
+1. **Transient errors:** Use RetryPolicy
+2. **LLM-recoverable:** Store error in state, loop back
+3. **User-fixable:** Use interrupt()
+4. **Unexpected:** Let bubble up for debugging
+
+### Performance
+
+1. **Use async durability mode** for balance
+2. **Parallelize independent operations**
+3. **Cache expensive operations**
+4. **Use appropriate checkpointer** (Postgres for production)
+
+### Debugging
+
+1. **Use stream_mode="debug"** for detailed traces
+2. **Inspect state at checkpoints**
+3. **Use LangSmith Studio** for visualization
+4. **Add logging in nodes**
+
+## Limitations and Assumptions
+
+### Limitations
+
+1. **Python 3.10+ required**
+2. **Checkpointing adds overhead** (mitigated with async mode)
+3. **State must be serializable** (for persistence)
+4. **Thread ID required** for persistence features
+
+### Assumptions
+
+1. **LLM provider available** (OpenAI, Anthropic, etc.)
+2. **Database available** for production checkpointer
+3. **Understanding of graph concepts** (helpful but not required)
+
+## Related Techniques and References
+
+### Related LangChain Components
+
+- **LangChain Agents:** Higher-level agent abstractions built on LangGraph
+- **LangChain Tools:** Tool calling infrastructure
+- **LangChain Memory:** Memory management patterns
+- **LangSmith:** Observability and deployment platform
+
+### Key References
+
+- **Pregel:** Google's graph processing framework (inspiration)
+- **Apache Beam:** Data processing framework (inspiration)
+- **NetworkX:** Python graph library (interface inspiration)
+
+## Implementation Checklist
+
+### Prerequisites
+- [ ] Python 3.10+ installed
+- [ ] LLM provider API key (OpenAI, Anthropic, etc.)
+- [ ] LangGraph installed: `pip install langgraph`
+- [ ] LangChain installed (if using): `pip install langchain`
+
+### Basic Setup
+1. [ ] Install LangGraph
+2. [ ] Set up LLM provider
+3. [ ] Create basic graph
+4. [ ] Test with simple example
+
+### Production Setup
+1. [ ] Install production checkpointer (Postgres recommended)
+2. [ ] Set up database
+3. [ ] Configure environment variables
+4. [ ] Set up LangSmith account (optional but recommended)
+5. [ ] Deploy using LangGraph CLI or LangSmith
+
+### Advanced Features
+1. [ ] Implement persistence
+2. [ ] Add streaming
+3. [ ] Set up interrupts for human-in-the-loop
+4. [ ] Configure long-term memory store
+5. [ ] Add subgraphs for modularity
+
+## Code Examples and Snippets
+
+### Complete Calculator Agent
+
+```python
+from langchain.tools import tool
+from langchain.chat_models import init_chat_model
+from langgraph.graph import StateGraph, MessagesState, START, END
+from langchain.messages import SystemMessage, HumanMessage, ToolMessage
+from typing import Literal
+from typing_extensions import TypedDict, Annotated
+import operator
+
+# Tools
+@tool
+def multiply(a: int, b: int) -> int:
+    """Multiply `a` and `b`."""
+    return a * b
+
+@tool
+def add(a: int, b: int) -> int:
+    """Adds `a` and `b`."""
+    return a + b
+
+@tool
+def divide(a: int, b: int) -> float:
+    """Divide `a` and `b`."""
+    return a / b
+
+# Model
+model = init_chat_model("claude-sonnet-4-5-20250929", temperature=0)
+tools = [add, multiply, divide]
+tools_by_name = {tool.name: tool for tool in tools}
+model_with_tools = model.bind_tools(tools)
+
+# State
+class MessagesState(TypedDict):
+    messages: Annotated[list, operator.add]
+    llm_calls: int
+
+# Nodes
+def llm_call(state: MessagesState):
+    return {
+        "messages": [
+            model_with_tools.invoke(
+                [SystemMessage(content="You are a helpful math assistant.")]
+                + state["messages"]
+            )
+        ],
+        "llm_calls": state.get('llm_calls', 0) + 1
+    }
+
+def tool_node(state: MessagesState):
+    result = []
+    for tool_call in state["messages"][-1].tool_calls:
+        tool = tools_by_name[tool_call["name"]]
+        observation = tool.invoke(tool_call["args"])
+        result.append(ToolMessage(content=observation, tool_call_id=tool_call["id"]))
+    return {"messages": result}
+
+def should_continue(state: MessagesState) -> Literal["tool_node", END]:
+    if state["messages"][-1].tool_calls:
+        return "tool_node"
+    return END
+
+# Build graph
+agent_builder = StateGraph(MessagesState)
+agent_builder.add_node("llm_call", llm_call)
+agent_builder.add_node("tool_node", tool_node)
+agent_builder.add_edge(START, "llm_call")
+agent_builder.add_conditional_edges("llm_call", should_continue, ["tool_node", END])
+agent_builder.add_edge("tool_node", "llm_call")
+agent = agent_builder.compile()
+
+# Invoke
+result = agent.invoke({
+    "messages": [HumanMessage(content="Add 3 and 4.")]
+})
+```
+
+### Email Classification Agent
+
+```python
+from typing import Literal, TypedDict
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import Command, interrupt
+from langgraph.checkpoint.memory import InMemorySaver
+
+class EmailClassification(TypedDict):
+    intent: Literal["question", "bug", "billing", "feature", "complex"]
+    urgency: Literal["low", "medium", "high", "critical"]
+    topic: str
+    summary: str
+
+class EmailAgentState(TypedDict):
+    email_content: str
+    sender_email: str
+    email_id: str
+    classification: EmailClassification | None
+    search_results: list[str] | None
+    draft_response: str | None
+
+def classify_intent(state: EmailAgentState) -> Command[Literal["search_docs", "human_review", "draft"]]:
+    structured_llm = llm.with_structured_output(EmailClassification)
+    classification = structured_llm.invoke(state['email_content'])
+    
+    if classification['urgency'] == 'critical' or classification['intent'] == 'billing':
+        goto = "human_review"
+    elif classification['intent'] in ['question', 'feature']:
+        goto = "search_docs"
+    else:
+        goto = "draft"
+    
+    return Command(update={"classification": classification}, goto=goto)
+
+def human_review(state: EmailAgentState) -> Command[Literal["send", END]]:
+    decision = interrupt({
+        "email": state['email_content'],
+        "draft": state['draft_response'],
+        "action": "Please review"
+    })
+    
+    if decision.get("approved"):
+        return Command(goto="send")
+    return Command(goto=END)
+
+# Build graph
+workflow = StateGraph(EmailAgentState)
+workflow.add_node("classify", classify_intent)
+workflow.add_node("human_review", human_review)
+# ... add other nodes and edges
+workflow.add_edge(START, "classify")
+
+memory = InMemorySaver()
+app = workflow.compile(checkpointer=memory)
+```
+
+## Summary
+
+LangGraph provides the essential infrastructure for building production-ready, stateful AI agents. Key capabilities include:
+
+- **Durable Execution:** Agents that can pause, resume, and recover from failures
+- **Human-in-the-Loop:** Seamless integration of human oversight
+- **Comprehensive Memory:** Both short-term and long-term memory systems
+- **Streaming:** Real-time progress updates
+- **Production Features:** Scalable deployment and observability
+
+The framework is low-level and focused on orchestration, giving you full control over agent architecture while providing the infrastructure needed for production use.
